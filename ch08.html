@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>08 · JS 逆向专题 — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="c08">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+      <a href="ch07.html" data-nav="c07">← 上一章</a>
+      <a href="ch09.html" data-nav="c09">下一章 →</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app" style="padding-top:20px;padding-bottom:48px">
+  <div class="crumb"><a href="index.html">首页</a> / 逆向篇 / <b>08 · JS 逆向专题</b></div>
+  <div class="layout">
+
+    <aside class="chapnav">
+      <div class="cap">课程目录</div>
+      <div class="grp">🧱 基础篇</div>
+      <a href="ch01.html" data-nav="c01"><span class="no">01</span>基础与抓包 <span class="pg" data-chapter-progress="c01">0/6</span></a>
+      <a href="ch02.html" data-nav="c02"><span class="no">02</span>请求与正则 <span class="pg" data-chapter-progress="c02">0/6</span></a>
+      <a href="ch03.html" data-nav="c03"><span class="no">03</span>解析库全解 <span class="pg" data-chapter-progress="c03">0/6</span></a>
+      <a href="ch04.html" data-nav="c04"><span class="no">04</span>数据存储 <span class="pg" data-chapter-progress="c04">0/6</span></a>
+      <div class="grp">⚔️ 进阶篇</div>
+      <a href="ch05.html" data-nav="c05"><span class="no">05</span>Ajax与动态渲染 <span class="pg" data-chapter-progress="c05">0/6</span></a>
+      <a href="ch06.html" data-nav="c06"><span class="no">06</span>验证码与登录 <span class="pg" data-chapter-progress="c06">0/6</span></a>
+      <a href="ch07.html" data-nav="c07"><span class="no">07</span>代理与反反爬 <span class="pg" data-chapter-progress="c07">0/6</span></a>
+      <div class="grp">🔍 逆向篇</div>
+      <a href="ch08.html" data-nav="c08" class="active"><span class="no">08</span>JS 逆向专题 <span class="pg" data-chapter-progress="c08">0/6</span></a>
+      <a href="ch09.html" data-nav="c09"><span class="no">09</span>App 爬取 <span class="pg" data-chapter-progress="c09">0/6</span></a>
+      <div class="grp">🏭 框架篇</div>
+      <a href="ch10.html" data-nav="c10"><span class="no">10</span>Scrapy与分布式 <span class="pg" data-chapter-progress="c10">0/6</span></a>
+      <div class="grp">🛠 实战</div>
+      <a href="practice.html" data-nav="practice"><span class="no">📝</span>练习场</a>
+      <a href="library.html" data-nav="library"><span class="no">📚</span>多源图书馆</a>
+    </aside>
+
+    <div class="appmain doc">
+
+      <section class="hero compact">
+        <span class="tag">逆向篇 · 教材外拓展</span>
+        <h1>08 · JS 逆向专题</h1>
+        <p class="sub">接口带着每次都变的 token/sign，删掉就 403——这一章教你把"看不懂的加密参数"变成"我自己生成的参数"。三板斧定位、指纹识别算法、扣代码补环境、webpack 与混淆还原：所有逆向都逃不出这套固定动作。</p>
+        <div class="pwrap">
+          <div class="progress"><div class="fill" data-progress-bar="c08"></div></div>
+          <span class="plabel" data-progress-label="c08"></span>
+        </div>
+      </section>
+
+      <div class="connect-box">
+        <div class="bx-title">🔗 连接你已有的知识（考研 408 · 密码学 / 数据结构 / 编译原理）</div>
+        <p>· 加密参数 = 408 密码学的<b>直接应用</b>：对称加密（AES/DES）、非对称加密（RSA）、哈希（MD5/SHA 系列）——你背过的"对称快、非对称可逆、哈希不可逆"在这里全部落地成真实代码；<br>
+           · 调用栈回溯 = 数据结构的<b>栈</b>：函数调用压栈、返回弹栈，断点冻结的就是栈顶现场；"从下往上跟"就是从入口帧往栈顶找嫌疑人；<br>
+           · AST 抽象语法树 = 编译原理<b>前端</b>：词法分析 → 语法分析 → AST → 变换 → 目标代码，ob 混淆还原就是把编译原理当武器用；<br>
+           · 你不需要懂数论，但需要认得出"这是哪种算法"——本章教的正是"识别 + 验证 + 还原"这门手艺。</p>
+      </div>
+
+      <!-- ============ 8.1 ============ -->
+      <h2>8.1 加密参数的世界 <span class="chip tnew">教材外拓展</span></h2>
+      <p>第 05 章你已经学会直连 XHR 接口。但你会很快撞上一堵墙：有些接口的请求参数里躺着一串<b>每次刷新都会变的字符串</b>，删掉它、或者随便改一个字符，接口立刻回你 403。这串东西就是<b>加密参数</b>——服务端用来判断"这个请求是不是由我的合法页面、走正常流程发出来的"的凭据。JS 逆向的全部目标只有一个：<b>在 Python 里生成出和浏览器一模一样的参数</b>。</p>
+      <div class="callout warn"><b>⚠️ 合法边界（先立规矩再动手）：</b>逆向技术的学习与练习，仅限<b>授权平台与学习用途</b>——猿人学 match、Scrape Center 等专门供人练习的授权站点。不要在未授权的真实站点上练手，不要碰账号数据与隐私信息，不要干扰目标业务正常运行。技术能力越强，越要先想清楚"我能不能这么做"。</div>
+      <h3>加密参数的三大常见形态</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>形态</th><th>常见名字</th><th>长相与特征</th><th>典型生成方式</th></tr>
+        <tr><td><b>token</b></td><td>token / ticket / access_token</td><td>随会话或随请求变化，hex 或 Base64 串</td><td>哈希（MD5/SHA）、服务器下发后本地续签</td></tr>
+        <tr><td><b>sign</b></td><td>sign / signature / sig</td><td>请求参数的"签名"：任何一个参数变了它就变</td><td>MD5(参数拼接 + 盐)、HMAC、AES</td></tr>
+        <tr><td><b>加密串</b></td><td>m / enc / data / mst</td><td>整段密文，Base64 或长 hex，长度稳定</td><td>AES/DES 加密请求体、RSA 加密密码</td></tr>
+      </table></div>
+      <h3>怎么判断"这是加密参数"</h3>
+      <p>三招判断法，30 秒出结论：① <b>刷新三次看变化</b>——每次请求都变，基本是加密参数（注意区分"时间戳"这种每次都变但不校验的伪加密）；② <b>删掉重发</b>——Copy as cURL 后删掉该参数重放，返回 403/自定义错误码即坐实；③ <b>固定值重放</b>——把上一次的完整参数原样重放，若提示过期，说明参数绑定了时间戳或一次性随机数。三招都命中，才值得进入 8.2 的定位流程。</p>
+      <div class="callout info"><b>先想后做：</b>遇到加密参数，第一反应不是"这好难"，而是按流程走：定位（8.2）→ 识别（8.3）→ 还原（8.4~8.6）。90% 的站倒在 8.3 这一步就结束了——因为大部分站用的就是 MD5 拼接这种简单组合。</div>
+
+      <!-- ============ 8.2 ============ -->
+      <h2>8.2 浏览器调试三板斧（核心一） <span class="chip tnew">核心一 · 定位</span></h2>
+      <p>逆向的第一步永远是<b>定位</b>：在几万行被打包、压缩、混淆过的 JS 里，找到"生成这个参数"的那几行代码。所有高手用的都是同一套动作，我们叫它<b>三板斧</b>——按命中率从高到低，每一斧都值得练成肌肉记忆。</p>
+
+      <h3>第一斧 · Sources 全局搜索（Ctrl+Shift+F）</h3>
+      <p>DevTools 的 Sources 面板左下角有个全局搜索（快捷键 <code class="inline">Ctrl+Shift+F</code>），能搜站点加载的<b>所有 JS 文件</b>。搜索策略有讲究：<b>先搜长而特殊的，再搜短的</b>——搜 <code class="inline">"sign"</code> 会有几百个结果，但搜 <code class="inline">"ydsecret"</code>、<code class="inline">"mst-token"</code> 这类自定义命名往往一击命中。可搜的东西依次是：参数名本身、参数的 URL 前缀（如 <code class="inline">sign=</code>）、加密相关的关键字（encrypt / md5 / sha / aes / JSEncrypt）、接口路径片段。搜到后点进去下断点，让代码自己跑过来。</p>
+
+      <h3>第二斧 · XHR 断点 + DOM 断点</h3>
+      <p>全局搜不到怎么办？换"守株待兔"：<b>XHR 断点</b>——Sources 面板右侧 XHR/fetch Breakpoints 加一条 URL 片段（如 <code class="inline">/api/list</code>），再触发一次请求，页面会<b>冻结在请求发出前的一瞬间</b>，此时调用栈里就藏着生成参数的完整链条。<b>DOM 断点</b>解决另一种情况：某个值"突然出现在页面上"，在 Elements 里对目标元素右键 → Break on → subtree modifications，JS 一改这棵子树就会停，谁改的谁现行。</p>
+
+      <h3>第三斧 · 调用栈回溯（Call Stack 从下往上跟）</h3>
+      <p>断点命中后，右侧 Call Stack 是一列函数帧。它是<b>栈</b>：栈顶是当前正在执行的函数，栈底是最早的入口。<b>回溯要"从下往上"看</b>：底下几帧通常是框架代码（axios/jQuery 发请求），往上经过业务函数（在拼参数）、最终停在某个加密函数上。经验法则：<b>谁在拼参数、谁在调加密库，谁就可疑</b>。配合右侧 Scope 面板看每一帧的局部变量值，比硬读源码快十倍。上一斧的 XHR 断点 + 这一斧的栈回溯，是逆向的黄金组合。</p>
+
+      <h3>Console 查看变量与 Hook</h3>
+      <p>Console 不只是打日志的地方，它是逆向的<b>现场实验室</b>：断点冻结时直接在 Console 里输入变量名看值、调用函数试输出。更进一步是 <b>Hook（钩子）</b>——在页面代码运行之前，把某个全局函数替换成"先打印、再执行原函数"的包装版。Hook JSON.parse 最经典：很多站把加密数据解密成 JSON 后再处理，劫持它等于在"解密出口"蹲守：</p>
+      <div class="code-title">Console · Hook JSON.parse（Object.defineProperty 劫持）</div>
+<pre class="code"><span class="cm">// 粘到 Console 回车：之后每次 JSON.parse 都会先喊一声"谁在调用我"</span>
+(<span class="kw">function</span> () {
+  <span class="kw">var</span> raw = JSON.parse;
+  Object.<span class="fn">defineProperty</span>(JSON, <span class="st">'parse'</span>, {
+    value: <span class="kw">function</span> (text) {
+      console.<span class="fn">log</span>(<span class="st">'[Hook] JSON.parse ← '</span>, text);
+      <span class="kw">debugger</span>;                     <span class="cm">// 命中后看 Call Stack：解密者现行</span>
+      <span class="kw">return</span> raw.<span class="fn">apply</span>(<span class="kw">this</span>, arguments);
+    }
+  });
+})();</pre>
+      <p>另一个必备场景是<b>过无限 debugger</b>：很多站用"定时器循环执行 <code class="inline">debugger</code> 语句"做反调试，你一开 DevTools 就被按在地上。两种过法：① <b>"Never pause here" 右键法</b>——停在 debugger 那一行后，在 Sources 里对该行<b>行号右键 → Never pause here</b>，从此这行永不暂停，最优雅；② <b>重写定时器法</b>——在 Console 里把 setInterval 换掉，拦掉含 debugger 的回调：</p>
+      <div class="code-title">Console · 重写 setInterval 过无限 debugger</div>
+<pre class="code">(<span class="kw">function</span> () {
+  <span class="kw">var</span> _si = setInterval;
+  setInterval = <span class="kw">function</span> (fn, t) {
+    <span class="kw">if</span> (fn &amp;&amp; fn.<span class="fn">toString</span>().<span class="fn">indexOf</span>(<span class="st">'debugger'</span>) !== -<span class="fn">1</span>) <span class="kw">return</span>;  <span class="cm">// 拦掉含 debugger 的定时器</span>
+    <span class="kw">return</span> <span class="fn">_si</span>(fn, t);              <span class="cm">// 正常定时器照常放行</span>
+  };
+})();
+<span class="cm">// 补充姿势：给 debugger 行下"条件断点"填 false；或临时用 Ctrl+F8 全局禁用断点</span></pre>
+
+      <!-- ============ 8.3 ============ -->
+      <h2>8.3 加密算法指纹识别（核心二） <span class="chip tnew">核心二 · 识别</span></h2>
+      <p>定位到加密函数后，下一步是<b>识别它用的什么算法</b>。好消息是：密文会<b>自报家门</b>——输出长度和字符集就是最可靠的指纹。MD5 永远输出 32 位十六进制，SHA256 永远 64 位，RSA 公钥永远以 MIIB 开头。把下面这张表背下来，你就能做到"瞄一眼密文就报算法"。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>算法</th><th>长相特征（指纹）</th><th>JS 里的标志</th><th>Python 对应</th></tr>
+        <tr><td>MD5</td><td>恒定 <b>32 位十六进制</b>（0-9a-f）</td><td><code class="inline">CryptoJS.MD5(...)</code></td><td><code class="inline">hashlib.md5</code></td></tr>
+        <tr><td>SHA1</td><td>恒定 <b>40 位十六进制</b></td><td><code class="inline">CryptoJS.SHA1(...)</code></td><td><code class="inline">hashlib.sha1</code></td></tr>
+        <tr><td>SHA256</td><td>恒定 <b>64 位十六进制</b></td><td><code class="inline">CryptoJS.SHA256(...)</code></td><td><code class="inline">hashlib.sha256</code></td></tr>
+        <tr><td>Base64</td><td>长度是 <b>4 的倍数</b>，常以 <b>=</b> 结尾</td><td><code class="inline">btoa() / atob()</code></td><td><code class="inline">base64.b64decode</code></td></tr>
+        <tr><td>AES</td><td>CryptoJS 默认结果以 <b>U2FsdGVk</b> 开头（即 "Salted__" 带盐标记）</td><td><code class="inline">CryptoJS.AES.encrypt</code></td><td>pycryptodome，或直接扣代码</td></tr>
+        <tr><td>RSA</td><td>超长 Base64，公钥常以 <b>MIIB</b> 开头</td><td><code class="inline">JSEncrypt / setPublicKey</code></td><td>rsa / pycryptodome</td></tr>
+        <tr><td>时间戳</td><td><b>10 位</b>纯数字 = 秒，<b>13 位</b> = 毫秒</td><td><code class="inline">Date.now()</code></td><td><code class="inline">int(time.time()*1000)</code></td></tr>
+      </table></div>
+      <h3>CryptoJS 调用特征</h3>
+      <p>国内站点八成用 CryptoJS 或它的变种。在 Sources 里看到下面这些调用模式，基本等于看到了答案：函数名（MD5/AES）直接暴露算法，<code class="inline">enc.Utf8.parse(key)</code> 说明 key 是明文字符串，<code class="inline">mode.ECB + pad.Pkcs7</code> 说明填充方式，<code class="inline">toString()</code> 输出的前缀帮你二次确认。</p>
+      <div class="code-title">Sources 里常见的加密调用模式</div>
+<pre class="code">CryptoJS.MD5(raw).toString()                      <span class="cm">// → 32 位 hex，八成是 MD5 签名</span>
+CryptoJS.AES.encrypt(data, key).toString()        <span class="cm">// → U2FsdGVk… 开头（默认 OpenSSL 带盐）</span>
+CryptoJS.enc.Utf8.parse(key)                      <span class="cm">// key 是 UTF8 明文字符串</span>
+CryptoJS.AES.encrypt(data, key, {
+  mode: CryptoJS.mode.ECB,                        <span class="cm">// 模式：ECB / CBC</span>
+  padding: CryptoJS.pad.Pkcs7                     <span class="cm">// 填充方式，还原时要对齐</span>
+});
+<span class="kw">new</span> JSEncrypt().<span class="fn">setPublicKey</span>(PUBLIC_KEY)          <span class="cm">// RSA：先加密密码再提交</span>
+<span class="fn">atob</span>(x) / <span class="fn">btoa</span>(x)                                <span class="cm">// Base64：只是编码不是加密</span></pre>
+      <h3>闭环：识别 → Console 验证 → 还原</h3>
+      <div class="flow">
+        <span class="fnode"><b>① 识别</b>长度+前缀对号入座</span><span class="farrow">→</span>
+        <span class="fnode"><b>② Console 验证</b>同输入是否同输出</span><span class="farrow">→</span>
+        <span class="fnode"><b>③ 还原</b>Python 复刻或扣代码</span>
+      </div>
+      <p>识别只是猜想，<b>必须验证</b>：把加密函数的输入参数抄下来，在 Console 里手动跑一遍（或调用该函数），确认输出与请求里的密文<b>逐字符一致</b>——一致才算分析闭环。然后才进入还原：算法简单（纯哈希拼接）直接用 Python 的 hashlib 复刻；涉及 AES/RSA 或复杂拼接，走 8.4 的扣代码。跳过验证直接还原，错了都不知道错在哪。</p>
+
+      <div class="lab-card">
+        <h3>🧪 实验室 · 加密算法识别训练场 <span class="chip tlab">互动</span></h3>
+        <p class="muted small">高手的直觉：瞄一眼密文就知道是什么算法。下面 6 道题练出这种直觉——先自己判断，再点答案看"凭什么"。</p>
+        <div id="ci-box"></div>
+        <p class="plabel" id="ci-score" aria-live="polite"></p>
+      </div>
+
+      <!-- ============ 8.4 ============ -->
+      <h2>8.4 扣代码与补环境（核心三） <span class="chip tnew">核心三 · 还原</span></h2>
+      <p>验证闭环后到了还原环节。算法简单（如 MD5 拼接）用 Python 的 hashlib 几行就复刻了；但遇到 AES 带盐加密、自研魔改算法、多层嵌套拼接，用 Python 手写复刻的成本急剧上升——这时更聪明的做法是<b>扣代码</b>：把浏览器里那段加密 JS <b>原样拷出来</b>，在本地用 Node 执行。核心逻辑一句话：<b>浏览器能算的，Node 就能算</b>。</p>
+
+      <h3>execjs：Python 指挥 Node 跑 JS</h3>
+      <p><code class="inline">PyExecJS</code> 是最常用的桥梁：Python 侧装它，本机再装 Node.js（execjs 只负责"指挥"，真正干活的是 Node）。三步走：抠出 JS 存成 .js 文件 → execjs.compile 编译 → ctx.call 调用函数。下面是完整可跑的示例——为什么选 AES 做例子？因为 CryptoJS 的默认 AES 是 OpenSSL 带盐格式（还记得 U2FsdGVk 开头吗），纯 Python 复刻要自己实现 EVP_BytesToKey 密钥派生，非常费劲；扣代码则一行不用改：</p>
+      <div class="code-title">安装（终端）</div>
+<pre class="code">pip install PyExecJS      <span class="cm"># Python 侧的指挥棒</span>
+node -v                   <span class="cm"># 确认本机有 Node.js（真正的执行引擎）</span>
+npm install crypto-js     <span class="cm"># 抠出的代码若依赖 CryptoJS，在 .js 同目录安装</span></pre>
+      <div class="code-title">encrypt.js —— 从浏览器 Sources 原样抠出来的加密函数</div>
+<pre class="code"><span class="kw">var</span> CryptoJS = <span class="fn">require</span>(<span class="st">'crypto-js'</span>);
+
+<span class="cm">// 这两行就是从站点 JS 里抄出来的核心逻辑（变量名保持原样更方便排查）</span>
+<span class="kw">function</span> <span class="fn">getToken</span>(page, ts) {
+  <span class="kw">var</span> raw = <span class="st">'page='</span> + page + <span class="st">'&amp;ts='</span> + ts;
+  <span class="kw">return</span> CryptoJS.AES.<span class="fn">encrypt</span>(raw, <span class="st">'ydsecret#2024'</span>).<span class="fn">toString</span>();
+  <span class="cm">// 默认带盐 → U2FsdGVk 开头；纯 Python 复刻很费劲，扣代码最划算</span>
+}</pre>
+      <div class="code-title">run_js.py —— Python 调 Node 执行</div>
+<pre class="code"><span class="kw">import</span> execjs
+
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"encrypt.js"</span>, <span class="st">"r"</span>, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
+    ctx = execjs.<span class="fn">compile</span>(f.read())          <span class="cm"># 编译整段 JS</span>
+
+token = ctx.<span class="fn">call</span>(<span class="st">"getToken"</span>, <span class="fn">1</span>, <span class="fn">1730000000</span>) <span class="cm"># 调用函数、传参、拿返回值</span>
+<span class="fn">print</span>(token)   <span class="cm"># U2FsdGVkX1+8yGx1…  与浏览器输出逐字符一致 → 还原成功</span></pre>
+
+      <h3>补环境三步：报什么补什么</h3>
+      <p>抠出来的代码经常一跑就报 <code class="inline">document is not defined</code>——因为原代码里检测了浏览器环境（window/document/navigator），Node 里没有这些全局对象。这就是<b>补环境</b>：自己伪造一个"最小可用的浏览器骨架"喂给它。标准三步：① 跑一次，记下<b>第一个</b>报错；② 在 JS 文件顶部伪造报错提到的那个全局对象（<b>报什么补什么，绝不画蛇添足</b>）；③ 循环 ①② 直到跑通。绝大多数站补 window/document/navigator/location 四件就够了：</p>
+      <div class="code-title">env.js —— 最小伪环境骨架（放在加密代码之前）</div>
+<pre class="code"><span class="kw">var</span> window = <span class="kw">this</span>;
+<span class="kw">var</span> document = {
+  cookie: <span class="st">''</span>,
+  referrer: <span class="st">''</span>,
+  createElement: <span class="kw">function</span> () { <span class="kw">return</span> { style: {}, setAttribute: <span class="kw">function</span> () {} }; },
+  getElementsByTagName: <span class="kw">function</span> () { <span class="kw">return</span> []; }
+};
+<span class="kw">var</span> navigator = { userAgent: <span class="st">'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'</span> };
+<span class="kw">var</span> location = { href: <span class="st">'https://target.example/'</span>, protocol: <span class="st">'https:'</span> };
+<span class="kw">var</span> screen = { width: <span class="fn">1920</span>, height: <span class="fn">1080</span> };</pre>
+      <div class="callout ok"><b>补环境纪律：</b>只补报错的，不补想象的。多补一个属性就可能改变加密结果（有些代码真的会拿 navigator 的值参与运算），也可能触发更深的环境检测。补到"能算出与浏览器一致的结果"即停，验证标准仍然是 8.3 那句话：逐字符一致。</div>
+
+      <!-- ============ 8.5 ============ -->
+      <h2>8.5 Webpack 打包站 <span class="chip tnew">webpack</span></h2>
+      <p>你会在很多站上发现：全局搜索参数名，<b>一无所获</b>。别慌，多半是遇到了 webpack 打包站——前端工程把源码切成几十上百个<b>模块</b>，用一个<b>加载器</b>按需拼装，再整体压缩。模块号和真实业务名对不上，所以直接搜参数名搜不到。</p>
+      <h3>结构识别：加载器 + 模块表</h3>
+      <p>webpack 产物有固定骨架：一个自执行函数接收<b>模块表</b>（编号 → 函数的对象），内部定义 <code class="inline">__webpack_require__</code> 加载器按编号取模块并缓存。识别特征：全局搜 <code class="inline">__webpack_require__</code> 或 <code class="inline">webpackChunk</code> 命中；或看到"一个大函数包着一堆 <code class="inline">编号: function(...) {}</code>"的结构。理解了骨架，"扣模块"就有了路标：</p>
+      <div class="code-title">webpack 产物的最小骨架（还原后）</div>
+<pre class="code">(<span class="kw">function</span> (modules) {                          <span class="cm">// ← 模块表作为参数传入</span>
+  <span class="kw">var</span> cache = {};
+  <span class="kw">function</span> <span class="fn">__webpack_require__</span>(moduleId) {     <span class="cm">// 加载器：按编号取模块、缓存 exports</span>
+    <span class="kw">if</span> (cache[moduleId]) <span class="kw">return</span> cache[moduleId].exports;
+    <span class="kw">var</span> module = cache[moduleId] = { exports: {} };
+    modules[moduleId].<span class="fn">call</span>(module.exports, module, module.exports, __webpack_require__);
+    <span class="kw">return</span> module.exports;
+  }
+  <span class="kw">return</span> <span class="fn">__webpack_require__</span>(<span class="fn">88</span>);              <span class="cm">// 入口模块编号 88</span>
+})({
+  <span class="fn">88</span>: <span class="kw">function</span> (module, exports, __webpack_require__) {   <span class="cm">// 模块 88：业务层</span>
+    <span class="kw">var</span> sign = <span class="fn">__webpack_require__</span>(<span class="fn">129</span>);      <span class="cm">// 依赖编号 129 的加密模块</span>
+    module.exports = <span class="kw">function</span> (raw) { <span class="kw">return</span> <span class="fn">sign</span>(raw); };
+  },
+  <span class="fn">129</span>: <span class="kw">function</span> (module, exports) { <span class="cm">/* …加密实现… */</span> }
+});</pre>
+      <h3>三种打法</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>打法</th><th>做法</th><th>适用与代价</th></tr>
+        <tr><td><b>① 自建 html 引原站 JS</b></td><td>写一个本地 html，<code class="inline">&lt;script&gt;</code> 引入原站打包文件，用加载器直接调用目标模块"掏"出加密函数</td><td>最常用，改动最小；缺点是依赖原站 JS 在线可访问</td></tr>
+        <tr><td><b>② 整包抠出本地跑</b></td><td>把加载器+模块表整体拷成 .js，本地 Node 执行（配合 8.4 补环境）</td><td>离线可跑、最稳；代价是依赖模块多时抠起来费劲</td></tr>
+        <tr><td><b>③ 运行时 Hook</b></td><td>不还原代码，Console 里直接 hook 加载器或加密函数，拿输入输出</td><td>最快出结果；拿到的是"黑盒输入输出"，适合先验证猜想</td></tr>
+      </table></div>
+      <div class="code-title">patch.html —— 打法①：自建页面掏模块</div>
+<pre class="code">&lt;!-- 本地 html：引入原站打包文件，按模块号直接调用 --&gt;
+&lt;<span class="kw">script</span> src=<span class="st">"https://target.example/static/app.js"</span>&gt;&lt;/<span class="kw">script</span>&gt;
+&lt;<span class="kw">script</span>&gt;
+  <span class="cm">// 加载器暴露在 window 上时（大多数站如此），直接掏出加密模块</span>
+  <span class="kw">var</span> sign = <span class="fn">__webpack_require__</span>(<span class="fn">129</span>);
+  console.<span class="fn">log</span>(<span class="fn">sign</span>(<span class="st">'page=1&amp;ts=1730000000'</span>));  <span class="cm">// 与浏览器请求里的值一致 ✓</span>
+&lt;/<span class="kw">script</span>&gt;</pre>
+
+      <!-- ============ 8.6 ============ -->
+      <h2>8.6 ob 混淆与 AST（拓展） <span class="chip">拓展</span></h2>
+      <p>再往上走，你会遇到 <b>ob 混淆</b>（javascript-obfuscator 工具的产物）：代码能跑，但人读不懂。三大特征一眼可辨：① <b>大数组 + 位移函数 + 解密函数</b>——文件开头是一个巨大的字符串数组、一个自执行位移函数（打乱数组顺序）、一个解密函数，全文所有字符串都变成 <code class="inline">_0x1c88(0x1f)</code> 形式的调用；② <b>控制流平坦化</b>——把顺序逻辑打散成 <code class="inline">while(true) { switch(顺序号) {...} }</code>，阅读顺序与执行顺序脱钩；③ <b>死代码注入</b>——塞进大量永远不会执行的 if 分支干扰判断。</p>
+      <div class="callout info"><b>混淆还原的标准顺序（顺序反了全白干）：</b>先把"大数组 + 位移函数 + 解密函数"三件套<b>原样搬到文件最前</b>（它们必须最先执行）→ 在 Console/Node 里把全部字符串解密替换回明文 → 再用 AST 去控制流平坦化（switch 还原成顺序结构）→ 最后删死代码。每做一步验证一次：结果不变才继续。</div>
+      <h3>AST：把代码当数据改</h3>
+      <p>手工还原几千行混淆代码不现实，工业化做法是 <b>AST（抽象语法树）</b>：源码先解析成树（编译原理的"前端"），你遍历树、改写节点，再从树生成源码。Babel 三件套各司其职——<code class="inline">parse</code> 负责"源码 → AST"，<code class="inline">traverse</code> 负责"遍历 + 改写节点"，<code class="inline">generator</code> 负责"AST → 源码"。下面这个最小例子把编译期可确定的字符串加法折叠成一个字面量——真实还原脚本就是把这类"访问器"写上几十个：</p>
+      <div class="code-title">ast_demo.js —— Babel 三件套最小示例</div>
+<pre class="code"><span class="cm">// npm i @babel/parser @babel/traverse @babel/generator</span>
+<span class="kw">const</span> parser = <span class="fn">require</span>(<span class="st">'@babel/parser'</span>);
+<span class="kw">const</span> traverse = <span class="fn">require</span>(<span class="st">'@babel/traverse'</span>).default;
+<span class="kw">const</span> generator = <span class="fn">require</span>(<span class="st">'@babel/generator'</span>).default;
+
+<span class="kw">const</span> code = <span class="st">'var _0x1f2a = "hello" + " " + "world";'</span>;
+<span class="kw">const</span> ast = parser.<span class="fn">parse</span>(code);              <span class="cm">// ① parse：源码 → AST</span>
+<span class="fn">traverse</span>(ast, {                               <span class="cm">// ② traverse：遍历 + 改写节点</span>
+  BinaryExpression(path) {
+    <span class="kw">const</span> l = path.node.left, r = path.node.right;
+    <span class="kw">if</span> (l.type === <span class="st">'StringLiteral'</span> &amp;&amp; r.type === <span class="st">'StringLiteral'</span>) {
+      path.<span class="fn">replaceWith</span>({ type: <span class="st">'StringLiteral'</span>, value: l.value + r.value });
+    }
+  }
+});
+console.<span class="fn">log</span>(<span class="fn">generator</span>(ast).code);            <span class="cm">// ③ generator：AST → 源码</span>
+<span class="cm">// 输出：var _0x1f2a = "hello world";</span></pre>
+
+      <!-- ============ 8.7 ============ -->
+      <h2>8.7 实战路线 <span class="chip tlab">实战</span></h2>
+      <p>学完 8.1~8.6，去 <a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match</a>（授权练习平台）按序通关。前 10 题覆盖了本章全部技术点，下面给<b>方向性攻略提示</b>（只指路，不给答案）：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>题号</th><th>攻略提示（只给方向，不给答案）</th></tr>
+        <tr><td><b>第 1 题</b></td><td>简单加密参数：最适合验证"三板斧 + 识别 + 还原"闭环的起点</td></tr>
+        <tr><td><b>第 2 题</b></td><td>动态 cookie：先搞清 cookie 怎么来、请求该按什么顺序发</td></tr>
+        <tr><td><b>第 3 题</b></td><td>时间戳拼接签名：重点核对秒还是毫秒、拼接顺序</td></tr>
+        <tr><td><b>第 4 题</b></td><td>不剧透——前三题方法论的综合，自己砍</td></tr>
+        <tr><td><b>第 5 题</b></td><td>webpack 打包：先解包（8.5），再谈还原</td></tr>
+        <tr><td><b>第 6 题</b></td><td>不剧透——卡住就回 8.2 三板斧重新定位</td></tr>
+        <tr><td><b>第 7 题</b></td><td>字体反爬方向：字符映射表思路，别硬 OCR</td></tr>
+        <tr><td><b>第 8 题</b></td><td>不剧透——检验前七题积累的里程碑</td></tr>
+        <tr><td><b>第 9 题</b></td><td>混淆战场：8.6 的还原顺序与 AST 该上场了</td></tr>
+        <tr><td><b>第 10 题</b></td><td>综合最难：毕业题，允许卡两三天，写满笔记再撤退</td></tr>
+      </table></div>
+      <h3>逆向笔记模板（五段式）</h3>
+      <p>每做一题写一份五段式笔记——接口、定位、算法、代码、踩坑。这本笔记是你复利的起点：半年后再遇到同类站，翻笔记五分钟解决。</p>
+      <div class="code-title">逆向笔记模板</div>
+<pre class="code"># 逆向笔记 · 猿人学第 N 题（五段式）
+## 1. 目标接口
+POST /api/list    加密参数：token
+## 2. 定位过程
+Ctrl+Shift+F 搜 "token" → XHR 断点 → 调用栈回溯 → encryptData @ app.js:902
+## 3. 算法分析
+token = MD5("page={page}&amp;ts={ts}" + "ydsecret#2024")    （秒级时间戳，10 位）
+## 4. 还原结果
+（贴 Python/Node 代码 + 与浏览器逐字符一致的输出截图）
+## 5. 踩过的坑
+- 时间戳是毫秒不是秒，签名对不上找了半小时
+- 参数拼接顺序错一位，MD5 全错</pre>
+
+      <div class="pitfall"><b>逆向五大坑：</b>① Console 里看对象是"事后快照"——展开引用类型时显示的是<b>最终值</b>而不是当下值，反调试最爱利用这点骗你，要锁定现场请下断点；② 无限 debugger 先用 "Never pause here" 右键法，不行再 hook setInterval / Function 构造器，最后才条件断点填 false；③ 扣代码报 undefined 就是漏依赖——顺着报错堆栈一层层往外补，别图省事整站照抄；④ 混淆还原顺序错了全白干：先三件套、再字符串还原、最后去平坦化删死代码；⑤ 别在未授权站点练手——只打猿人学 / Scrape Center 等授权平台，真实站点先看协议与法律边界。</div>
+
+      <!-- ============ 动画课堂 ============ -->
+      <h2 id="lesson">🎬 动画课堂 · 《一块 token 的解剖报告》 <span class="chip tanim">第 5 集</span></h2>
+      <p class="muted small">约 2.8 分钟 · 三块屏幕跟着一个 token 走完全程：Network（案发现场）→ Sources（调试现场）→ 终端（还原现场），对应 8.2~8.4 全部知识点。▶ 播放 / 空格暂停 / 进度条可拖 / ⏮⏭ 跳场景 / 可调速。</p>
+      <div class="lesson" id="lesson5">
+        <div class="screen"><div class="theater" id="th5">
+          <div class="row">
+            <div class="panel col" id="k5-net"><h4>① Network（案发现场）</h4><div class="th-mono" data-dyn id="k5-n"></div></div>
+            <div class="panel col" id="k5-src"><h4>② Sources（调试现场）</h4><div class="th-mono" data-dyn id="k5-d"></div></div>
+            <div class="panel col" id="k5-term"><h4>③ 终端（还原现场）</h4><div class="th-mono" data-dyn id="k5-t"></div></div>
+          </div>
+          <div class="center-x" style="margin-top:14px">
+            <span class="pill" id="k5-p1">第①斧 · 定位</span>
+            <span class="pill" id="k5-p2">第②斧 · 分析</span>
+            <span class="pill" id="k5-p3">第③斧 · 还原</span>
+          </div>
+          <div class="note" data-dyn id="k5-note"></div>
+        </div></div>
+      </div>
+
+      <!-- ============ 打卡 ============ -->
+      <h2>✅ 本章打卡清单</h2>
+      <div class="checklist-card check">
+        <label><input type="checkbox" id="c08-1" data-persist><span>三板斧操作熟练：全局搜索、XHR/DOM 断点、调用栈回溯都能独立定位加密点（8.2）</span></label>
+        <label><input type="checkbox" id="c08-2" data-persist><span>加密指纹表能背：32/40/64 位 hex、U2FsdGVk、MIIB、时间戳位数，训练场 6 题全对（8.3）</span></label>
+        <label><input type="checkbox" id="c08-3" data-persist><span>扣代码跑通：execjs + Node 执行抠出的 JS，结果与浏览器逐字符一致（8.4）</span></label>
+        <label><input type="checkbox" id="c08-4" data-persist><span>补环境三步会做：报什么补什么，伪造 window/document/navigator 最小骨架（8.4）</span></label>
+        <label><input type="checkbox" id="c08-5" data-persist><span>webpack 三种打法与 ob 混淆三大特征、AST 三件套说得清楚（8.5/8.6）</span></label>
+        <label><input type="checkbox" id="c08-6" data-persist><span>猿人学第 1 题独立解出，并写下五段式逆向笔记（8.7）</span></label>
+      </div>
+
+      <!-- ============ 练习 ============ -->
+      <h2>📝 本章练习</h2>
+      <p class="muted small">先自己想，再展开参考解析。做完到<a href="practice.html">练习场</a>刷综合题。</p>
+
+      <details class="qa"><summary><span class="qno">Q1</span>拿到一串 32 位十六进制（如 e10adc3949ba59abbe56e057f20f883e），如何判断它最可能是什么算法？请再列出其他常见长度/前缀指纹。<span class="lv badge b-green">概念</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>8.3 加密算法指纹表——"密文自报家门"的识别能力。</p>
+          <div class="ans"><b>参考解析：</b>32 位十六进制是 <b>MD5</b> 的指纹（MD5 输出恒 128 bit → 32 个 hex 字符）。顺带一提示例串是 "123456" 的 MD5。其余指纹：40 位 hex = SHA1；64 位 hex = SHA256；长度为 4 的倍数、常以 = 结尾 = Base64（编码非加密）；U2FsdGVk 开头 = CryptoJS 默认 AES（"Salted__" 带盐）；超长 Base64 且 MIIB 开头 = RSA 公钥；10 位纯数字 = 秒级时间戳，13 位 = 毫秒级。识别后仍需 Console 验证同输入同输出才算闭环。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q2</span>打开 DevTools 后页面不断弹出 debugger 断点，删掉那行代码也照样弹，页面几乎卡死。可能是什么机制？给出至少两种过法。<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>8.2 反调试与无限 debugger 的应对。</p>
+          <div class="ans"><b>参考解析：</b>这是典型的<b>无限 debugger 反调试</b>：常见实现有 ① setInterval 定时循环执行 <code class="inline">debugger</code> 语句（所以删掉一处还会再弹）；② <code class="inline">Function('debugger')()</code> 或 eval 构造动态断点；③ 检测 DevTools 打开状态后持续触发。过法：① 首选 <b>Never pause here 右键法</b>——停在 debugger 行后对行号右键选 Never pause here，该行永不暂停；② <b>重写 setInterval</b>，拦掉 toString 中含 "debugger" 的回调；③ 对 debugger 行下<b>条件断点并填 false</b>；④ 临时 Ctrl+F8 全局禁用断点（副作用是自己的断点也失效）。实战中常需组合使用。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q3</span>动手：服务器 token = MD5('page=' + page + '&ts=' + ts + 'SALT')，ts 为秒级时间戳。请先用 execjs + Node 实现（写 encrypt.js 与 Python 调用），再写纯 Python 版本对照，两者输出必须一致。<span class="lv badge b-orange">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>8.4 扣代码标准流程：抠 JS → execjs.compile → ctx.call。</p>
+          <div class="ans"><b>参考解析：</b>Node 侧 encrypt.js：<code class="inline">var crypto = require('crypto'); function getToken(p, ts){ var raw = 'page=' + p + '&amp;ts=' + ts + 'SALT'; return crypto.createHash('md5').update(raw).digest('hex'); }</code>。Python 侧：<code class="inline">import execjs; ctx = execjs.compile(open('encrypt.js', encoding='utf-8').read()); token = ctx.call('getToken', 1, str(int(time.time())))</code>。纯 Python 版：<code class="inline">import hashlib, time; raw = f"page=1&amp;ts={int(time.time())}SALT"; hashlib.md5(raw.encode()).hexdigest()</code>。注意两点：同一 ts 下两者输出逐字符一致才算通；真实请求里 ts 要用<b>当下</b>的秒级时间戳并同步传给接口。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q4</span>综合分析：某接口 POST /api/data，参数 m = "U2FsdGVkX1+8yGx1Bq3zRk9w…"（每次都变），请求头 X-Sign 是 64 位 hex。请给出完整逆向路线：定位、两个参数分别是什么、如何验证、还原方案怎么选。<span class="lv badge b-red">综合</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>8.2 三板斧 + 8.3 指纹识别 + 8.4 还原决策的综合运用。</p>
+          <div class="ans"><b>参考解析：</b>① <b>指纹判断</b>：m 以 U2FsdGVk 开头 → CryptoJS 默认 AES（带盐）；X-Sign 64 位 hex → SHA256。② <b>定位</b>：Sources 全局搜 "X-Sign" / "m"（或对 /api/data 下 XHR 断点）→ 调用栈从下往上跟，找到拼参数与加密的函数帧。③ <b>验证</b>：断点冻结时抄下加密函数输入（明文与 key），Console 手动调用，输出与请求里逐字符一致才闭环。④ <b>还原决策</b>：X-Sign 用 Python hashlib.sha256 复刻即可；m 是 CryptoJS 带盐 AES，纯 Python 复刻成本高（要实现 OpenSSL 密钥派生）→ 选<b>扣代码</b>：加密函数抠到 encrypt.js，npm 装 crypto-js，execjs 调用；若代码深度依赖 window/document，再按补环境三步伪造最小骨架。⑤ 全程记录五段式笔记。</div>
+        </div>
+      </details>
+
+      <div class="book-box">
+        <div class="bx-title">📚 对齐与拓展</div>
+        <p>· 本章为<b>教材外拓展</b>：主教材未专章覆盖 JS 逆向，知识体系对齐 <a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match</a> 实战体系（前 10 题与 8.2~8.7 一一对应）；<br>
+           · 配套视频：<a href="https://www.bilibili.com/video/BV1TC1jYmEve" target="_blank" rel="noopener">B站 · JS 逆向技术剖析与实战</a>（21 小时，跟着做）；<br>
+           · 加练平台：<a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a>（ssr → spa → antispider 全谱系）、<a href="https://www.python-spider.com/challenge/" target="_blank" rel="noopener">python-spider.com 挑战题</a>；<br>
+           · 猿人学每题评论区有公开 writeup——卡 2 天再看，先自己砍。</p>
+      </div>
+
+            <div class="book-box">
+        <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
+        <p>
+         · <a href="https://juejin.cn/column/6993510687448252424" target="_blank" rel="noopener">K哥《JS逆向百例》（掘金专栏）</a>——一百个真实案例按套路分类，逆向人的案例字典（配套 <a href="https://www.cnblogs.com/ikdl" target="_blank" rel="noopener">博客园</a> / <a href="https://www.kgtools.cn" target="_blank" rel="noopener">KGtools</a>）;
+         · <a href="https://nightteam.github.io/" target="_blank" rel="noopener">夜幕团队 NightTeam</a>——崔庆才也是成员，爬虫/反爬/JS 逆向深度系列（<a href="https://github.com/nightteam" target="_blank" rel="noopener">GitHub</a>）;
+         · <a href="https://github.com/JSREI" target="_blank" rel="noopener">GitHub · JSREI 组织</a>——JS 逆向脚本与案例仓库集合；B站"宇哥 JS逆向"“编程奇遇”跟练向网课;
+         · 实战线：<a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match</a> 逐题实战 + 卡点回本节补理论。</p>
+      </div>
+
+      <div class="pager">
+        <a class="btn" href="ch07.html">← 上一章：代理与反反爬</a>
+        <a class="btn primary" href="ch09.html">下一章：App 爬取 →</a>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 第 08 章 · JS 逆向专题</p>
+    <p class="muted">教材外拓展 · 对齐猿人学逆向实战体系 · 进度自动保存</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script src="assets/lesson-player.js"></script>
+<script>
+/* ===== 加密算法识别训练场 ===== */
+(function () {
+  var OPTS = ['Base64', 'MD5', 'SHA256', 'AES', 'RSA', '时间戳'];
+  var QS = [
+    { v: 'ZmxhZ19pc19oZXJl', a: 'Base64', why: '字母数字 + 长度是 4 的倍数（还常见结尾一个或两个 =）。解码一下就是明文，所以它只是"编码"不是加密。' },
+    { v: 'e10adc3949ba59abbe56e057f20f883e', a: 'MD5', why: '标准的 32 位十六进制（0-9a-f）。MD5 结果恒定 32 位，这是它最强的指纹。（顺带一提：这是 123456 的 MD5）' },
+    { v: 'U2FsdGVkX1+8yGx1Bq3zRk9w…', a: 'AES', why: 'U2FsdGVk 开头 = Base64("Salted__")，是 CryptoJS 默认带盐加密的标志性前缀，看到它基本就是 AES。' },
+    { v: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA…', a: 'RSA', why: '超长 Base64 且以 MIIB 开头，是 DER 编码的 RSA 公钥。配合 JS 里的 JSEncrypt 库出现，更是实锤。' },
+    { v: '2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae', a: 'SHA256', why: '64 位十六进制。位数直接暴露算法：32=MD5，40=SHA1，64=SHA256。' },
+    { v: '1730000000', a: '时间戳', why: '10 位纯数字是秒级 Unix 时间戳，13 位是毫秒。它常作为签名原料出现：sign = MD5(…+ ts)。' }
+  ];
+  var box = document.getElementById('ci-box');
+  var scoreEl = document.getElementById('ci-score');
+  var right = 0, answered = 0;
+  QS.forEach(function (item, qi) {
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.style.marginBottom = '12px';
+    card.innerHTML = '<h3>第 ' + (qi + 1) + ' 题</h3>' +
+      '<div class="req-view" style="word-break:break-all">' + item.v.replace(/</g, '&lt;') + '</div>' +
+      '<div class="opts">' + OPTS.map(function (o, oi) {
+        return '<button class="opt" type="button" data-oi="' + oi + '">' + o + '</button>';
+      }).join('') + '</div><div class="explain" hidden></div>';
+    box.appendChild(card);
+    card.querySelectorAll('.opt').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (card.dataset.done) return;
+        card.dataset.done = '1';
+        answered++;
+        var good = OPTS[+b.dataset.oi] === item.a;
+        if (good) right++;
+        card.querySelectorAll('.opt').forEach(function (x) {
+          if (x.textContent === item.a) x.classList.add('correct');
+          else if (x === b && !good) x.classList.add('wrong');
+          x.style.cursor = 'default';
+        });
+        var ex = card.querySelector('.explain');
+        ex.hidden = false;
+        ex.className = 'explain ' + (good ? 'good' : 'bad');
+        ex.textContent = (good ? '✅ 正确！' : '❌ 答案是 ' + item.a + '。') + item.why;
+        scoreEl.textContent = '已完成 ' + answered + ' / ' + QS.length + '，答对 ' + right + ' 题' +
+          (answered === QS.length ? (right === QS.length ? ' —— 直觉已成，去猿人学实战吧！' : ' —— 错题的特征记到笔记里，再刷一遍。') : '');
+      });
+    });
+  });
+})();
+
+/* ===== 动画课堂 ===== */
+(function () {
+  function g(r, id) { return r.querySelector('#' + id); }
+  function T(r, id, s) { g(r, id).textContent = s; }
+  function onE(r, id, c) { g(r, id).classList.add(c || 'on'); }
+  var S = [
+    { d: 11, cap: '压轴大戏：接口 POST /api/list 每次都带一个 token，删掉就 403。这一集，我们把它大卸八块。', set: { 'k5-n': 'POST /api/list\npage=1\ntoken=7f3a9c2e1d84b6a0', 'k5-note': '三块屏幕，就是逆向的全部现场。' }, cls: { 'k5-net': 'on' } },
+    { d: 12, cap: '第①斧·定位：刷新三次，token 三张脸——7f3a…、9c22…、b1e0…。它是 JS 现场算的，必定存在一个生成函数。', set: { 'k5-n': '第1次 token=7f3a9c…\n第2次 token=9c22d1…\n第3次 token=b1e004…' }, cls: { 'k5-p1': 'on' } },
+    { d: 13, cap: '在 Network 里对这条请求下 XHR 断点，再点一次按钮——页面冻结在请求发出前的一瞬间。', set: { 'k5-d': '⏸ Paused on XHR breakpoint\n（时间，在这一刻静止）' }, cls: { 'k5-src': 'on' } },
+    { d: 14, cap: '看右侧调用栈：sendRequest → buildParams → encryptData。从下往上跟，谁在拼参数，谁就可疑。', set: { 'k5-d': '调用栈 Call Stack：\n▼ sendRequest   app.js:3210\n▼ buildParams   app.js:1844\n▼ encryptData   app.js:902 ←可疑', 'k5-note': '调用栈是案发现场的监控录像回放。' } },
+    { d: 13, cap: '锁定 encryptData（app.js:902）。点开一看：变量名全是 _0x3f2a 这种乱码——混淆了，但看见了 CryptoJS 的影子。', set: { 'k5-d': 'encryptData @ app.js:902\nvar _0x3f2a = _0x1c88(...)\n… CryptoJS …', 'k5-note': '看到加密库的名字 ≈ 看到答案的一半。' } },
+    { d: 13, cap: '第②斧·分析：不硬读代码，单步执行看值。raw = "page=1&ts=1730000000" 加一串固定盐。', set: { 'k5-d': '单步观察：\nraw = "page=1&ts=1730000000"\n      + "ydsecret#2024"' }, cls: { 'k5-p2': 'on' } },
+    { d: 14, cap: '最后一句：return CryptoJS.MD5(raw).toString()——破案了！32 位十六进制的输出，早就在自报家门是 MD5。', set: { 'k5-d': 'return CryptoJS.MD5(raw)\n        .toString();\n→ 32 位十六进制 = MD5 指纹', 'k5-note': '算法会自报家门：位数就是指纹。' } },
+    { d: 12, cap: '先验证再还原：在 Console 手动跑一遍同样输入，输出与浏览器生成的 token 逐字符一致。✓ 分析闭环。', set: { 'k5-d': '> CryptoJS.MD5("page=1&ts=1730000000ydsecret#2024")\n< "7f3a9c2e1d84b6a0…"  ✓ 与请求一致', 'k5-note': '看值比读代码快十倍。' } },
+    { d: 14, cap: '第③斧·还原：Python 里复刻——ts 取当前时间，raw 同样拼接，hashlib.md5 一把出。十行以内。', set: { 'k5-t': 'ts = int(time.time())\nraw = f"page={p}&ts={ts}" + KEY\ntoken = hashlib.md5(\n    raw.encode()).hexdigest()' }, cls: { 'k5-p3': 'on', 'k5-term': 'on' } },
+    { d: 13, cap: '带上自制 token 发请求：200 OK！从"看不懂"到"我生成"——这就是逆向的全部秘密。', set: { 'k5-t': 'POST /api/list\ntoken=7f3a9c2e…（自产）\n→ 200 OK ✅', 'k5-note': '从看不懂到我生成。' }, cls: { 'k5-term': 'good' } },
+    { d: 13, cap: '遇到 AES、webpack 打包、ob 混淆怎么办？斧子不变，加两个 Plan：B 扣代码进 Node 执行；C 补浏览器环境。', set: { 'k5-t': 'Plan B: 扣 JS → execjs/Node 跑\nPlan C: 补 window/document 环境' } },
+    { d: 12, cap: '每题写逆向笔记：接口 → 定位 → 算法 → 代码 → 踩坑。这本笔记是你复利的起点，半年后你会感谢它。', set: { 'k5-note': '模板就放在本页下方，直接抄。' } },
+    { d: 13, cap: '毕业实战：猿人学 match 第 1 题，现在就去。卡住了？把截图发给你的 AI 助教，一起砍。', set: { 'k5-note': '▼ 训练场在下面，先热身' }, cls: { 'k5-p1': 'good', 'k5-p2': 'good', 'k5-p3': 'good' } }
+  ];
+  new LessonPlayer({ root: '#lesson5', title: '一块 token 的解剖报告', scenes: S });
+})();
+</script>
+</body>
+</html>

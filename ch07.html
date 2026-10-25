@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>07 · 代理与反反爬体系 — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="c07">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+      <a href="ch08.html" data-nav="c08">下一章 →</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app" style="padding-top:20px;padding-bottom:48px">
+  <div class="crumb"><a href="index.html">首页</a> / 进阶篇 / <b>07 · 代理与反反爬体系</b></div>
+  <div class="layout">
+
+    <aside class="chapnav">
+      <div class="cap">课程目录</div>
+      <div class="grp">🧱 基础篇</div>
+      <a href="ch01.html" data-nav="c01"><span class="no">01</span>基础与抓包 <span class="pg" data-chapter-progress="c01">0/6</span></a>
+      <a href="ch02.html" data-nav="c02"><span class="no">02</span>请求与正则 <span class="pg" data-chapter-progress="c02">0/6</span></a>
+      <a href="ch03.html" data-nav="c03"><span class="no">03</span>解析库全解 <span class="pg" data-chapter-progress="c03">0/6</span></a>
+      <a href="ch04.html" data-nav="c04"><span class="no">04</span>数据存储 <span class="pg" data-chapter-progress="c04">0/6</span></a>
+      <div class="grp">⚔️ 进阶篇</div>
+      <a href="ch05.html" data-nav="c05"><span class="no">05</span>Ajax与动态渲染 <span class="pg" data-chapter-progress="c05">0/6</span></a>
+      <a href="ch06.html" data-nav="c06"><span class="no">06</span>验证码与登录 <span class="pg" data-chapter-progress="c06">0/6</span></a>
+      <a href="ch07.html" data-nav="c07" class="active"><span class="no">07</span>代理与反反爬 <span class="pg" data-chapter-progress="c07">0/6</span></a>
+      <div class="grp">🔍 逆向篇</div>
+      <a href="ch08.html" data-nav="c08"><span class="no">08</span>JS 逆向专题 <span class="pg" data-chapter-progress="c08">0/6</span></a>
+      <a href="ch09.html" data-nav="c09"><span class="no">09</span>App 爬取 <span class="pg" data-chapter-progress="c09">0/6</span></a>
+      <div class="grp">🏭 框架篇</div>
+      <a href="ch10.html" data-nav="c10"><span class="no">10</span>Scrapy与分布式 <span class="pg" data-chapter-progress="c10">0/6</span></a>
+      <div class="grp">🛠 实战</div>
+      <a href="practice.html" data-nav="practice"><span class="no">📝</span>练习场</a>
+      <a href="library.html" data-nav="library"><span class="no">📚</span>多源图书馆</a>
+    </aside>
+
+    <div class="appmain doc">
+
+      <section class="hero compact">
+        <span class="tag">进阶篇 · 对齐教材 9.1 ~ 9.5</span>
+        <h1>07 · 代理与反反爬体系</h1>
+        <p class="sub">单 IP 采集注定被封锁——这一章搭一套完整的"反反爬"体系：代理设置与验证、代理池的四大模块、隧道与拨号换 IP，最后汇成频率控制、指数退避、降级策略与"体面爬虫公约"。学完这一章，你的爬虫才配叫"体系"。</p>
+        <div class="pwrap">
+          <div class="progress"><div class="fill" data-progress-bar="c07"></div></div>
+          <span class="plabel" data-progress-label="c07"></span>
+        </div>
+      </section>
+
+      <div class="connect-box">
+        <div class="bx-title">🔗 连接你已有的知识（考研 408 · 计算机网络）</div>
+        <p>· <b>频率控制 = 408 拥塞控制思想的移植</b>：慢启动、加性增/乘性减（AIMD）、超时指数退避——把"对网络拥挤的礼貌"换成"对服务器负载的礼貌"，令牌桶正是计网流量整形里的老朋友；<br>
+           · <b>代理 = 路由替换</b>：让流量绕道走，目标看到的源地址变了，但请求—响应模型一点没变（第 01 章的模型原样成立）；<br>
+           · <b>封禁排查 = 分层排查</b>：从应用层（头/Cookie/签名）到网络层（IP）逐层定位——和你排查网络故障是同一个套路。</p>
+      </div>
+
+      <!-- ============ 7.1 ============ -->
+      <h2>7.1 代理设置 <span class="chip tbook">对齐教材 9.1</span></h2>
+      <p>第 01 章 1.5 讲清了代理的分类与原理（正向/反向、透明/匿名/高匿），这一节解决"怎么用"。requests 里代理就是一个 <code class="inline">proxies</code> 字典：<b>键是协议，值是代理地址</b>，三种常见写法一次给全：</p>
+      <div class="code-title">proxy_setup.py</div>
+<pre class="code"><span class="kw">import</span> requests
+
+<span class="cm"># ① 普通代理：协议://主机:端口</span>
+proxies = {
+    <span class="st">"http"</span>:  <span class="st">"http://127.0.0.1:7890"</span>,
+    <span class="st">"https"</span>: <span class="st">"http://127.0.0.1:7890"</span>,   <span class="cm"># https 走的隧道也由 http 代理承载，写法不变</span>
+}
+<span class="cm"># ② 带认证的代理：协议://用户名:密码@主机:端口</span>
+auth_proxies = {
+    <span class="st">"http"</span>:  <span class="st">"http://user:pass@proxy.example.com:3128"</span>,
+    <span class="st">"https"</span>: <span class="st">"http://user:pass@proxy.example.com:3128"</span>,
+}
+<span class="cm"># ③ SOCKS5：更底层、通吃流量。先装依赖：pip install "requests[socks]"</span>
+socks_proxies = {
+    <span class="st">"http"</span>:  <span class="st">"socks5://127.0.0.1:1080"</span>,
+    <span class="st">"https"</span>: <span class="st">"socks5://127.0.0.1:1080"</span>,
+}
+
+<span class="cm"># ④ 验证生效：origin 显示"出口 IP"，不是你家的 IP 就说明代理在工作</span>
+resp = requests.<span class="fn">get</span>(<span class="st">"https://httpbin.org/ip"</span>, proxies=auth_proxies, timeout=<span class="fn">10</span>)
+<span class="fn">print</span>(resp.<span class="fn">json</span>())    <span class="cm"># {'origin': '47.98.xxx.xxx'} ← 代理的 IP，不是 120.xx 你家的</span></pre>
+      <div class="callout warn"><b>验证是铁律：</b>每批新代理必须先打 <code class="inline">httpbin.org/ip</code> 验一遍再上岗——你会在 7.2 看到，"验证"正是代理池检测器的核心动作。另外 <code class="inline">timeout</code> 必带：烂代理最常见的死法是"连上但不响应"，没有超时的爬虫会在它身上挂死整夜。</div>
+
+      <!-- ============ 7.2 ============ -->
+      <h2>7.2 代理池的维护 <span class="chip tbook">对齐教材 9.2</span> <span class="chip tnew">本章重点</span></h2>
+      <p>单发请求配 proxies 就够了，但要<b>持续、稳定</b>地采集，需要一批"随时可用、随坏随补"的代理——这就是代理池。它的经典架构是<b>四大模块</b>，数据流一句话：<b>获取器抓来代理 → 存进 Redis 打分 → 检测器循环验活调分 → 调度接口随机吐出口</b>：</p>
+      <div class="flow">
+        <span class="fnode"><b>获取器</b>免费源 / 付费 API</span><span class="farrow">→</span>
+        <span class="fnode"><b>存储器</b>Redis zset 打分</span><span class="farrow">→</span>
+        <span class="fnode"><b>检测器</b>验活 +1 / −1（循环）</span><span class="farrow">→</span>
+        <span class="fnode"><b>调度接口</b>random 出口</span><span class="farrow">→</span>
+        <span class="fnode"><b>你的爬虫</b>每请求取一个</span>
+      </div>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>模块</th><th>职责</th><th>实现要点</th></tr>
+        <tr><td>获取器</td><td>持续补充新代理</td><td>抓免费代理站 + 调付费 API；新代理先入池"考察"，不直接上岗</td></tr>
+        <tr><td>存储器</td><td>保存并给代理打分</td><td>Redis <b>zset</b>：member=代理地址，score=健康分——成功 +1、失败 −1</td></tr>
+        <tr><td>检测器</td><td>循环验活</td><td>定时拿池里代理请求 httpbin；跌破阈值（如 −3）即 <code class="inline">ZREM</code> 剔除</td></tr>
+        <tr><td>调度接口</td><td>对外提供出口</td><td>Flask 暴露 <code class="inline">/random</code>：优先从高分代理随机挑一个返回</td></tr>
+      </table></div>
+
+      <h3>精简可运行实现：zset 打分制</h3>
+      <div class="code-title">proxy_pool.py</div>
+<pre class="code"><span class="kw">import</span> random
+<span class="kw">import</span> redis
+<span class="kw">import</span> requests
+
+r = redis.<span class="fn">Redis</span>(decode_responses=<span class="kw">True</span>)
+ZSET = <span class="st">"proxy:pool"</span>                                <span class="cm"># 有序集合：member=代理，score=健康分</span>
+
+<span class="kw">def</span> <span class="fn">fetch_new</span>():
+    <span class="st">"""获取器：实际项目 = 爬免费代理站 + 调付费 API，这里返回示例演示接口约定"""</span>
+    <span class="kw">return</span> [<span class="st">"120.220.1.9:53281"</span>, <span class="st">"163.204.246.141:9999"</span>, <span class="st">"115.221.115.23:80"</span>]
+
+<span class="kw">def</span> <span class="fn">check</span>(proxy):
+    <span class="st">"""检测器：成功 +1，失败 -1，跌破 -3 剔除"""</span>
+    <span class="kw">try</span>:
+        requests.<span class="fn">get</span>(<span class="st">"https://httpbin.org/ip"</span>,
+                     proxies={<span class="st">"http"</span>: <span class="st">f"http://{proxy}"</span>}, timeout=<span class="fn">5</span>)
+        r.<span class="fn">zincrby</span>(ZSET, <span class="fn">1</span>, proxy)
+        <span class="kw">return</span> <span class="kw">True</span>
+    <span class="kw">except</span> Exception:
+        <span class="kw">if</span> r.<span class="fn">zincrby</span>(ZSET, -<span class="fn">1</span>, proxy) &lt; -<span class="fn">3</span>:      <span class="cm"># 连挂 4 次：踢出池子</span>
+            r.<span class="fn">zrem</span>(ZSET, proxy)
+        <span class="kw">return</span> <span class="kw">False</span>
+
+<span class="kw">def</span> <span class="fn">get_proxy</span>():
+    <span class="st">"""调度接口：优先从高分代理随机挑一个出口"""</span>
+    good = r.<span class="fn">zrangebyscore</span>(ZSET, <span class="fn">3</span>, <span class="st">"+inf"</span>)       <span class="cm"># 3 分以上 = 久经考验</span>
+    pool = good <span class="kw">or</span> r.<span class="fn">zrange</span>(ZSET, <span class="fn">0</span>, -<span class="fn">1</span>)          <span class="cm"># 没有高分，全员顶上</span>
+    <span class="kw">return</span> random.<span class="fn">choice</span>(pool) <span class="kw">if</span> pool <span class="kw">else</span> <span class="kw">None</span>
+
+<span class="kw">if</span> __name__ == <span class="st">"__main__"</span>:
+    <span class="kw">for</span> p <span class="kw">in</span> <span class="fn">fetch_new</span>():
+        r.<span class="fn">zadd</span>(ZSET, {p: <span class="fn">0</span>})                       <span class="cm"># 新代理 0 分入池，先考察</span>
+    <span class="fn">print</span>(<span class="fn">get_proxy</span>())</pre>
+      <div class="code-title">预期输出</div>
+<pre class="code">120.220.1.9:53281        <span class="cm"># 池中任意一个代理——分数高的被抽中概率由 zrangebyscore 保证</span></pre>
+      <p>这套"打分制"的精髓：<b>新代理 0 分起步不能立刻上岗</b>（防止烂代理毒害采集主流程）；<b>每次使用都是一次隐性检测</b>（业务请求成功也 +1）；<b>剔除靠连续失败而不是单次失败</b>（网络抖动一两次不该判死刑）。</p>
+
+      <h3>免费源的现实与付费建议</h3>
+      <div class="callout warn"><b>把丑话说在前面：</b>免费代理站的可用率通常<b>不到 10%</b>，平均寿命以分钟计——这正是检测器必须存在的原因。免费源适合学习练手、搭池子跑通流程；<b>生产采集请直接上付费代理</b>（独享套餐或隧道，见 7.3），按"单次采集的账号/时间成本"算，付费代理几乎总是更便宜的选择。</div>
+
+      <!-- ============ 7.3 ============ -->
+      <h2>7.3 付费代理与隧道代理 <span class="chip tbook">对齐教材 9.3</span></h2>
+      <p>付费代理常见两种形态，选型前分清它们：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>形态</th><th>工作方式</th><th>你的工作量</th><th>适用</th></tr>
+        <tr><td><b>隧道代理</b></td><td>给你一个<b>固定网关地址</b>，每次请求经过网关时自动换一个出口 IP</td><td><b>零代码</b>——配一次 proxies 就完事</td><td>不想管 IP 调度的中小规模采集</td></tr>
+        <tr><td>抽取 API（IP 池）</td><td>调接口一次拉一批 IP 回来，自己入池、验活、轮换</td><td>要自己维护 7.2 那套池子</td><td>大规模分布式、想自控质检与成本</td></tr>
+      </table></div>
+      <div class="code-title">tunnel_demo.py</div>
+<pre class="code"><span class="cm"># 隧道代理：网关地址永远不变，网关背后每次请求自动换 IP——requests 侧零额外代码</span>
+<span class="kw">import</span> requests
+
+tunnel = {
+    <span class="st">"http"</span>:  <span class="st">"http://user:pass@tunnel.provider.com:15818"</span>,
+    <span class="st">"https"</span>: <span class="st">"http://user:pass@tunnel.provider.com:15818"</span>,
+}
+<span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">1</span>, <span class="fn">4</span>):
+    ip = requests.<span class="fn">get</span>(<span class="st">"https://httpbin.org/ip"</span>, proxies=tunnel, timeout=<span class="fn">10</span>).<span class="fn">json</span>()[<span class="st">"origin"</span>]
+    <span class="fn">print</span>(<span class="st">f"第 {i} 次：{ip}"</span>)</pre>
+      <div class="code-title">预期输出</div>
+<pre class="code">第 1 次：113.120.35.42
+第 2 次：223.74.102.9
+第 3 次：183.62.51.201</pre>
+      <p>三次请求三个不同 IP——换 IP 这件事被压缩进了"网关"这一个概念里。它和 7.2 自建池的关系：<b>隧道 = 服务商替你跑代理池</b>；你已经会自建，就能理解隧道的定价与边界（并发数、QPS 上限），也能在预算紧张时退回自建方案。</p>
+
+      <!-- ============ 7.4 ============ -->
+      <h2>7.4 ADSL 拨号代理 <span class="chip tbook">对齐教材 9.4</span></h2>
+      <p>ADSL 拨号是"穷人的代理池"：家庭/办公宽带走 <b>PPPoE 拨号</b>接入运营商，<b>每次断线重拨，运营商就重新分配一个公网 IP</b>。于是思路来了——找一台宽带机器做"拨号服务器"，装个代理服务（如 TinyProxy/3proxy）对外开放，爬虫所有请求都发给它；这台机器的 IP 被目标站封了？<b>断线重拨，几秒后换一个新身份满血复活</b>。池子只有一个成员，但成员会自己换脸。</p>
+      <div class="code-title">adsl_daemon.py（拨号机上的守护脚本思路）</div>
+<pre class="code"><span class="kw">import</span> subprocess
+<span class="kw">import</span> time
+<span class="kw">import</span> requests
+
+<span class="kw">def</span> <span class="fn">redial</span>():
+    <span class="st">"""断线重拨：PPPoE 重新分配公网 IP，等于换了一个身份"""</span>
+    <span class="cm"># Windows 用 rasdial；Linux 用 poff/pon（pppoe 配置文件名随发行版）</span>
+    subprocess.<span class="fn">run</span>(<span class="st">"rasdial 宽带连接 /disconnect"</span>, shell=<span class="kw">True</span>)
+    subprocess.<span class="fn">run</span>(<span class="st">"rasdial 宽带连接 username password"</span>, shell=<span class="kw">True</span>)
+
+<span class="kw">while</span> <span class="kw">True</span>:
+    <span class="kw">try</span>:
+        <span class="fn">print</span>(requests.<span class="fn">get</span>(<span class="st">"https://httpbin.org/ip"</span>, timeout=<span class="fn">5</span>).<span class="fn">json</span>())
+    <span class="kw">except</span> Exception:
+        <span class="fn">redial</span>()                    <span class="cm"># 出口挂了/被封？重拨换 IP，服务自愈</span>
+        time.<span class="fn">sleep</span>(<span class="fn">5</span>)</pre>
+      <div class="callout info"><b>适用边界要心里有数：</b>① <b>重拨窗口 = 服务中断</b>——重拨的几秒到几十秒里代理不可用，任务要能容忍抖动；② <b>池子永远只有"当前这一个"IP</b>——无法并发多 IP，只适合中小规模；③ 运营商政策变化大——不少地区的家宽已不发公网 IP（NAT 之内重拨也没用），动手前先验证重拨后 IP 是否真的变化；④ 云机房宽带默认不给你 PPPoE——这套方案的地盘在"有真实宽带线路"的场景。</div>
+
+      <!-- ============ 7.5 ============ -->
+      <h2>7.5 反反爬体系总纲 <span class="chip tnew">本章灵魂</span></h2>
+      <p>代理只解决"IP"这一件事。真实战场上，被封往往是<b>多个维度同时露馅</b>：UA 是 requests 默认的、Referer 是空的、Cookie 是死的、频率是每秒 20 发。把前几章的零散武器编成一张总纲表——<b>每道盾都对应一支矛</b>：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>盾：网站的手段</th><th>矛：你的对策</th><th>一句话要点</th></tr>
+        <tr><td>UA / 请求头检测</td><td><b>UA 池</b>（fake-useragent）+ F12 抄全套头</td><td>requests 默认 UA 一秒暴露；头要成套伪装</td></tr>
+        <tr><td>Referer 防盗链</td><td>补来源页请求头</td><td>从哪个页面发现接口，Referer 就填哪个页面</td></tr>
+        <tr><td>Cookie 考验 / 动态 token</td><td>Session 管理 + Cookie 复用（第 06 章）</td><td>Session 自动领证带证；登录态整包复用</td></tr>
+        <tr><td>频率限制</td><td><b>随机延时 1~3s</b> + 令牌桶控速</td><td>慢就是快：不断流的爬虫总吞吐反而最高</td></tr>
+        <tr><td>IP 封禁</td><td>代理池 / 隧道（7.2 / 7.3）</td><td>换 IP ≠ 换身份：头和 Cookie 也要一起换</td></tr>
+        <tr><td>验证码</td><td>第 06 章全套手段</td><td>能绕则绕，打码是最后手段</td></tr>
+        <tr><td>字体 / 文本假字符</td><td>映射表 / 逆向（第 08 章）</td><td>假字符的尽头是一张对照表</td></tr>
+      </table></div>
+
+      <h3>UA 池：一行库换一张脸</h3>
+      <div class="code-title">ua_pool.py</div>
+<pre class="code"><span class="cm"># pip install fake-useragent</span>
+<span class="kw">from</span> fake_useragent <span class="kw">import</span> UserAgent
+
+ua = <span class="fn">UserAgent</span>()
+headers = {<span class="st">"User-Agent"</span>: ua.chrome}     <span class="cm"># 每次调用随机出一个真实浏览器 UA</span></pre>
+
+      <h3>重试退避：指数退避，绝不顶风重试</h3>
+      <p>被限流时最坏的反应是"立即重试"——那是在给封禁升级加速。正确姿势是<b>指数退避</b>：第 n 次重试前等待 2<sup>n</sup> 秒（再乘随机抖动，防止所有爬虫同节奏共振）。这正是 408 拥塞控制里"超时退避"的翻版：</p>
+      <div class="code-title">backoff.py</div>
+<pre class="code"><span class="kw">import</span> random
+<span class="kw">import</span> time
+<span class="kw">import</span> requests
+
+<span class="kw">def</span> <span class="fn">fetch_with_backoff</span>(url, max_retries=<span class="fn">5</span>, base=<span class="fn">1.0</span>, cap=<span class="fn">60</span>):
+    <span class="st">"""指数退避：第 n 次重试等 base * 2^n 秒（加抖动），绝不连发猛冲"""</span>
+    <span class="kw">for</span> attempt <span class="kw">in</span> <span class="fn">range</span>(max_retries):
+        <span class="kw">try</span>:
+            resp = requests.<span class="fn">get</span>(url, timeout=<span class="fn">10</span>)
+            resp.<span class="fn">raise_for_status</span>()
+            <span class="kw">return</span> resp                      <span class="cm"># 成功：原样返回</span>
+        <span class="kw">except</span> requests.RequestException:
+            <span class="kw">if</span> attempt == max_retries - <span class="fn">1</span>:
+                <span class="kw">raise</span>                        <span class="cm"># 额度用尽：向上抛，交给上层换代理/降级</span>
+            wait = <span class="fn">min</span>(cap, base * (<span class="fn">2</span> ** attempt)) * random.<span class="fn">uniform</span>(<span class="fn">0.5</span>, <span class="fn">1.0</span>)
+            <span class="fn">print</span>(<span class="st">f"第 {attempt + 1} 次失败，等 {wait:.1f}s 再试"</span>)
+            time.<span class="fn">sleep</span>(wait)
+
+resp = <span class="fn">fetch_with_backoff</span>(<span class="st">"https://httpbin.org/status/503,200"</span>)
+<span class="fn">print</span>(resp.status_code)</pre>
+      <div class="code-title">预期输出（503 时才会看到重试行）</div>
+<pre class="code">第 1 次失败，等 0.7s 再试
+第 2 次失败，等 1.3s 再试
+200</pre>
+
+      <h3>频率控制与令牌桶</h3>
+      <p>随机延时的进阶版是<b>令牌桶</b>：桶里最多装 N 个令牌，按固定速率补充；每个请求先取一枚令牌才放行。它把"<b>平均速率</b>"和"<b>突发容量</b>"分开控制——桶满时允许小突发（像人一样偶尔连点几下），桶空时强制排队（绝不超速）。比起裸的 <code class="inline">sleep(uniform(1, 3))</code>，令牌桶让"礼貌"变成可配置的参数：限速阈值、突发容忍度都是拧旋钮的事。</p>
+
+      <h3>降级策略：宁可慢和少，不可停和死</h3>
+      <p>体系化的最后一层是<b>想好每条路的退路</b>：接口被限流 → 降速 / 切渲染路（5.4）；IP 池枯竭 → 自动降频并告警，而不是用空 IP 硬冲；账号 Cookie 失效 → 切换下一个账号（6.6 的池子）；数据源被封 → 找镜像或替代源。降级不是认输，是把"被封"从事故变成日常调度的一部分。</p>
+
+      <div class="callout ok"><b>体面爬虫公约（背下来）：</b>① 只采公开数据，尊重 robots.txt 与服务条款；② 频率 ≥1~3 秒/请求，带头伪装、带随机延时；③ 大批量任务放深夜，错峰出行；④ 收到 429 主动退避，绝不顶风重试；⑤ 不碰个人隐私与非公开数据；⑥ 逆向与攻防练习只在授权平台（Scrape Center / 猿人学）进行。体面不是软弱——被封少的爬虫，采集量反而最大。</div>
+
+      <h3>🧪 互动 · 反爬手段图鉴（点开看原理与破解） <span class="chip tlab">互动</span></h3>
+      <details class="acc" open>
+        <summary>User-Agent / 请求头检测</summary>
+        <div class="acc-body">
+          <p><b>原理：</b>校验 UA、Referer、Accept 等头是否像真浏览器。requests 默认 UA 是 <code class="inline">python-requests/2.x</code>，一秒暴露。</p>
+          <p><b>识别：</b>requests 直连返回 403，浏览器打开正常 —— 八成是它。</p>
+          <p><b>破解：</b>从浏览器 F12 抄全套请求头；用 <code class="inline">fake-useragent</code> 库随机轮换。</p>
+        </div>
+      </details>
+      <details class="acc">
+        <summary>频率限制与 IP 封禁</summary>
+        <div class="acc-body">
+          <p><b>原理：</b>同一 IP 单位时间请求超阈值 → 先 429 警告，再拉黑。是最古老也最有效的反爬。</p>
+          <p><b>识别：</b>前几十次正常，之后集体失败；换个网络环境（手机热点）又活了。</p>
+          <p><b>破解：</b>随机延时 1~3 秒 + 控制并发；代理池轮换 IP（自建拨号池或买代理）；大批量任务放深夜。</p>
+        </div>
+      </details>
+      <details class="acc">
+        <summary>Cookie 考验 / 动态 Token</summary>
+        <div class="acc-body">
+          <p><b>原理：</b>先访问首页领 Cookie（可能带 JS 计算的 acw_sc__v2 / __jsl_clearance 等），带着它才能访问数据接口。</p>
+          <p><b>识别：</b>直接请求接口返回一段加密 JS 或 521/412 状态码。</p>
+          <p><b>破解：</b>用 Session 先 GET 首页再访问接口；JS 生成的 Cookie 进第 08 章逆向，或用 <code class="inline">execjs</code> 跑官方 JS。</p>
+        </div>
+      </details>
+      <details class="acc">
+        <summary>动态渲染（数据不在 HTML 里）</summary>
+        <div class="acc-body">
+          <p><b>原理：</b>页面由 JS 拼装，源代码只有空壳（第 05 章已学）。</p>
+          <p><b>破解：</b>首选接口直连；接口难拿时用 Playwright/Selenium 渲染。注意 <code class="inline">navigator.webdriver</code> 检测，用 <code class="inline">undetected-chromedriver</code> 或 Playwright 隐身方案绕过。</p>
+        </div>
+      </details>
+      <details class="acc">
+        <summary>字体反爬 / 文本假字符</summary>
+        <div class="acc-body">
+          <p><b>原理：</b>自定义字体文件把 Unicode 映射打乱——页面上渲染出"8"，HTML 里其实是"&#xe3f4"。点评、招聘网站爱用。</p>
+          <p><b>识别：</b>复制页面文字到别处变乱码；HTML 里出现大量 <code class="inline">&amp;#x</code> 开头的实体。</p>
+          <p><b>破解：</b>下载 woff 文件用 fontTools 解析字形，和标准字形比对建映射表；或 OCR 识别渲染后的字符。</p>
+        </div>
+      </details>
+      <details class="acc">
+        <summary>CSS 偏移 / 图片替代文本</summary>
+        <div class="acc-body">
+          <p><b>原理：</b>数字用 background-position 从一张雪碧图上"裁"出来，HTML 里根本没有文本。</p>
+          <p><b>识别：</b>价格/评分在 Elements 里是一堆空 span + 背景图。</p>
+          <p><b>破解：</b>解析 CSS 的偏移规则算出真实数字；或直接对图片区域 OCR。</p>
+        </div>
+      </details>
+      <details class="acc">
+        <summary>验证码（图形 / 点选 / 滑块）</summary>
+        <div class="acc-body">
+          <p><b>原理：</b>区分人机的终极手段，强度阶梯：数字字母码 → 点选文字 → 滑块轨迹 → 行为验证。</p>
+          <p><b>破解：</b>数字码用 ddddocr；点选/滑块要么接打码平台，要么研究轨迹模拟；能 Cookie 复用就别碰它。</p>
+        </div>
+      </details>
+
+      <div class="lab-card">
+        <h3>🧪 实验室 · 403 实验室——亲手触发一次封禁，再化解它 <span class="chip tlab">互动</span></h3>
+        <p class="muted small">下面是一台<b>模拟反爬服务器</b>（内置了三道检查：UA 检测 → 防盗链 → 频率限制）。勾选你的伪装手段，连续点「发送请求」，看服务器脸色怎么变。</p>
+        <div class="lab-grid">
+          <div>
+            <p style="font-weight:600">你的爬虫配置</p>
+            <label class="switchline"><input type="checkbox" id="h-ua"><span>伪造 User-Agent <span class="hint">（默认是 python-requests，一眼假）</span></span></label>
+            <label class="switchline"><input type="checkbox" id="h-ref"><span>补上 Referer <span class="hint">（此站开了防盗链）</span></span></label>
+            <label class="switchline"><input type="checkbox" id="h-delay"><span>随机延时 1~3 秒 <span class="hint">（不勾=连发快打）</span></span></label>
+            <div style="margin-top:12px">
+              <button class="btn primary" id="lab-send" type="button">发送请求</button>
+              <button class="btn" id="lab-reset" type="button">换 IP 重来</button>
+              <span class="plabel" id="lab-count" aria-live="polite"></span>
+            </div>
+            <p style="font-weight:600;margin:14px 0 6px">本次实际发出的请求头</p>
+            <div class="req-view" id="lab-req">（空）</div>
+          </div>
+          <div>
+            <p style="font-weight:600">服务器响应</p>
+            <div class="status-big s5" id="lab-status" style="font-size:34px">—</div>
+            <p id="lab-why" class="muted">配置好伪装手段，点「发送请求」开始实验。</p>
+            <div class="callout info" id="lab-lesson" hidden></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pitfall"><b>本章五大坑：</b>① 透明代理白用——带 X-Forwarded-For 暴露真实 IP，目标既知道你用代理又知道你是谁，先验匿名度再上量；② 免费代理超时连坐——免费源平均寿命几分钟，不配 timeout + 打分剔除，一个死代理能卡死整条请求队列；③ 重试风暴——无退避的立即重试会把 429 升级成永久封禁，重试必须指数退避 + 设上限；④ Cookie 与 IP 只换一个——只换 IP 不清 Cookie，服务器照样凭 Cookie 认出你，排查封禁时两者要一起换；⑤ 大批量任务放白天高峰——深夜跑既是体面也是生存：负载低、风控松、投诉少。</div>
+
+      <!-- ============ 动画课堂 ============ -->
+      <h2 id="lesson">🎬 动画课堂 · 《矛与盾的一整天》 <span class="chip tanim">第 4 集</span></h2>
+      <p class="muted small">本集逻辑主线：UA → 频率 → Cookie → 字体 → 验证码，五个回合的攻防，对应 7.5 总纲表与上方图鉴。▶ 播放 / 空格暂停 / 进度条可拖 / ⏮⏭ 跳场景 / 可调速。</p>
+      <div class="lesson" id="lesson4">
+        <div class="screen"><div class="theater" id="th4">
+          <div class="row">
+            <div class="panel col" id="k4-spider"><h4>🕷 爬虫（进攻方）</h4><div class="th-mono" data-dyn id="k4-s" style="min-height:170px"></div></div>
+            <div class="col center-x" style="flex:0 0 200px;max-width:200px">
+              <div class="env" id="k4-env">🚪 请求</div>
+              <div class="st-badge" data-dyn id="k4-status" style="margin-top:14px"></div>
+              <div class="pill" data-dyn id="k4-mid"></div>
+            </div>
+            <div class="panel col" id="k4-gate"><h4>🛂 服务器门卫（防守方）</h4><div class="th-mono" data-dyn id="k4-g" style="min-height:170px"></div></div>
+          </div>
+          <div class="center-x" style="margin-top:14px">
+            <span class="pill" id="k4-r1">回合1 UA检测</span>
+            <span class="pill" id="k4-r2">回合2 频率</span>
+            <span class="pill" id="k4-r3">回合3 Cookie</span>
+            <span class="pill" id="k4-r4">回合4 字体</span>
+            <span class="pill" id="k4-r5">回合5 验证码</span>
+          </div>
+          <div class="note" data-dyn id="k4-note"></div>
+        </div></div>
+      </div>
+
+      <!-- ============ 打卡 ============ -->
+      <h2>✅ 本章打卡清单</h2>
+      <div class="checklist-card check">
+        <label><input type="checkbox" id="c07-1" data-persist><span>会配 proxies 并用 httpbin.org/ip 验证生效，分得清高匿与透明（7.1）</span></label>
+        <label><input type="checkbox" id="c07-2" data-persist><span>能搭出代理池四大模块：获取器 / Redis zset 存储 / 检测器打分 / 调度 random 出口（7.2）</span></label>
+        <label><input type="checkbox" id="c07-3" data-persist><span>理解隧道代理 = 固定网关自动换 IP，requests 侧零代码（7.3）</span></label>
+        <label><input type="checkbox" id="c07-4" data-persist><span>知道 ADSL 拨号换 IP 的原理与适用边界（7.4）</span></label>
+        <label><input type="checkbox" id="c07-5" data-persist><span>背出"体面爬虫公约"，会写指数退避重试（7.5）</span></label>
+        <label><input type="checkbox" id="c07-6" data-persist><span>403 实验室通关：三道检查全化解拿到 200，并看完动画《矛与盾的一整天》（互动）</span></label>
+      </div>
+
+      <!-- ============ 练习 ============ -->
+      <h2>📝 本章练习</h2>
+      <p class="muted small">先自己想，再展开参考解析。做完到<a href="practice.html">练习场</a>刷综合题。</p>
+
+      <details class="qa"><summary><span class="qno">Q1</span>动手：实现 fetch_with_retry(url, max_retries=5)——只对 429 和 5xx 重试；404 等其他客户端错误立即抛错；重试采用指数退避 + 随机抖动；额度用尽向上抛。<span class="lv badge b-red">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>7.5 指数退避的完整落地，重点是"按状态码分流"。</p>
+          <div class="ans"><b>参考代码：</b>
+<pre class="code"><span class="kw">import</span> random, time, requests
+
+<span class="kw">def</span> <span class="fn">fetch_with_retry</span>(url, max_retries=<span class="fn">5</span>):
+    <span class="kw">for</span> attempt <span class="kw">in</span> <span class="fn">range</span>(max_retries):
+        resp = requests.<span class="fn">get</span>(url, timeout=<span class="fn">10</span>)
+        <span class="kw">if</span> resp.status_code == <span class="fn">200</span>:
+            <span class="kw">return</span> resp
+        <span class="kw">if</span> resp.status_code == <span class="fn">404</span>:
+            resp.<span class="fn">raise_for_status</span>()          <span class="cm"># 资源不存在：重试没有意义，立即抛</span>
+        <span class="kw">if</span> resp.status_code == <span class="fn">429</span> <span class="kw">or</span> resp.status_code &gt;= <span class="fn">500</span>:
+            <span class="kw">if</span> attempt == max_retries - <span class="fn">1</span>:
+                resp.<span class="fn">raise_for_status</span>()      <span class="cm"># 额度用尽：向上抛，交给上层换代理/降级</span>
+            wait = <span class="fn">min</span>(<span class="fn">60</span>, <span class="fn">2</span> ** attempt) * random.<span class="fn">uniform</span>(<span class="fn">0.5</span>, <span class="fn">1.0</span>)
+            <span class="fn">print</span>(<span class="st">f"{resp.status_code}，等 {wait:.1f}s 再试"</span>)
+            time.<span class="fn">sleep</span>(wait)
+            <span class="kw">continue</span>
+        resp.<span class="fn">raise_for_status</span>()              <span class="cm"># 其余 4xx（401/403…）：换头换 Cookie，不是重试能救的</span></pre>
+          设计要点：404/401/403 属于"重试也解决不了"的错误，重试只会浪费时间并加剧风控画像；只有 429（限流）和 5xx（临时故障）值得退避等待。抖动系数 uniform(0.5, 1.0) 防止多任务同步共振，上限 cap 防止等待无限膨胀。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q2</span>设计题：为什么代理池用 Redis zset 打分，而不是 set 存一堆代理 + 轮询使用？写出打分、剔除、调度三步对应的具体 Redis 命令。<span class="lv badge b-orange">设计</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>7.2 核心设计 + Redis 数据结构选型（呼应第 04 章）。</p>
+          <div class="ans"><b>参考解析：</b>set 只回答"在不在"，回答不了"好不好"——而代理池的全部价值就在质量分级：新代理要隔离考察、好代理要优先调度、坏代理要及时剔除。zset 让每个代理带一个健康分，天然支持"按分数段取用"（ZRANGEBYSCORE），且增删查都是 O(log N)。三步命令：
+<pre class="code">ZADD proxy:pool 0 "1.2.3.4:8080"          <span class="cm"># 入池：新代理 0 分考察</span>
+ZINCRBY proxy:pool 1 "1.2.3.4:8080"       <span class="cm"># 打分：成功 +1 / 失败 -1（负数传 -1）</span>
+ZREM  proxy:pool "1.2.3.4:8080"           <span class="cm"># 剔除：分数跌破 -3 时执行</span>
+ZRANGEBYSCORE proxy:pool 3 +inf           <span class="cm"># 调度：先从 3 分以上挑，池冷时退回 ZRANGE 0 -1</span></pre>
+          再加一个工程细节：zset 分数是 double，可以顺手把"最近一次成功时间"编码进小数位，或另用 hash 存元数据（归属运营商、协议），让调度接口支持"指定地区出口"这类进阶需求。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q3</span>选型分析：场景 A——三人小团队，每天要抓 5 万页，不想维护任何 IP 调度代码；场景 B——成熟的分布式采集系统，已有调度框架与质检流程。两场景分别选隧道代理还是抽取 API？说明理由。<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>7.2/7.3 的选型判断——按团队规模与运维成本决策，而不是按"哪个高级"。</p>
+          <div class="ans"><b>参考解析：</b><b>场景 A 选隧道代理</b>：5 万页/天的量级付费隧道完全够用，requests 侧零代码、零运维，团队的人力应该花在解析和数据质量上，而不是维护代理池；隧道的溢价买的正是"省心"。<b>场景 B 选抽取 API + 自建池</b>：大规模下按 IP 计费的抽取 API 单价更低，且团队已有调度框架——把拉取的 IP 接入 7.2 的 zset 池子做质检分级，坏代理提前剔除、好代理优先调度，成本与稳定性都优于隧道的一刀切；分布式多机场景下，隧道网关的并发/QPS 上限反而会成为瓶颈。一句话总结：<b>小团队买省心（隧道），大团队买原料（抽取）自己炼</b>。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q4</span>分析题：你的代理池跑着跑着，请求开始大面积返回 403。给出一个排查决策树：先看什么、后看什么、每一步分别怎么验证。<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>7.5 总纲的实战应用——分层排查思想。</p>
+          <div class="ans"><b>参考决策树：</b>
+<br>① <b>定性：单个代理 403 还是全池 403？</b>——分别用池内不同代理打目标站首页验证。
+<br>② 若<b>全池 403</b>：问题多半不在 IP。<br>
+　　a. 最近改过代码吗？→ 用浏览器对比请求头，查 UA/Referer 是否丢失（图鉴第 1 条）；<br>
+　　b. Session Cookie 过期了吗？→ 换新 Cookie 重放一条，看是否恢复（第 06 章）；<br>
+　　c. 浏览器直接访问目标站也异常吗？→ 是则目标站升级了风控（如新增签名校验），排进第 08 章清单。
+<br>③ 若<b>仅部分代理 403</b>：<br>
+　　a. 403 的代理是不是透明代理？→ 用 httpbin.org/headers 查 X-Forwarded-For 是否暴露真身；<br>
+　　b. 这些代理是否已被目标站拉黑？→ 换一个目标站测试同一代理：A 站 403、B 站 200 = 被 A 拉黑，检测器扣分剔除即可；<br>
+　　c. 这些代理是否共享同一 C 段/机房？→ 目标站可能按 IP 段封禁，获取器要增加来源多样性。
+<br>④ 仍无法定位 → 用"对照实验"收尾：同一请求分别走 {真浏览器 / 直连 / 单代理} 三种方式，diff 三份完整请求头与 Cookie，差异点即答案。决策树的核心：先分离变量（IP 与身份），再逐层验证（头 → Cookie → 签名），最后才怀疑"对方升级了"。</div>
+        </div>
+      </details>
+
+      <div class="book-box">
+        <div class="bx-title">📚 对齐与拓展</div>
+        <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 9 章 代理与反反爬</b>（9.1 代理设置 / 9.2 代理池的维护 / 9.3 付费代理的使用 / 9.4 ADSL 拨号代理 / 9.5 反爬思路总述）；7.5 总纲为本站在教材 9.5 基础上的体系化重组；<br>
+           · 拓展阅读：<a href="https://github.com/hellysmile/fake-useragent" target="_blank" rel="noopener">fake-useragent</a>、令牌桶 / Token Bucket 算法（计网流量整形经典模型）、<a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a> 的 antispider1 → antispider9 关卡（每关就是图鉴里的一种手段，由浅入深）；<br>
+           · 合规提醒：代理与反反爬手段只用于公开数据采集与授权测试，红线见首页"合规红线"。</p>
+      </div>
+
+            <div class="book-box">
+        <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
+        <p>
+         · 韦世东《Python3反爬虫原理与绕过实战》全本——本章之后反爬体系的主线续篇（字体/指纹/JS 混淆）;
+         · <a href="https://github.com/jhao104/proxy_pool" target="_blank" rel="noopener">jhao104/proxy_pool</a>——高星开源代理池，架构与本章"四模块"完全对应，读源码学工程;
+         · 崔庆才书第 9 章 9.1~9.5——代理细节（ADSL、付费隧道）的教材原版。</p>
+      </div>
+
+      <div class="pager">
+        <a class="btn" href="ch06.html">← 上一章：验证码与模拟登录</a>
+        <a class="btn primary" href="ch08.html">下一章：JS 逆向专题 →</a>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 第 07 章 · 代理与反反爬体系</p>
+    <p class="muted">对齐《Python3网络爬虫开发实战（第二版）》第 9 章 · 进度自动保存</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script src="assets/lesson-player.js"></script>
+<script>
+/* ===== 403 实验室 ===== */
+(function () {
+  var count = 0;
+  var REAL_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+  var el = {
+    ua: document.getElementById('h-ua'), ref: document.getElementById('h-ref'), delay: document.getElementById('h-delay'),
+    send: document.getElementById('lab-send'), reset: document.getElementById('lab-reset'),
+    count: document.getElementById('lab-count'), req: document.getElementById('lab-req'),
+    status: document.getElementById('lab-status'), why: document.getElementById('lab-why'), lesson: document.getElementById('lab-lesson')
+  };
+  function headersOn() {
+    var ua = el.ua.checked, ref = el.ref.checked;
+    var lines = [];
+    lines.push('GET /api/data HTTP/1.1');
+    lines.push('User-Agent: ' + (ua ? REAL_UA : 'python-requests/2.31.0'));
+    if (ref) lines.push('Referer: https://target.site/hot');
+    lines.push('Accept: */*');
+    el.req.textContent = lines.join('\n');
+    return { ua: ua, ref: ref };
+  }
+  function respond(code, why, lesson, cls) {
+    el.status.textContent = code;
+    el.status.className = 'status-big ' + cls;
+    el.why.textContent = why;
+    if (lesson) { el.lesson.hidden = false; el.lesson.innerHTML = '<b>这一课：</b>' + lesson; }
+    else el.lesson.hidden = true;
+  }
+  el.send.addEventListener('click', function () {
+    var h = headersOn();
+    if (el.delay.checked) count = 0; else count++;
+    el.count.textContent = '（' + (el.delay.checked ? '已加延时，风控计数已归零' : '第 ' + count + ' 次连续快发') + '）';
+    if (!h.ua) {
+      respond(403, '服务器一看 UA 是 python-requests，直接拒绝：爬虫，拒收。',
+        '99% 的网站第一道门就是 UA 检测。从 F12 抄一份真实浏览器 UA，是最便宜也最必要的一步伪装。', 's5');
+    } else if (!h.ref) {
+      respond(403, '防盗链触发：此站校验 Referer，站外来的请求一律 403。',
+        '很多图片和数据接口都有 Referer 校验。补上"来源页面"的地址，等于告诉服务器"我是从正常页面过来的"。', 's5');
+    } else if (!el.delay.checked && count > 3) {
+      respond(429, 'Too Many Requests——1 秒内连续第 ' + count + ' 次请求，触发限流。',
+        '频率是最容易踩的坑。随机延时 1~3 秒看似慢，实际上因为不会被断流，总吞吐反而更高。慢就是快。', 's4');
+    } else {
+      respond(200, 'UA 真实、来源合规、频率礼貌——服务器把你当真人放行了。数据在响应里等你。',
+        '反爬三件套：像人的请求头 + 像人的来源 + 像人的节奏。做到这三点，60% 的网站已经拿你没办法。', 's2');
+    }
+  });
+  el.reset.addEventListener('click', function () {
+    count = 0;
+    el.count.textContent = '（已换 IP，风控计数清零）';
+  });
+  [el.ua, el.ref, el.delay].forEach(function (c) { c.addEventListener('change', headersOn); });
+  headersOn();
+})();
+
+/* ===== 动画课堂 ===== */
+(function () {
+  function g(r, id) { return r.querySelector('#' + id); }
+  function T(r, id, s) { g(r, id).textContent = s; }
+  function onE(r, id, c) { g(r, id).classList.add(c || 'on'); }
+  function st(r, s, cls) { var e = g(r, 'k4-status'); e.textContent = s; e.className = 'st-badge' + (cls ? ' ' + cls : ''); }
+  var S = [
+    { d: 10, cap: '反爬不是魔法，是一场比赛：你伪装，门卫识别。这一集连打五个回合，一回合一道盾。', set: { 'k4-note': '看完你会拿到完整的"破盾清单"。' }, cls: { 'k4-spider': 'on', 'k4-gate': 'on' } },
+    { d: 15, cap: '回合 1：裸 requests 上门。UA 写着 python-requests——门卫一秒识破，403 拒收。', set: { 'k4-s': 'GET /api/data\nUA: python-requests/2.31', 'k4-g': '检查 UA……\n❌ 爬虫特征！拒收', 'k4-mid': '回合 1 · UA 检测' }, cls: { 'k4-r1': 'on' }, a: function (r) { st(r, '403', 'bad'); } },
+    { d: 12, cap: '化解：抄一份真实浏览器 UA，再补上 Referer。门卫端详两秒：像个人了，放行。', set: { 'k4-s': 'GET /api/data\nUA: Mozilla/5.0 (Chrome)\nReferer: https://target.site/', 'k4-g': 'UA 正常 ✓ 来源正常 ✓\n放行', 'k4-note': '最便宜的伪装，收益最大。' }, a: function (r) { st(r, '200', 'good'); } },
+    { d: 15, cap: '回合 2：你尝到甜头开始狂敲门——每秒 20 次。计数器爆红：429，IP 拉黑十分钟。', set: { 'k4-s': '每秒 20 次连发……', 'k4-g': '频率异常！\n计数超阈值', 'k4-mid': '回合 2 · 频率限制' }, cls: { 'k4-r2': 'on' }, a: function (r) { st(r, '429', 'bad'); } },
+    { d: 15, cap: '化解：随机延时 1~3 秒，像人一样有节奏；再配代理池轮换 IP。慢，但从不中断——慢就是快。', set: { 'k4-s': 'time.sleep(random.uniform(1,3))\n+ 代理池轮换', 'k4-g': '节奏正常 ✓', 'k4-note': '不被断流的爬虫，总吞吐反而最高。' }, a: function (r) { st(r, '200', 'good'); } },
+    { d: 12, cap: '回合 3：门卫改规矩——先领 Cookie 通行证才能进数据区。无证请求，一律挡下。', set: { 'k4-s': '直接访问数据接口…', 'k4-g': '无通行证！\n先回首页领 Cookie', 'k4-mid': '回合 3 · Cookie 考验' }, cls: { 'k4-r3': 'on' }, a: function (r) { st(r, '412', 'warn'); } },
+    { d: 12, cap: '化解：requests.Session() 自动领证、自动带证，一次配置全程生效。', set: { 'k4-s': 's = requests.Session()\ns.get(首页) → 自动收证\ns.get(接口) → 自动带证', 'k4-g': '通行证有效 ✓', 'k4-note': 'Session 一次配置，全程自动。' }, a: function (r) { st(r, '200', 'good'); } },
+    { d: 13, cap: '回合 4：你顺利拿到 HTML，却发现数字根本不是文本——是自定义字体画的"假字符"。', set: { 'k4-s': '拿到 HTML：\n评分是 &#xe3f4 ？', 'k4-g': '页面上是 8\n代码里是假字符 😈', 'k4-mid': '回合 4 · 字体反爬' }, cls: { 'k4-r4': 'on' }, a: function (r) { st(r, ' ??? ', 'warn'); } },
+    { d: 12, cap: '化解：下载 woff 字体文件，解析字形建映射表，假字符翻译回真数字。', set: { 'k4-s': 'fontTools 解析字体\n&#xe3f4 → 8 建立映射', 'k4-note': '字体反爬的尽头是一张对照表。' }, a: function (r) { st(r, '200', 'good'); } },
+    { d: 12, cap: '回合 5（终局）：验证码大门。图形码 → 点选 → 滑块，强度阶梯升级。', set: { 'k4-g': '验证码大门\n请证明你是人类', 'k4-mid': '回合 5 · 验证码' }, cls: { 'k4-r5': 'on' }, a: function (r) { st(r, 'CAPTCHA', 'warn'); } },
+    { d: 13, cap: '化解：简单数字码交给 ddddocr；复杂的能绕则绕——手动过一次码，Cookie 复用跑一周。', set: { 'k4-s': 'ddddocr 识别简单码\nCookie 复用避开重现' }, a: function (r) { st(r, '200', 'good'); } },
+    { d: 12, cap: '五回合打完你会发现：每道盾都有对应的矛。关键是先认出对面是哪道盾，再出对应的矛。', set: { 'k4-note': 'UA → 频率 → Cookie → 字体 → 验证码，一张图记全。' }, cls: { 'k4-r1': 'on', 'k4-r2': 'on', 'k4-r3': 'on', 'k4-r4': 'on', 'k4-r5': 'on' }, a: function (r) { st(r, '200', 'good'); } },
+    { d: 12, cap: '实战开始：去 Scrape Center 的 antispider1~9，那里每一关就是一个真实回合。上面的 403 实验室先热个身。', set: { 'k4-note': '▲ 403 实验室在上面' }, cls: { 'k4-r1': 'good', 'k4-r2': 'good', 'k4-r3': 'good', 'k4-r4': 'good', 'k4-r5': 'good' }, a: function (r) { st(r, '200', 'good'); } }
+  ];
+  new LessonPlayer({ root: '#lesson4', title: '矛与盾的一整天', scenes: S });
+})();
+</script>
+</body>
+</html>

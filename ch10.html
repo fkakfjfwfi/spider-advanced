@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>10 · Scrapy 框架与分布式部署 — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="c10">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+      <a href="ch09.html" data-nav="c09">← 上一章</a>
+      <a href="index.html">返回总览</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app" style="padding-top:20px;padding-bottom:48px">
+  <div class="crumb"><a href="index.html">首页</a> / 框架篇 / <b>10 · Scrapy 框架与分布式部署</b></div>
+  <div class="layout">
+
+    <aside class="chapnav">
+      <div class="cap">课程目录</div>
+      <div class="grp">🧱 基础篇</div>
+      <a href="ch01.html" data-nav="c01"><span class="no">01</span>基础与抓包 <span class="pg" data-chapter-progress="c01">0/6</span></a>
+      <a href="ch02.html" data-nav="c02"><span class="no">02</span>请求与正则 <span class="pg" data-chapter-progress="c02">0/6</span></a>
+      <a href="ch03.html" data-nav="c03"><span class="no">03</span>解析库全解 <span class="pg" data-chapter-progress="c03">0/6</span></a>
+      <a href="ch04.html" data-nav="c04"><span class="no">04</span>数据存储 <span class="pg" data-chapter-progress="c04">0/6</span></a>
+      <div class="grp">⚔️ 进阶篇</div>
+      <a href="ch05.html" data-nav="c05"><span class="no">05</span>Ajax与动态渲染 <span class="pg" data-chapter-progress="c05">0/6</span></a>
+      <a href="ch06.html" data-nav="c06"><span class="no">06</span>验证码与登录 <span class="pg" data-chapter-progress="c06">0/6</span></a>
+      <a href="ch07.html" data-nav="c07"><span class="no">07</span>代理与反反爬 <span class="pg" data-chapter-progress="c07">0/6</span></a>
+      <div class="grp">🔍 逆向篇</div>
+      <a href="ch08.html" data-nav="c08"><span class="no">08</span>JS 逆向专题 <span class="pg" data-chapter-progress="c08">0/6</span></a>
+      <a href="ch09.html" data-nav="c09"><span class="no">09</span>App 爬取 <span class="pg" data-chapter-progress="c09">0/6</span></a>
+      <div class="grp">🏭 框架篇</div>
+      <a href="ch10.html" data-nav="c10" class="active"><span class="no">10</span>Scrapy与分布式 <span class="pg" data-chapter-progress="c10">0/6</span></a>
+      <div class="grp">🛠 实战</div>
+      <a href="practice.html" data-nav="practice"><span class="no">📝</span>练习场</a>
+      <a href="library.html" data-nav="library"><span class="no">📚</span>多源图书馆</a>
+    </aside>
+
+    <div class="appmain doc">
+
+      <section class="hero compact">
+        <span class="tag">框架篇 · 对齐教材 13.1~13.13 + 第 14~15 章</span>
+        <h1>10 · Scrapy 框架与分布式部署</h1>
+        <p class="sub">单文件脚本的天花板很快就到：Scrapy 把"取、下、析、存"拆成流水线上的标准岗位，再教你把这条流水线搬上多台机器。本章是工程化毕业章——架构、入门、中间件、管道、分布式、部署一条龙。</p>
+        <div class="pwrap">
+          <div class="progress"><div class="fill" data-progress-bar="c10"></div></div>
+          <span class="plabel" data-progress-label="c10"></span>
+        </div>
+      </section>
+
+      <div class="connect-box">
+        <div class="bx-title">🔗 连接你已有的知识（考研 408 · 操作系统）</div>
+        <p>· Scrapy 引擎 = 408 OS 的<b>调度器思想</b>：请求队列 + 调度 + 并发控制，就是"进程调度 + 生产者—消费者模型"的工程实现——Spider 生产请求，Downloader 消费请求；<br>
+           · 全链路异步 = <b>IO 多路复用</b>（select/epoll）：下载器等待响应时绝不闲着，事件循环让一个线程看管几百条连接；<br>
+           · Scrapy-Redis 分布式 = "共享内存"思想的工程化：多台机器共享同一个 Redis 请求队列与指纹集合，谁有空谁取活；<br>
+           · Bloom Filter = <b>位图 + 多哈希函数</b>：408 数据结构里位图的实战加强版，用"可能误判"换"极致省内存"。</p>
+      </div>
+
+      <!-- ============ 10.1 ============ -->
+      <h2>10.1 架构与数据流 <span class="chip tbook">对齐教材 13.1</span></h2>
+      <p>Scrapy 的组件看着多，其实就是一个循环。搞懂"谁指挥谁、数据往哪流"，后面所有章节都是在往这个骨架上挂东西。五个核心组件 + 两个中间件，职责如下：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>组件</th><th>职责</th><th>你会在哪里碰它</th></tr>
+        <tr><td><b>引擎 Engine</b></td><td>全场总指挥：所有数据流动都由它中转，全链路异步（基于 Twisted 事件驱动）</td><td>几乎不改它，但理解它 = 理解 Scrapy 的一切</td></tr>
+        <tr><td><b>调度器 Scheduler</b></td><td>请求的"候车室"：决定下一个爬哪个 URL，内置请求指纹去重</td><td>10.7 分布式就是把它换成 Redis 队列</td></tr>
+        <tr><td><b>下载器 Downloader</b></td><td>真正发 HTTP 请求的地方：并发、延时、限速都在这层配置</td><td>10.2 的 settings、10.4 的中间件</td></tr>
+        <tr><td><b>爬虫 Spider</b></td><td><b>你写主逻辑的地方</b>：解析 Response，产出 Item 或新 Request</td><td>10.2/10.3 的 parse 函数</td></tr>
+        <tr><td><b>Item Pipeline</b></td><td>数据流水线：清洗 → 校验 → 去重 → 入库</td><td>10.5 的 pipeline 类</td></tr>
+        <tr><td>下载中间件</td><td>每个请求/响应的"安检口"：换 UA、挂代理、重试</td><td>10.4（实战中改得最多）</td></tr>
+        <tr><td>爬虫中间件</td><td>引擎与 Spider 之间的关卡：处理爬虫的输入输出</td><td>少改，但排查"Request 没发出去"时要知道有它</td></tr>
+      </table></div>
+      <p><b>两条回路</b>共享引擎：一是<b>请求回路</b>——Spider 产出 Request → 引擎交调度器排队 → 调度器出队 → 引擎送下载器 →（下载中间件安检）→ 响应回引擎 → 交回 Spider 解析；二是<b>数据回路</b>——Spider 解析出的 Item → 引擎 → Item Pipeline 清洗入库。整个框架的日常就是这两条回路转圈：</p>
+      <div class="flow">
+        <span class="fnode"><b>Spider</b>产出 Request</span><span class="farrow">→</span>
+        <span class="fnode"><b>Engine</b>中转</span><span class="farrow">→</span>
+        <span class="fnode"><b>Scheduler</b>入队·去重</span><span class="farrow">→</span>
+        <span class="fnode"><b>Downloader</b>发请求</span><span class="farrow">→</span>
+        <span class="fnode"><b>Middleware</b>安检</span><span class="farrow">→</span>
+        <span class="fnode"><b>Spider</b>解析</span><span class="farrow">→</span>
+        <span class="fnode"><b>Pipeline</b>入库</span><span class="farrow">↺</span>
+      </div>
+
+      <div class="lab-card">
+        <h3>🧪 实验室 · Scrapy 架构数据流 <span class="chip tlab">互动</span></h3>
+        <p class="muted small">点击每个组件，右侧解释它是干什么的、你会在哪里碰它。建议每学完 10.2~10.5 回来点一遍对应组件，把代码挂回架构上。</p>
+        <div class="lab-grid">
+          <div class="card scwrap">
+            <svg viewBox="0 0 660 340" role="img" aria-label="Scrapy 架构数据流图">
+              <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0 0L10 5L0 10z" fill="#94a3b8"></path>
+                </marker>
+              </defs>
+              <path class="scedge" d="M 245 118 L 115 94"></path>
+              <path class="scedge" d="M 170 60 L 288 118"></path>
+              <path class="scedge" d="M 360 128 L 478 72"></path>
+              <path class="scedge" d="M 478 84 L 365 152"></path>
+              <path class="scedge" d="M 245 174 L 122 246"></path>
+              <path class="scedge" d="M 178 260 L 238 176"></path>
+              <path class="scedge" d="M 182 275 L 478 275"></path>
+              <text class="sclabel" x="132" y="118">入队</text>
+              <text class="sclabel" x="210" y="86">出队</text>
+              <text class="sclabel" x="390" y="86">Request</text>
+              <text class="sclabel" x="408" y="158">Response</text>
+              <text class="sclabel" x="128" y="216">Response</text>
+              <text class="sclabel" x="232" y="238">新 Request</text>
+              <text class="sclabel" x="290" y="268">Items（清洗/去重/入库）</text>
+              <g class="scnode" data-k="scheduler"><rect x="40" y="36" width="140" height="54" rx="10"></rect><text x="110" y="68" text-anchor="middle">调度器 Scheduler</text></g>
+              <g class="scnode" data-k="engine"><rect x="230" y="120" width="130" height="54" rx="10"></rect><text x="295" y="152" text-anchor="middle">引擎 Engine</text></g>
+              <g class="scnode" data-k="downloader"><rect x="480" y="36" width="140" height="54" rx="10"></rect><text x="550" y="68" text-anchor="middle">下载器 Downloader</text></g>
+              <g class="scnode" data-k="spider"><rect x="40" y="248" width="140" height="54" rx="10"></rect><text x="110" y="280" text-anchor="middle">爬虫 Spider（你写的）</text></g>
+              <g class="scnode" data-k="pipeline"><rect x="480" y="248" width="150" height="54" rx="10"></rect><text x="555" y="280" text-anchor="middle">Item Pipeline</text></g>
+              <g class="scnode" data-k="dmw"><rect x="395" y="97" width="80" height="28" rx="8" stroke-dasharray="4 3"></rect><text x="435" y="116" text-anchor="middle" style="font-size:11.5px">下载中间件</text></g>
+              <g class="scnode" data-k="smw"><rect x="150" y="188" width="80" height="28" rx="8" stroke-dasharray="4 3"></rect><text x="190" y="207" text-anchor="middle" style="font-size:11.5px">爬虫中间件</text></g>
+            </svg>
+          </div>
+          <div class="card">
+            <h3 id="sc-title" style="color:var(--brand)">👆 点左侧任意组件</h3>
+            <p id="sc-desc">Scrapy 的全部日常就是图里这个圈：取请求 → 下载 → 解析 → 产出 Item 和新请求 → 循环。</p>
+            <div class="callout info" id="sc-key" hidden></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 10.2 ============ -->
+      <h2>10.2 快速入门 <span class="chip tbook">对齐教材 13.2</span></h2>
+      <p>标准流程四步：装库 → 建项目 → 生成爬虫 → 跑起来。Scrapy 是"项目制"的，配置、爬虫、管道各归其位：</p>
+      <div class="code-title">终端 · 创建项目</div>
+<pre class="code">pip install scrapy                      <span class="cm"># 安装</span>
+scrapy startproject quotes              <span class="cm"># 创建项目</span>
+cd quotes
+scrapy genspider quotes quotes.toscrape.com   <span class="cm"># 生成爬虫模板（名字 + 允许域名）</span></pre>
+      <div class="code-title">项目目录树（含注释）</div>
+<pre class="code">quotes/
+├── scrapy.cfg               <span class="cm"># 部署配置文件（10.8 Scrapyd 上传时用）</span>
+└── quotes/
+    ├── settings.py          <span class="cm"># 全局配置：并发 / 延时 / UA / 中间件与管道开关</span>
+    ├── items.py             <span class="cm"># 数据结构定义（像定义数据库表）</span>
+    ├── middlewares.py       <span class="cm"># 下载/爬虫中间件（10.4）</span>
+    ├── pipelines.py         <span class="cm"># Item 处理管道（10.5）</span>
+    └── spiders/
+        └── quotes.py        <span class="cm"># genspider 生成的爬虫（你写主逻辑）</span></pre>
+      <div class="code-title">items.py</div>
+<pre class="code"><span class="kw">import</span> scrapy
+
+<span class="kw">class</span> <span class="fn">QuoteItem</span>(scrapy.Item):
+    text   = scrapy.Field()
+    author = scrapy.Field()
+    tags   = scrapy.Field()</pre>
+      <p>下面是完整可跑的 quotes spider——它演示了 Spider 的两个输出：<code class="inline">yield Item</code>（数据 → 走管道）与 <code class="inline">yield Request</code>（翻页 → 回调度器继续爬），正好对应 10.1 的两条回路：</p>
+      <div class="code-title">spiders/quotes.py</div>
+<pre class="code"><span class="kw">import</span> scrapy
+<span class="kw">from</span> quotes.items <span class="kw">import</span> QuoteItem
+
+<span class="kw">class</span> <span class="fn">QuotesSpider</span>(scrapy.Spider):
+    name = <span class="st">"quotes"</span>                                <span class="cm"># 爬虫名：scrapy crawl quotes 用</span>
+    allowed_domains = [<span class="st">"quotes.toscrape.com"</span>]      <span class="cm"># 域名白名单，域外链接被过滤</span>
+    start_urls = [<span class="st">"https://quotes.toscrape.com/"</span>]  <span class="cm"># 起点 URL 列表</span>
+
+    <span class="kw">def</span> <span class="fn">parse</span>(<span class="kw">self</span>, response):
+        <span class="kw">for</span> q <span class="kw">in</span> response.css(<span class="st">".quote"</span>):
+            item = QuoteItem()
+            item[<span class="st">"text"</span>]   = q.css(<span class="st">".text::text"</span>).get()
+            item[<span class="st">"author"</span>] = q.css(<span class="st">".author::text"</span>).get()
+            item[<span class="st">"tags"</span>]   = q.css(<span class="st">".tag::text"</span>).getall()
+            <span class="kw">yield</span> item                                <span class="cm"># 数据回路：Item → Pipeline</span>
+        nxt = response.css(<span class="st">".next a::attr(href)"</span>).get()
+        <span class="kw">if</span> nxt:
+            <span class="kw">yield</span> response.<span class="fn">follow</span>(nxt, callback=<span class="kw">self</span>.parse)  <span class="cm"># 请求回路：翻页</span></pre>
+      <div class="code-title">终端 · 运行</div>
+<pre class="code">scrapy crawl quotes                   <span class="cm"># 按爬虫名运行（在项目目录内）</span>
+scrapy runspider quotes_spider.py     <span class="cm"># 单文件运行：不建项目也能跑</span>
+scrapy crawl quotes -O quotes.json    <span class="cm"># -O 直接落盘导出，快速验证数据</span></pre>
+      <p>跑通之后，第一件事是认识 settings.py 里这几个高频配置——它们决定你爬得快不快、礼貌不礼貌：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>配置项</th><th>默认值</th><th>说明与建议</th></tr>
+        <tr><td><code class="inline">ROBOTSTXT_OBEY</code></td><td>True</td><td>是否遵守 robots.txt（合规开关；本地测试嫌慢可临时关，<b>上线务必开</b>）</td></tr>
+        <tr><td><code class="inline">CONCURRENT_REQUESTS</code></td><td>16</td><td>全局并发数：调度器向下载器的吞吐上限，小站调小</td></tr>
+        <tr><td><code class="inline">DOWNLOAD_DELAY</code></td><td>0</td><td>域级延时（秒），配合 <code class="inline">RANDOMIZE_DOWNLOAD_DELAY</code> 更像人</td></tr>
+        <tr><td><code class="inline">AUTOTHROTTLE</code></td><td>False</td><td>自动限速"礼貌模式"：按响应速度自动调节奏，新手建议开</td></tr>
+        <tr><td><code class="inline">DEFAULT_REQUEST_HEADERS</code></td><td>—</td><td>全局默认请求头：Accept、Accept-Language 等</td></tr>
+        <tr><td><code class="inline">USER_AGENT</code></td><td>Scrapy/x.y</td><td><b>默认值一秒暴露爬虫，新项目必改</b>（或由 10.4 中间件接管）</td></tr>
+      </table></div>
+
+      <div class="lab-card">
+        <h3>🧪 实验室 · 并发与礼貌模拟器 <span class="chip tlab">互动</span></h3>
+        <p class="muted small">任务：采完 500 页。拖动滑块，看"你的并发"和"对方限速"怎么共同决定耗时与风险——<b>并发加过头，只有风险没有收益</b>。</p>
+        <div class="card">
+          <div class="range-row">
+            <label for="cc-num">你的并发数</label>
+            <input type="range" id="cc-num" min="1" max="32" value="4">
+            <span class="val" id="cc-num-v">4</span>
+          </div>
+          <div class="range-row">
+            <label for="cc-cap">目标站限速（QPS）</label>
+            <input type="range" id="cc-cap" min="1" max="20" value="5">
+            <span class="val" id="cc-cap-v">5</span>
+          </div>
+          <div class="lab-grid" style="margin-top:14px">
+            <div>
+              <p style="font-weight:600;margin:0 0 4px">预计耗时（500 页，单请求 0.4 秒）</p>
+              <div class="status-big s2" id="cc-time" aria-live="polite">—</div>
+              <div class="pwrap"><div class="progress"><div class="fill" id="cc-util" style="background:var(--green)"></div></div><span class="plabel" id="cc-util-l">—</span></div>
+              <p class="muted" style="font-size:13px">绿色条 = 你实际吃到的服务器配额（对方限速决定上限）</p>
+            </div>
+            <div>
+              <p style="font-weight:600;margin:0 0 4px">封禁风险评估</p>
+              <div style="margin-bottom:8px"><span class="vbadge" id="cc-risk">—</span></div>
+              <p class="muted" style="font-size:13.5px" id="cc-tip"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 10.3 ============ -->
+      <h2>10.3 Selector 与 Spider 进阶 <span class="chip tbook">对齐教材 13.3~13.4</span></h2>
+      <p>Spider 里的解析用 <code class="inline">response.xpath / response.css</code>——第 03 章的 XPath 与 CSS 全部语法直接可用，且两种风格可以混搭。Scrapy 的 Selector 封装了两个提取方法：<code class="inline">.get()</code> 取单个（返回 str 或 None），<code class="inline">.getall()</code> 取全部（返回 list）：</p>
+      <div class="code-title">常用提取写法</div>
+<pre class="code">response.css(<span class="st">"h1::text"</span>).get()                       <span class="cm"># 单个 → str 或 None</span>
+response.css(<span class="st">".quote .text::text"</span>).getall()          <span class="cm"># 多个 → list</span>
+response.xpath(<span class="st">'//span[@class="text"]/text()'</span>).get()
+response.xpath(<span class="st">"//a/@href"</span>).getall()
+response.css(<span class="st">".price::text"</span>).re_first(<span class="st">r"£([\d.]+)"</span>)  <span class="cm"># 选择器 + 正则混搭</span>
+response.follow(a_tag, callback=<span class="kw">self</span>.parse)          <span class="cm"># 相对链接自动补全</span></pre>
+      <h3>CrawlSpider：跟进型爬虫</h3>
+      <p>普通 Spider 要手写翻页与跳详情页的逻辑；<b>CrawlSpider</b> 把"跟进哪些链接"变成<b>规则声明</b>——用 LinkExtractor 描述 URL 模式，框架自动抽取、去重、调度，你只管写详情页的解析函数。适合"列表页 → 详情页"这种多层级站点：</p>
+      <div class="code-title">spiders/books.py —— CrawlSpider + LinkExtractor</div>
+<pre class="code"><span class="kw">from</span> scrapy.linkextractors <span class="kw">import</span> LinkExtractor
+<span class="kw">from</span> scrapy.spiders <span class="kw">import</span> CrawlSpider, Rule
+
+<span class="kw">class</span> <span class="fn">BooksSpider</span>(CrawlSpider):
+    name = <span class="st">"books"</span>
+    allowed_domains = [<span class="st">"books.toscrape.com"</span>]
+    start_urls = [<span class="st">"https://books.toscrape.com/"</span>]
+
+    rules = (
+        <span class="cm"># 规则①：列表页的分页链接，follow=True 继续跟进找更多链接</span>
+        Rule(LinkExtractor(allow=<span class="st">r"catalogue/page-\d+\.html"</span>), follow=<span class="kw">True</span>),
+        <span class="cm"># 规则②：详情页链接，交给 parse_book 解析数据，不再跟进详情页内链接</span>
+        Rule(LinkExtractor(allow=<span class="st">r"catalogue/[\w-]+_\d+\.html"</span>),
+             callback=<span class="st">"parse_book"</span>),
+    )
+
+    <span class="kw">def</span> <span class="fn">parse_book</span>(<span class="kw">self</span>, response):
+        <span class="kw">yield</span> {
+            <span class="st">"title"</span>: response.css(<span class="st">"h1::text"</span>).get(),
+            <span class="st">"price"</span>: response.css(<span class="st">".price_color::text"</span>).get(),
+            <span class="st">"stock"</span>: response.css(<span class="st">".availability::text"</span>).re_first(<span class="st">r"\d+"</span>),
+        }</pre>
+
+      <!-- ============ 10.4 ============ -->
+      <h2>10.4 下载中间件 <span class="chip tbook">对齐教材 13.5</span></h2>
+      <p>第 07 章你写的反反爬散装技巧——随机 UA、代理池、失败重试——进了 Scrapy 该住在哪？<b>下载中间件</b>。它是每个请求/响应的必经安检口，在这里改一遍，全站所有请求自动生效。三个钩子各管一段：<code class="inline">process_request</code> 发出前改请求、<code class="inline">process_response</code> 收到后查响应、<code class="inline">process_exception</code> 网络层异常兜底。下面是集齐三招的完整模板：</p>
+      <div class="code-title">middlewares.py —— 随机 UA + 挂代理 + 重试/异常</div>
+<pre class="code"><span class="kw">import</span> random
+
+UA_POOL = [
+    <span class="st">"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"</span>,
+    <span class="st">"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.4 Safari/605.1.15"</span>,
+    <span class="cm"># … 从真实浏览器 F12 抄更多，见 07 章代理池</span>
+]
+PROXY_POOL = [
+    <span class="st">"http://127.0.0.1:7890"</span>,
+    <span class="st">"http://user:pass@proxy2.example.com:8000"</span>,
+]
+
+<span class="kw">class</span> <span class="fn">RandomUaProxyMiddleware</span>:
+
+    <span class="kw">def</span> <span class="fn">process_request</span>(<span class="kw">self</span>, request, spider):
+        request.headers[<span class="st">"User-Agent"</span>] = random.<span class="fn">choice</span>(UA_POOL)   <span class="cm"># 随机 UA</span>
+        request.meta[<span class="st">"proxy"</span>] = random.<span class="fn">choice</span>(PROXY_POOL)        <span class="cm"># 随机代理</span>
+        <span class="kw">return</span> <span class="kw">None</span>                  <span class="cm"># 返回 None = 请求继续交给下载器</span>
+
+    <span class="kw">def</span> <span class="fn">process_response</span>(<span class="kw">self</span>, request, response, spider):
+        <span class="kw">if</span> response.status <span class="kw">in</span> (<span class="fn">403</span>, <span class="fn">429</span>):    <span class="cm"># 被识别了：换 IP 重试</span>
+            spider.logger.<span class="fn">warning</span>(<span class="st">f"</span>{response.status}<span class="st"> @ </span>{request.url}<span class="st">，换代理重试"</span>)
+            request.meta[<span class="st">"proxy"</span>] = random.<span class="fn">choice</span>(PROXY_POOL)
+            <span class="kw">return</span> request.<span class="fn">clone</span>()   <span class="cm"># 返回 Request = 重新入队（注意限重试次数）</span>
+        <span class="kw">return</span> response              <span class="cm"># 必须返回 response，链条才不断</span>
+
+    <span class="kw">def</span> <span class="fn">process_exception</span>(<span class="kw">self</span>, request, exception, spider):
+        spider.logger.<span class="fn">error</span>(<span class="st">f"下载异常 </span>{exception}<span class="st"> @ </span>{request.url}<span class="st">"</span>)
+        <span class="kw">return</span> request.<span class="fn">clone</span>()       <span class="cm"># 超时/断连：换代理重来</span></pre>
+      <div class="code-title">settings.py —— 启用中间件</div>
+<pre class="code">DOWNLOADER_MIDDLEWARES = {
+    <span class="st">"quotes.middlewares.RandomUaProxyMiddleware"</span>: <span class="fn">543</span>,   <span class="cm"># 数字是权重（执行顺序）</span>
+}</pre>
+      <div class="callout warn"><b>两个纪律：</b>① <code class="inline">process_response</code> 里返回 Request 会<b>无限重试</b>——真实项目要检查 <code class="inline">request.meta</code> 里的重试计数，超限就放弃（见本章练习 Q2）；② 返回值决定流向：process_request 返回 None 继续走、返回 Response 直接短路回引擎、返回 Request 重新入队——搞混了就是"请求黑洞"。</div>
+
+      <!-- ============ 10.5 ============ -->
+      <h2>10.5 Item Pipeline <span class="chip tbook">对齐教材 13.7</span></h2>
+      <p>Pipeline 是数据的下游流水线：每个 Item 依次流过所有启用的管道，<b>权重数字小的先执行</b>。标准分工是"清洗 → 去重 → 入库"三段。每个管道都必须 <code class="inline">return item</code>（不返回 = 掐断链条，Item 消失）；想丢弃数据则抛 <code class="inline">DropItem</code>：</p>
+      <div class="code-title">pipelines.py —— 清洗 / 去重 / SQLite 入库</div>
+<pre class="code"><span class="kw">import</span> sqlite3
+<span class="kw">from</span> itemadapter <span class="kw">import</span> ItemAdapter
+<span class="kw">from</span> scrapy.exceptions <span class="kw">import</span> DropItem
+
+<span class="kw">class</span> <span class="fn">CleanPipeline</span>:                     <span class="cm"># ① 清洗：轻量归一化</span>
+    <span class="kw">def</span> <span class="fn">process_item</span>(<span class="kw">self</span>, item, spider):
+        a = <span class="fn">ItemAdapter</span>(item)
+        <span class="kw">if</span> a.get(<span class="st">"text"</span>):
+            a[<span class="st">"text"</span>] = a[<span class="st">"text"</span>].strip()
+        <span class="kw">return</span> item
+
+<span class="kw">class</span> <span class="fn">DedupPipeline</span>:                     <span class="cm"># ② 去重：内存 set 存指纹</span>
+    <span class="kw">def</span> <span class="fn">open_spider</span>(<span class="kw">self</span>, spider):
+        <span class="kw">self</span>.seen = <span class="fn">set</span>()
+
+    <span class="kw">def</span> <span class="fn">process_item</span>(<span class="kw">self</span>, item, spider):
+        key = <span class="fn">ItemAdapter</span>(item).get(<span class="st">"text"</span>)
+        <span class="kw">if</span> key <span class="kw">in</span> <span class="kw">self</span>.seen:
+            <span class="kw">raise</span> <span class="fn">DropItem</span>(<span class="st">f"重复：</span>{key[:<span class="fn">20</span>]}<span class="st">…"</span>)
+        <span class="kw">self</span>.seen.add(key)
+        <span class="kw">return</span> item
+
+<span class="kw">class</span> <span class="fn">SQLitePipeline</span>:                    <span class="cm"># ③ 入库：生命周期管理</span>
+    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="kw">self</span>, db_path=<span class="st">"quotes.db"</span>):
+        <span class="kw">self</span>.db_path = db_path
+
+    <span class="kw">@classmethod</span>
+    <span class="kw">def</span> <span class="fn">from_crawler</span>(<span class="kw">cls</span>, crawler):      <span class="cm"># 依赖注入：从 settings 拿配置</span>
+        <span class="kw">return</span> <span class="kw">cls</span>(db_path=crawler.settings.get(<span class="st">"SQLITE_DB"</span>, <span class="st">"quotes.db"</span>))
+
+    <span class="kw">def</span> <span class="fn">open_spider</span>(<span class="kw">self</span>, spider):       <span class="cm"># 爬虫启动：建连接建表</span>
+        <span class="kw">self</span>.conn = sqlite3.<span class="fn">connect</span>(<span class="kw">self</span>.db_path)
+        <span class="kw">self</span>.conn.<span class="fn">execute</span>(<span class="st">"CREATE TABLE IF NOT EXISTS quote"</span>
+                          <span class="st">"(id INTEGER PRIMARY KEY, text TEXT, author TEXT, tags TEXT)"</span>)
+
+    <span class="kw">def</span> <span class="fn">process_item</span>(<span class="kw">self</span>, item, spider):
+        a = <span class="fn">ItemAdapter</span>(item)
+        <span class="kw">self</span>.conn.<span class="fn">execute</span>(<span class="st">"INSERT INTO quote(text, author, tags) VALUES(?,?,?)"</span>,
+                          (a.get(<span class="st">"text"</span>), a.get(<span class="st">"author"</span>), <span class="st">","</span>.<span class="fn">join</span>(a.get(<span class="st">"tags"</span>) <span class="kw">or</span> [])))
+        <span class="kw">return</span> item
+
+    <span class="kw">def</span> <span class="fn">close_spider</span>(<span class="kw">self</span>, spider):      <span class="cm"># 爬虫结束：提交收尾</span>
+        <span class="kw">self</span>.conn.<span class="fn">commit</span>()
+        <span class="kw">self</span>.conn.<span class="fn">close</span>()</pre>
+      <div class="code-title">settings.py —— 权重决定执行顺序</div>
+<pre class="code">ITEM_PIPELINES = {
+    <span class="st">"quotes.pipelines.CleanPipeline"</span>:  <span class="fn">100</span>,   <span class="cm"># 数字小的先执行</span>
+    <span class="st">"quotes.pipelines.DedupPipeline"</span>:  <span class="fn">200</span>,
+    <span class="st">"quotes.pipelines.SQLitePipeline"</span>: <span class="fn">300</span>,   <span class="cm"># 顺序不能乱：先清洗去重再入库</span>
+}
+SQLITE_DB = <span class="st">"quotes.db"</span></pre>
+      <p><b>权重说明</b>：取值 0~1000，从小到大依次执行；同一个类里 <code class="inline">open_spider / close_spider</code> 是生命周期钩子（启动时建连接、结束时收尾）；<code class="inline">from_crawler</code> 是拿 settings 的标准入口——配置写在 settings 里而不是硬编码在管道里，换库换表只改配置。</p>
+
+      <!-- ============ 10.6 ============ -->
+      <h2>10.6 对接 Selenium / Playwright <span class="chip tbook">对齐教材 13.8</span></h2>
+      <p>遇到 JS 渲染页，Scrapy 拿到的 Response 是空壳（第 05 章的老问题）。解法思路：在<b>下载中间件</b>里拦截指定请求 → 交给 Playwright 无头浏览器渲染 → 把渲染完的 HTML <b>手工包装成 HtmlResponse 返回</b>。引擎拿到这个 Response 就当成普通响应直接交给 Spider——真实下载器根本不会参与，Scrapy 的调度与管道体系照常运转：</p>
+      <div class="code-title">middlewares.py —— Playwright 渲染中间件</div>
+<pre class="code"><span class="kw">from</span> scrapy <span class="kw">import</span> signals
+<span class="kw">from</span> scrapy.http <span class="kw">import</span> HtmlResponse
+<span class="kw">from</span> playwright.sync_api <span class="kw">import</span> sync_playwright
+
+<span class="kw">class</span> <span class="fn">PlaywrightMiddleware</span>:
+    <span class="kw">@classmethod</span>
+    <span class="kw">def</span> <span class="fn">from_crawler</span>(<span class="kw">cls</span>, crawler):
+        mw = <span class="kw">cls</span>()
+        crawler.signals.<span class="fn">connect</span>(mw.spider_closed, signal=signals.spider_closed)
+        <span class="kw">return</span> mw
+
+    <span class="kw">def</span> <span class="fn">spider_closed</span>(<span class="kw">self</span>, spider):      <span class="cm"># 收尾：关浏览器防进程泄漏</span>
+        <span class="kw">self</span>.browser.<span class="fn">close</span>()
+        <span class="kw">self</span>.pw.<span class="fn">stop</span>()
+
+    <span class="kw">def</span> <span class="fn">process_request</span>(<span class="kw">self</span>, request, spider):
+        <span class="kw">if</span> <span class="st">"render"</span> <span class="kw">not in</span> request.meta:   <span class="cm"># meta 里标记 render 的才走渲染</span>
+            <span class="kw">return</span> <span class="kw">None</span>
+        page = <span class="kw">self</span>.browser.<span class="fn">new_page</span>()
+        page.<span class="fn">goto</span>(request.url, wait_until=<span class="st">"networkidle"</span>)
+        html = page.<span class="fn">content</span>()
+        page.<span class="fn">close</span>()
+        <span class="kw">return</span> <span class="fn">HtmlResponse</span>(               <span class="cm"># 手工构造 Response 直接回给 Spider</span>
+            url=request.url, body=html.encode(<span class="st">"utf-8"</span>),
+            request=request, status=<span class="fn">200</span>, encoding=<span class="st">"utf-8"</span>)</pre>
+      <p>使用时在 Spider 里 <code class="inline">yield scrapy.Request(url, meta={"render": True})</code> 即可。要点：① 用 <code class="inline">request.meta</code> 做<b>开关</b>，只让需要的请求付出渲染成本，普通请求照走高速；② 浏览器实例全局一个，<code class="inline">spider_closed</code> 信号里关闭；③ 渲染是<b>同步阻塞</b>的，与 CONCURRENT_REQUESTS 的并发有张力，量大的渲染任务考虑 <code class="inline">scrapy-playwright</code> 插件（官方维护的异步集成）。</p>
+
+      <!-- ============ 10.7 ============ -->
+      <h2>10.7 分布式 <span class="chip tbook">对齐教材 第 14 章</span></h2>
+      <p>单机 Scrapy 有两个天花板：<b>并发上不去</b>（一台机器的带宽与 CPU）和<b>去重各自为政</b>（A 机爬过的 B 机不知道，重复劳动）。解法是 <b>Scrapy-Redis</b>——用 Redis 做两件共享的事：<b>共享请求队列</b>（所有机器从同一个队列取活）+ <b>共享指纹集合</b>（任何一台机器判过的重，全体生效）。这就是 408"共享内存"思想的工程化：机器多了，队列和指纹只有一份。</p>
+      <div class="code-title">settings.py —— 三处改动，普通 Scrapy → 分布式</div>
+<pre class="code">SCHEDULER = <span class="st">"scrapy_redis.scheduler.Scheduler"</span>              <span class="cm"># ① 请求队列搬到 Redis</span>
+DUPEFILTER_CLASS = <span class="st">"scrapy_redis.dupefilter.RFPDupeFilter"</span>  <span class="cm"># ② 指纹集合共享去重</span>
+REDIS_URL = <span class="st">"redis://127.0.0.1:6379/0"</span>                      <span class="cm"># ③ 指向 Redis 服务器</span>
+<span class="cm"># 可选：SCHEDULER_PERSIST = True   断点续爬——重跑不清空队列与指纹</span></pre>
+      <div class="code-title">Spider 侧 —— 改继承 RedisSpider，入口 URL 放 Redis</div>
+<pre class="code"><span class="kw">from</span> scrapy_redis.spiders <span class="kw">import</span> RedisSpider
+
+<span class="kw">class</span> <span class="fn">QuotesRedisSpider</span>(RedisSpider):
+    name = <span class="st">"quotes_redis"</span>
+    redis_key = <span class="st">"quotes:start_urls"</span>     <span class="cm"># 替代 start_urls</span>
+    <span class="cm"># parse 与普通 Spider 完全一样，逻辑零改动</span>
+
+<span class="cm"># 启动多台机器后，往 Redis 塞任务即可开工：</span>
+<span class="cm"># redis-cli&gt; lpush quotes:start_urls https://quotes.toscrape.com/</span></pre>
+      <h3>Bloom Filter：亿级去重的省内存方案</h3>
+      <p>共享指纹集合用的是 Redis 的 set，但 set 每个指纹都要存完整内容——1 亿条 URL 要好几个 GB。<b>Bloom Filter（布隆过滤器）</b>用巧劲解决：一个巨大的<b>位数组</b> + k 个<b>哈希函数</b>。元素进来：k 个哈希算出 k 个下标，全标 1；查询时 k 个位置<b>任一为 0 → 一定不存在</b>，全为 1 → <b>可能存在</b>（可能误判，误判率随位数组变大而降低）。用"可容忍的低误判"换"百倍省内存"——1 亿 URL 从 GB 级降到百 MB 级。接入 Scrapy-Redis 只需换去重器：</p>
+      <div class="code-title">settings.py —— scrapy-redis-bloomfilter</div>
+<pre class="code"><span class="cm"># pip install scrapy-redis-bloomfilter</span>
+DUPEFILTER_CLASS = <span class="st">"scrapy_redis_bloomfilter.dupefilter.RFPDupeFilter"</span>
+BLOOMFILTER_HASH_NUMBER = <span class="fn">6</span>    <span class="cm"># 每个元素用几个哈希函数</span>
+BLOOMFILTER_BIT = <span class="fn">30</span>           <span class="cm"># 位数组 2^30 bit ≈ 128MB，亿级 URL 够用</span></pre>
+
+      <!-- ============ 10.8 ============ -->
+      <h2>10.8 部署与管理 <span class="chip tbook">对齐教材 第 15 章</span></h2>
+      <h3>Scrapyd：把爬虫当服务跑</h3>
+      <p>Scrapyd 是官方的爬虫守护进程：爬虫代码打包成<b>版本</b>上传，之后通过 <b>HTTP API</b> 远程调度——启动、暂停、查状态，全是一行 curl 的事。机器上 <code class="inline">pip install scrapyd</code> 后执行 <code class="inline">scrapyd</code> 启动，默认监听 6800 端口：</p>
+      <div class="code-title">终端 · 上传与调度</div>
+<pre class="code">pip install scrapyd &amp;&amp; scrapyd        <span class="cm"># 服务端跑起来（也可 systemd 守护）</span>
+pip install scrapyd-client            <span class="cm"># 客户端：上传项目用</span>
+scrapyd-deploy default -p quotes      <span class="cm"># 打包当前项目，上传为一个"版本"</span>
+
+curl http://127.0.0.1:6800/schedule.json -d project=quotes -d spider=quotes   <span class="cm"># 调度启动</span>
+curl <span class="st">"http://127.0.0.1:6800/listjobs.json?project=quotes"</span>                     <span class="cm"># 查看任务状态</span>
+curl http://127.0.0.1:6800/cancel.json -d project=quotes -d job=abc123        <span class="cm"># 取消任务</span></pre>
+      <h3>Docker 镜像要点</h3>
+      <p>部署的终极形态是容器化，保证"我这能跑"变成"哪都能跑"。要点四条：基础镜像选 <code class="inline">python:3.11-slim</code>；依赖用 requirements.txt 锁版本；数据输出挂载成<b>卷</b>（容器删了数据还在）；配置走<b>环境变量</b>注入（同镜像跑不同站点）。最小 Dockerfile：</p>
+      <div class="code-title">Dockerfile</div>
+<pre class="code">FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD [<span class="st">"scrapyd"</span>]        <span class="cm"># 或换成运行具体爬虫任务</span></pre>
+      <h3>Gerapy：面板一句话</h3>
+      <p><b>Gerapy</b> 是基于 Scrapyd HTTP API 的可视化管理面板：多台 Scrapyd 集中在一块屏上、鼠标点点就能部署与定时调度——本质仍是本节的几个 API，只是套了件 GUI 外衣，适合交给团队使用。</p>
+
+      <div class="pitfall"><b>Scrapy 五大坑：</b>① settings 里 USER_AGENT 忘改——默认 "Scrapy/x.y" 一秒被识别，新项目第一件事改 UA 或上中间件；② 下载中间件 process_response 漏 return response——响应凭空消失，Spider 永远收不到还不知道为什么；③ Pipeline 权重设错——入库管道比清洗先跑，脏数据直接落库，事后清洗成本翻倍；④ 默认调度器队列在<b>内存</b>里，爬大站几十万请求会 OOM——大任务换 Scrapy-Redis 落盘或配 JOBDIR 断点目录；⑤ ROBOTSTXT_OBEY 本地测试嫌麻烦关掉，上线忘了开——合规礼仪别丢（第 01 章的约定）。</div>
+
+      <!-- ============ 动画课堂 ============ -->
+      <h2 id="lesson">🎬 动画课堂 · 《从脚本到采集系统》 <span class="chip tanim">第 6 集</span></h2>
+      <p class="muted small">约 2.5 分钟 · 两种命运对比：一次性脚本之死 → Scrapy 闭环 → 七件套工程化（框架/异步/增量/调度/告警/分布式/合规），对应本章 10.1~10.8 主线。▶ 播放 / 空格暂停 / 进度条可拖 / ⏮⏭ 跳场景 / 可调速。</p>
+      <div class="lesson" id="lesson6">
+        <div class="screen"><div class="theater" id="th6">
+          <div class="row">
+            <div class="panel col" id="k6-old"><h4>😵 一次性脚本的人生</h4><div class="th-mono" data-dyn id="k6-o" style="min-height:170px"></div></div>
+            <div class="panel col" id="k6-new"><h4>🛠 采集系统的人生</h4>
+              <div class="pipe6" id="k6-flow">
+                <span class="pill" id="k6-f1">引擎</span><span>→</span>
+                <span class="pill" id="k6-f2">调度器</span><span>→</span>
+                <span class="pill" id="k6-f3">下载器</span><span>→</span>
+                <span class="pill" id="k6-f4">解析</span><span>→</span>
+                <span class="pill" id="k6-f5">管道</span><span>↺</span>
+              </div>
+              <div class="fx" data-dyn id="k6-fx"></div>
+            </div>
+          </div>
+          <div class="center-x" style="margin-top:14px">
+            <span class="pill" id="k6-c1">框架</span>
+            <span class="pill" id="k6-c2">异步</span>
+            <span class="pill" id="k6-c3">增量</span>
+            <span class="pill" id="k6-c4">调度</span>
+            <span class="pill" id="k6-c5">告警</span>
+            <span class="pill" id="k6-c6">分布式</span>
+            <span class="pill" id="k6-c7">合规</span>
+          </div>
+          <div class="note" data-dyn id="k6-note"></div>
+        </div></div>
+      </div>
+
+      <!-- ============ 打卡 ============ -->
+      <h2>✅ 本章打卡清单</h2>
+      <div class="checklist-card check">
+        <label><input type="checkbox" id="c10-1" data-persist><span>五大组件职责与两条回路能默画，架构图上每个组件都说得出用途（10.1）</span></label>
+        <label><input type="checkbox" id="c10-2" data-persist><span>quotes spider 跑通：yield Item 走管道 + yield Request 翻页，settings 常用项会配（10.2）</span></label>
+        <label><input type="checkbox" id="c10-3" data-persist><span>下载中间件会写：随机 UA + 挂代理 + 403/429 重试，返回值纪律清楚（10.4）</span></label>
+        <label><input type="checkbox" id="c10-4" data-persist><span>Pipeline 入库跑通：清洗 → 去重 → SQLite，权重顺序与 from_crawler 会用（10.5）</span></label>
+        <label><input type="checkbox" id="c10-5" data-persist><span>Scrapy-Redis 三处改动说得清：SCHEDULER / DUPEFILTER / REDIS_URL，Bloom Filter 原理（10.7）</span></label>
+        <label><input type="checkbox" id="c10-6" data-persist><span>部署三件套概念清楚：Scrapyd 版本与 API、Docker 要点、Gerapy 定位（10.8）</span></label>
+      </div>
+
+      <!-- ============ 练习 ============ -->
+      <h2>📝 本章练习</h2>
+      <p class="muted small">先自己想，再展开参考解析。做完到<a href="practice.html">练习场</a>刷综合题。</p>
+
+      <details class="qa"><summary><span class="qno">Q1</span>不看书默画 Scrapy 数据流：五大组件 + 两个中间件，标出 Request、Response、Item 三种数据的流向，并指出两条回路。<span class="lv badge b-green">概念</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>10.1 架构与数据流——本章的地基，面试常考。</p>
+          <div class="ans"><b>参考解析：</b>请求回路：Spider 产出 Request → 引擎 → 调度器（入队+指纹去重）→ 引擎 → 下载中间件（安检）→ 下载器发请求 → 响应经下载中间件 → 引擎 → 爬虫中间件 → Spider.parse。<b>数据回路</b>：Spider 产出 Item → 引擎 → Item Pipeline（清洗→去重→入库）。引擎是两条回路的中枢；调度器只碰 Request，Pipeline 只碰 Item。自测标准：能对照本章架构图把七个节点的箭头复述出来，并解释"为什么 Response 从下载器回引擎而不是直连 Spider"（因为中间件安检与统一调度都在引擎）。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q2</span>动手：在 10.4 中间件基础上完善"403/429 换代理重试"——利用 request.meta 记录重试次数，超过 3 次放弃该请求，防止无限重试。写出 process_response 完整代码。<span class="lv badge b-orange">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>10.4 中间件返回值语义 + 重试上限设计。</p>
+          <div class="ans"><b>参考解析：</b>要点：从 request.meta 读计数（用 dict.get 带默认值）、超限返回 response 放弃、否则计数 +1 后 clone 重入队：
+<pre class="code"><span class="kw">def</span> <span class="fn">process_response</span>(<span class="kw">self</span>, request, response, spider):
+    <span class="kw">if</span> response.status <span class="kw">not in</span> (<span class="fn">403</span>, <span class="fn">429</span>):
+        <span class="kw">return</span> response
+    retries = request.meta.get(<span class="st">"my_retry"</span>, <span class="fn">0</span>)
+    <span class="kw">if</span> retries &gt;= <span class="fn">3</span>:
+        spider.logger.<span class="fn">error</span>(<span class="st">f"重试 3 次仍 </span>{response.status}<span class="st">，放弃：</span>{request.url}<span class="st">"</span>)
+        <span class="kw">return</span> response                 <span class="cm"># 放弃：把坏响应交回去（或抛 IgnoreRequest）</span>
+    request.meta[<span class="st">"my_retry"</span>] = retries + <span class="fn">1</span>
+    request.meta[<span class="st">"proxy"</span>] = random.<span class="fn">choice</span>(PROXY_POOL)   <span class="cm"># 换 IP 再来</span>
+    spider.logger.<span class="fn">warning</span>(<span class="st">f"第 </span>{retries + <span class="fn">1</span>}<span class="st"> 次重试：</span>{request.url}<span class="st">"</span>)
+    <span class="kw">return</span> request.<span class="fn">clone</span>()</pre>
+          不设上限的后果：目标站持续 403 时，clone 会无限循环把调度器塞爆——重试上限是所有重试逻辑的标配（Scrapy 内置 RetryMiddleware 同样有 RETRY_TIMES）。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q3</span>分析：你的站点有 500 万条 Item，10.5 里用 set 去重的 DedupPipeline 会遇到什么问题？给出两种改进方案并比较取舍。<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>10.5 去重设计与 10.7 Bloom Filter 的衔接。</p>
+          <div class="ans"><b>参考解析：</b>问题：Python set 存 500 万条指纹（如完整 text 或其哈希），内存要几百 MB 到 GB 级，且爬虫重启后 set 清零、去重失效。<b>方案一：指纹化 + 落盘</b>——不去重原文，改存 md5/sha1 短指纹，并搬到 SQLite/Redis 的 set 里持久化；优点是准确、可跨重启，代价是每次 IO 或 Redis 往返。dedup key 也可以放进 Redis set 复用分布式架构。<b>方案二：Bloom Filter</b>——位数组 + k 个哈希，内存降到百 MB 级且极快；代价是<b>可能误判</b>（把没见过的判成重复，少量丢数据）且不支持删除。取舍：数据绝不能丢（如商品价格入库）→ 方案一；允许极小误差、追求吞吐（如 URL 级去重）→ 方案二。工程上常见组合：URL 去重用 Bloom（10.7），Item 去重用指纹落库。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q4</span>分析：Scrapy-Redis 的请求队列可以用 Redis 的 list 或 zset 实现，各自怎么工作？为什么默认用 zset（优先级队列）？什么场景可以退回 list？<span class="lv badge b-blue">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>10.7 分布式队列选型 + 408 数据结构（优先队列）。</p>
+          <div class="ans"><b>参考解析：</b>① <b>list</b>（如 SpiderQueue）：lpush 入队、rpop/brpoplprocess 出队，纯 FIFO（或 LIFO）；简单、吞吐略高，但<b>无法表达优先级</b>——深浅页、轻重任务一视同仁。② <b>zset</b>（PriorityQueue，默认）：以 Request 的 priority 为 score 入 zset，出队用 zrangebyscore 取最小 score——本质是<b>优先队列</b>（408 堆结构的 Redis 实现），Scrapy 的深度/广度混合调度策略依赖它。默认选 zset 的原因：Scrapy 的调度语义本来就是"按优先级出队"，单机调度器如此，分布式不应降级。可退回 list 的场景：所有请求同优先级、追求极致简单与吞吐的小规模采集。连接 SCHEDULER_QUEUE_CLASS 配置项切换；另注意出队要用原子命令（如 zpopmin / brpoplprocess）避免多机抢到同一条。</div>
+        </div>
+      </details>
+
+      <div class="book-box">
+        <div class="bx-title">📚 对齐与拓展</div>
+        <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 13 章 Scrapy 框架</b>（13.1 架构 / 13.2 入门 / 13.3 Selector / 13.4 Spider / 13.5 下载中间件 / 13.7 Item Pipeline / 13.8 对接 Selenium）+ <b>第 14 章 Scrapy-Redis 分布式</b> + <b>第 15 章 部署与管理</b>（Scrapyd / Docker / Gerapy）；<br>
+           · 手册：<a href="https://scrapy.org" target="_blank" rel="noopener">Scrapy 官方文档</a>（Deployment / Jobs 章节）· <a href="https://github.com/rmax/scrapy-redis" target="_blank" rel="noopener">scrapy-redis</a> · <a href="https://github.com/Gerapy/Gerapy" target="_blank" rel="noopener">Gerapy</a>；<br>
+           · 视频：B站搜"黑马程序员 Scrapy 框架"（入门跟练）；<br>
+           · 毕业课题：把前面章节的任意爬虫重构成"Scrapy + 定时调度 + 失败告警 + 增量入库"的采集系统。</p>
+      </div>
+
+            <div class="book-box">
+        <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
+        <p>
+         · <a href="https://book.douban.com/subject_search?search_text=精通Scrapy网络爬虫" target="_blank" rel="noopener">《精通Scrapy网络爬虫》</a>——从"会用"讲到"懂原理"（调度器/去重源码级）;
+         · <a href="https://scrapy.org" target="_blank" rel="noopener">Scrapy 官方文档</a>——Deployment/Jobs/AutoThrottle 三节是工程化精髓;
+         · <a href="https://github.com/crawlab-team/crawlab" target="_blank" rel="noopener">crawlab-team/crawlab</a>——夜幕系开源分布式管理平台，Gerapy 的现代活跃替代;
+         · <a href="https://github.com/wistbean/learn_python3_spider" target="_blank" rel="noopener">wistbean/learn_python3_spider</a> / <a href="https://github.com/facert/awesome-spider" target="_blank" rel="noopener">facert/awesome-spider</a>——找"某类网站怎么爬"先翻这里。</p>
+      </div>
+
+      <div class="pager">
+        <a class="btn" href="ch09.html">← 上一章：App 爬取</a>
+        <a class="btn primary" href="index.html">返回课程总览 🎓</a>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 第 10 章 · Scrapy 框架与分布式部署</p>
+    <p class="muted">对齐《Python3网络爬虫开发实战（第二版）》第 13~15 章 · 进度自动保存</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script src="assets/lesson-player.js"></script>
+<script>
+/* ===== 1. Scrapy 架构图 ===== */
+(function () {
+  var DATA = {
+    engine: { t: '引擎 Engine', d: '全场指挥：调度器、下载器、爬虫之间所有数据流动都由它中转。你几乎不直接改它，但理解它 = 理解 Scrapy 的一切。', k: '基于 Twisted 事件驱动，全链路异步；把图里的箭头当成"它安排的"就对了。' },
+    scheduler: { t: '调度器 Scheduler', d: '请求的候车室：决定下一个爬哪个 URL，内置请求指纹去重，不会重复爬同一页。', k: '做分布式（Scrapy-Redis）本质上就是把它换成 Redis 队列；去重指纹在 DUPEFILTER_CLASS 里配置。' },
+    downloader: { t: '下载器 Downloader', d: '真正发 HTTP 请求的地方。速度、延迟、重试、自动限速都在这层配置。', k: '常用配置：CONCURRENT_REQUESTS（并发数）、DOWNLOAD_DELAY（延时）、AUTOTHROTTLE=True（自动礼貌模式）。' },
+    spider: { t: '爬虫 Spider（你写主逻辑的地方）', d: '解析 Response，决定产出什么：yield Item（交给管道）或 yield 新 Request（交给调度器继续爬）。', k: '三个关键方法：start_requests() 起点、parse() 解析、以及自定义详情页解析函数。' },
+    pipeline: { t: 'Item Pipeline', d: '数据流水线：清洗 → 校验 → 去重 → 入库，每个 Item 依次流过所有启用的管道。', k: '在 settings 里用 ITEM_PIPELINES 调权重（数字小的先执行）；open_spider / close_spider 里做连接数据库和收尾。' },
+    dmw: { t: '下载中间件 Downloader Middleware', d: '每个请求和响应的"安检口"：换 UA、挂代理、带 Cookie、失败重试，都在这里统一处理。', k: 'process_request() 改请求、process_response() 改响应。你阶段④学的反爬对抗，工程化后就写在这里，全站生效。' },
+    smw: { t: '爬虫中间件 Spider Middleware', d: '引擎和爬虫之间的关卡：处理爬虫的输入输出，常用于自定义重试和异常兜底。', k: '反爬实战中改得少，但排查"为什么我的 Request 没发出去"时要知道有它。' }
+  };
+  var svg = document.querySelector('.scwrap svg');
+  svg.addEventListener('click', function (e) {
+    var g = e.target.closest('.scnode');
+    if (!g) return;
+    svg.querySelectorAll('.scnode').forEach(function (n) { n.classList.toggle('on', n === g); });
+    var d = DATA[g.dataset.k];
+    document.getElementById('sc-title').textContent = d.t;
+    document.getElementById('sc-desc').textContent = d.d;
+    var key = document.getElementById('sc-key');
+    key.hidden = false;
+    key.innerHTML = '<b>实战要点：</b>' + d.k;
+  });
+})();
+
+/* ===== 2. 并发与礼貌模拟器 ===== */
+(function () {
+  var PAGES = 500, LATENCY = 0.4;
+  var num = document.getElementById('cc-num'), cap = document.getElementById('cc-cap');
+  function fmt(sec) {
+    if (sec < 90) return sec.toFixed(0) + ' 秒';
+    var m = Math.floor(sec / 60), s = Math.round(sec % 60);
+    if (m < 90) return m + ' 分 ' + s + ' 秒';
+    return (m / 60).toFixed(1) + ' 小时';
+  }
+  function calc() {
+    var c = +num.value, q = +cap.value;
+    document.getElementById('cc-num-v').textContent = c;
+    document.getElementById('cc-cap-v').textContent = q;
+    var myQps = c / LATENCY;
+    var eff = Math.min(myQps, q);
+    var time = PAGES / eff;
+    document.getElementById('cc-time').textContent = '≈ ' + fmt(time);
+    var util = eff / q * 100;
+    document.getElementById('cc-util').style.width = util + '%';
+    document.getElementById('cc-util-l').textContent = '吃到配额 ' + util.toFixed(0) + '%（' + eff.toFixed(1) + ' / ' + q + ' QPS）';
+    var risk = document.getElementById('cc-risk'), tip = document.getElementById('cc-tip');
+    var ratio = myQps / q;
+    if (ratio <= 1) {
+      risk.textContent = '风险：低';
+      risk.className = 'vbadge ok';
+      tip.textContent = '你的并发还没碰到对方限速，安全但服务器配额没用满——可以再小幅加并发。';
+    } else if (ratio <= 2) {
+      risk.textContent = '风险：中';
+      risk.className = 'vbadge warn';
+      tip.textContent = '并发已超过对方限速 ' + ratio.toFixed(1) + ' 倍，会开始收到 429。加延时或降并发，比硬冲划算。';
+    } else {
+      risk.textContent = '风险：高';
+      risk.className = 'vbadge';
+      risk.style.background = '#fee2e2'; risk.style.color = '#991b1b';
+      tip.textContent = '并发超限 ' + ratio.toFixed(1) + ' 倍：耗时一点没变快（配额就那么大），封 IP 的概率倒是飙升。这就是"礼貌的价值"。';
+    }
+    if (ratio <= 2) { risk.style.background = ''; risk.style.color = ''; }
+  }
+  num.addEventListener('input', calc);
+  cap.addEventListener('input', calc);
+  calc();
+})();
+
+/* ===== 3. 动画课堂 ===== */
+(function () {
+  function g(r, id) { return r.querySelector('#' + id); }
+  function T(r, id, s) { g(r, id).textContent = s; }
+  function onE(r, id, c) { g(r, id).classList.add(c || 'on'); }
+  var S = [
+    { d: 12, cap: '毕业季：把会跑的脚本，升级成靠得住的系统。先看两种命运。', set: { 'k6-note': '同一段爬虫逻辑，两种人生。' }, cls: { 'k6-old': 'on' } },
+    { d: 13, cap: '脚本的人生：跑到第 300 页，网站改版了。凌晨三点，报错，崩溃——没有人在场，它默默死掉，数据停在一半。', set: { 'k6-o': '第 1 页 ✓  第 2 页 ✓ …\n❌ 第 300 页: KeyError\n（凌晨 3:00，无人在场）' } },
+    { d: 15, cap: '系统的骨架叫 Scrapy：引擎指挥调度器、下载器、你的解析器、管道，转成一个永不停歇的闭环。', set: { 'k6-fx': '🔁 引擎驱动，闭环永续', 'k6-note': '架构就像流水线，各司其职。' }, cls: { 'k6-new': 'on', 'k6-c1': 'on', 'k6-f1': 'on', 'k6-f2': 'on', 'k6-f3': 'on', 'k6-f4': 'on', 'k6-f5': 'on' } },
+    { d: 13, cap: '异步并发：requests 是单车道排队，asyncio + httpx 是八车道并行——同一段路，吞吐差一个量级。', set: { 'k6-fx': '⏩ 单车道 → 八车道' }, cls: { 'k6-c2': 'on' } },
+    { d: 13, cap: '增量与断点：每页存指纹，重跑时老数据直接跳过；挂了从断点继续。绝不重复劳动。', set: { 'k6-fx': '指纹比对：老数据跳过 ✓' }, cls: { 'k6-c3': 'on' } },
+    { d: 12, cap: '调度：每天 03:00 闹钟一响自动开跑。你还在睡觉，它已经干完活了。', set: { 'k6-fx': '⏰ 每天 03:00 自动开跑' }, cls: { 'k6-c4': 'on' } },
+    { d: 12, cap: '告警：一旦连续失败，飞书 / 邮件立刻通知你。脚本静默死亡的时代，结束了。', set: { 'k6-fx': '🔔 连续失败 → 已通知' }, cls: { 'k6-c5': 'on' } },
+    { d: 12, cap: '数据量再涨十倍？Scrapy-Redis 把请求队列搬上多台机器，分布式并行采集。', set: { 'k6-fx': '队列上 Redis × 3 台机器并行' }, cls: { 'k6-c6': 'on' } },
+    { d: 15, cap: '但真正的专业是克制：遵守 robots 协议、控制频率、只采公开数据、《数据安全法》——技术之上，还有红线。', set: { 'k6-fx': '⚖️ robots · 频率礼仪 · 数据安全法' }, cls: { 'k6-c7': ['good', 'on'] } },
+    { d: 13, cap: '七件套集齐：框架、异步、增量、调度、告警、分布式、合规。这，就是"采集系统"四个字的分量。', set: { 'k6-note': '每一件都在下方打卡清单里。' }, cls: { 'k6-c1': 'on', 'k6-c2': 'on', 'k6-c3': 'on', 'k6-c4': 'on', 'k6-c5': 'on', 'k6-c6': 'on' } },
+    { d: 14, cap: '毕业课题：把「考研择校 / 408 大观园」的数据需求，做成一个定时运行、失败告警的采集系统。做出来，你就出师了 🎓', set: { 'k6-note': '▼ 下方互动：架构图 + 并发模拟器' }, cls: { 'k6-c1': 'good', 'k6-c2': 'good', 'k6-c3': 'good', 'k6-c4': 'good', 'k6-c5': 'good', 'k6-c6': 'good', 'k6-new': 'good' } }
+  ];
+  new LessonPlayer({ root: '#lesson6', title: '从脚本到采集系统', scenes: S });
+})();
+</script>
+</body>
+</html>

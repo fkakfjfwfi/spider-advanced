@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>06 · 验证码识别与模拟登录 — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="c06">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+      <a href="ch07.html" data-nav="c07">下一章 →</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app" style="padding-top:20px;padding-bottom:48px">
+  <div class="crumb"><a href="index.html">首页</a> / 进阶篇 / <b>06 · 验证码识别与模拟登录</b></div>
+  <div class="layout">
+
+    <aside class="chapnav">
+      <div class="cap">课程目录</div>
+      <div class="grp">🧱 基础篇</div>
+      <a href="ch01.html" data-nav="c01"><span class="no">01</span>基础与抓包 <span class="pg" data-chapter-progress="c01">0/6</span></a>
+      <a href="ch02.html" data-nav="c02"><span class="no">02</span>请求与正则 <span class="pg" data-chapter-progress="c02">0/6</span></a>
+      <a href="ch03.html" data-nav="c03"><span class="no">03</span>解析库全解 <span class="pg" data-chapter-progress="c03">0/6</span></a>
+      <a href="ch04.html" data-nav="c04"><span class="no">04</span>数据存储 <span class="pg" data-chapter-progress="c04">0/6</span></a>
+      <div class="grp">⚔️ 进阶篇</div>
+      <a href="ch05.html" data-nav="c05"><span class="no">05</span>Ajax与动态渲染 <span class="pg" data-chapter-progress="c05">0/6</span></a>
+      <a href="ch06.html" data-nav="c06" class="active"><span class="no">06</span>验证码与登录 <span class="pg" data-chapter-progress="c06">0/6</span></a>
+      <a href="ch07.html" data-nav="c07"><span class="no">07</span>代理与反反爬 <span class="pg" data-chapter-progress="c07">0/6</span></a>
+      <div class="grp">🔍 逆向篇</div>
+      <a href="ch08.html" data-nav="c08"><span class="no">08</span>JS 逆向专题 <span class="pg" data-chapter-progress="c08">0/6</span></a>
+      <a href="ch09.html" data-nav="c09"><span class="no">09</span>App 爬取 <span class="pg" data-chapter-progress="c09">0/6</span></a>
+      <div class="grp">🏭 框架篇</div>
+      <a href="ch10.html" data-nav="c10"><span class="no">10</span>Scrapy与分布式 <span class="pg" data-chapter-progress="c10">0/6</span></a>
+      <div class="grp">🛠 实战</div>
+      <a href="practice.html" data-nav="practice"><span class="no">📝</span>练习场</a>
+      <a href="library.html" data-nav="library"><span class="no">📚</span>多源图书馆</a>
+    </aside>
+
+    <div class="appmain doc">
+
+      <section class="hero compact">
+        <span class="tag">进阶篇 · 对齐教材 8.1 ~ 8.4 + 10.1 ~ 10.2</span>
+        <h1>06 · 验证码识别与模拟登录</h1>
+        <p class="sub">验证码的本质是"证明你是人"，而我们的目标不是硬刚：能绕则绕（Cookie 复用），该打则打（OCR / 打码平台）。这一章还顺带解决爬虫的另一大命门——登录态的获取与批量维持，这是工程化采集绕不开的一关。</p>
+        <div class="pwrap">
+          <div class="progress"><div class="fill" data-progress-bar="c06"></div></div>
+          <span class="plabel" data-progress-label="c06"></span>
+        </div>
+      </section>
+
+      <div class="connect-box">
+        <div class="bx-title">🔗 连接你已有的知识（考研 408 · 网络安全）</div>
+        <p>· 验证码 = 408 安全里的<b>"人机证明"</b>：CAPTCHA 的全称是"全自动区分计算机和人类的图灵测试"——它考的不是密码学，而是"区分主体是人还是程序"这一认证学命题；<br>
+           · <b>Cookie 复用</b> = 身份认证机制的攻防视角：你学过"证明身份靠凭证（口令/令牌/证书）"，而 Cookie 冒充正是绕过"重新认证"直接持凭准入场——合法与否只取决于目标站的服务条款与数据授权，本章从技术讲清它，红线自己守；<br>
+           · CSRF token（登录表单里的 authenticity_token）正是 408 安全章节里"防跨站请求伪造"的手段——爬虫只是把它当成"必须一起提交的隐藏字段"。</p>
+      </div>
+
+      <h2>6.1 图形验证码识别 <span class="chip tbook">对齐教材 8.1</span></h2>
+      <p>先建立全景：验证码是一个<b>强度阶梯</b>，越往上机器成本越高。本章的策略分配也在这张表里——低强度直接识别，中强度识别+模拟，高强度<b>能绕则绕</b>：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>类型</th><th>强度</th><th>机器怎么破</th><th>本章策略</th></tr>
+        <tr><td>图形数字/字母码</td><td>★</td><td>OCR 识别</td><td>ddddocr 直接识别（6.1）</td></tr>
+        <tr><td>滑动验证码</td><td>★★</td><td>缺口识别 + 轨迹模拟</td><td>识别 + 轨迹（6.2）</td></tr>
+        <tr><td>点触（按语序点文字）</td><td>★★★</td><td>需要语义理解</td><td>打码平台接入（6.3）</td></tr>
+        <tr><td>宫格 / 图标选择</td><td>★★★</td><td>需要语义理解</td><td>打码平台接入（6.3）</td></tr>
+        <tr><td>行为验证（无感）</td><td>★★★★</td><td>环境指纹 + 行为模型</td><td>Cookie 复用绕开（6.5）</td></tr>
+      </table></div>
+
+      <h3>ddddocr：一行装好，两招吃遍低强度验证码</h3>
+      <p>老牌方案是 Tesseract OCR（<code class="inline">pip install pytesseract</code> 还要另装系统引擎），对扭曲彩底图形码准确率一般、环境配置繁琐——<b>知道即可，不必再上手</b>。如今 Python 生态的事实标准是 <b>ddddocr</b>（带带弟弟 OCR）：纯 pip 安装、开箱即用，对常见数字字母码识别率可观。它有两种核心用法：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>用法</th><th>方法</th><th>输入</th><th>返回</th><th>适用</th></tr>
+        <tr><td>① 文字识别</td><td><code class="inline">classification(img)</code></td><td>图片二进制 bytes</td><td>识别出的字符串</td><td>图形数字/字母码</td></tr>
+        <tr><td>② 目标检测</td><td><code class="inline">detection(img)</code></td><td>图片二进制 bytes（构造时 <code class="inline">det=True</code>）</td><td><code class="inline">[[x1,y1,x2,y2], …]</code> 坐标框列表</td><td>点选码的文字坐标</td></tr>
+      </table></div>
+
+      <div class="code-title">ocr_basic.py</div>
+<pre class="code"><span class="cm"># pip install ddddocr</span>
+<span class="kw">import</span> ddddocr
+
+ocr = ddddocr.<span class="fn">DdddOcr</span>(show_ad=<span class="kw">False</span>)        <span class="cm"># 关掉启动提示</span>
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"captcha.png"</span>, <span class="st">"rb"</span>) <span class="kw">as</span> f:          <span class="cm"># 注意：吃的是图片二进制 bytes，不是路径</span>
+    code = ocr.<span class="fn">classification</span>(f.<span class="fn">read</span>())
+<span class="fn">print</span>(code)                                   <span class="cm"># 例如：'x7kd'</span></pre>
+
+      <p>用法②是给<b>点选验证码</b>准备的：题目往往要求"按顺序点击'王、芳、好'"，OCR 只知道图上有字、不知道字在哪——<code class="inline">det=True</code> 的检测模式把每个文字的外接框坐标报出来，交给打码平台排序或自行匹配：</p>
+      <div class="code-title">ocr_detect.py</div>
+<pre class="code"><span class="kw">import</span> ddddocr
+
+det = ddddocr.<span class="fn">DdddOcr</span>(det=<span class="kw">True</span>, show_ad=<span class="kw">False</span>)
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"click.png"</span>, <span class="st">"rb"</span>) <span class="kw">as</span> f:
+    boxes = det.<span class="fn">detection</span>(f.<span class="fn">read</span>())
+<span class="fn">print</span>(boxes)   <span class="cm"># 例如 [[46, 55, 92, 101], [188, 62, 233, 108], [303, 48, 350, 95]]</span>
+               <span class="cm"># 每个元素是一个文字的外接框 [x1, y1, x2, y2]，点选码的坐标来源</span></pre>
+
+      <h3>"失败就刷新重试"的成本账</h3>
+      <p>识别率不是 100%，工程上常见做法是"识别错了 → 刷新换一张 → 再识别"。这套循环的隐性成本要算清楚：<b>平均尝试次数 = 1/p</b>（p 为单次识别率），而每一次失败重试，都在给对方的风控计数器加一：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>单次识别率 p</th><th>平均尝试次数 1/p</th><th>每千页额外请求量</th><th>建议</th></tr>
+        <tr><td>95%</td><td>1.05 次</td><td>+50</td><td>放心自动重试</td></tr>
+        <tr><td>85%</td><td>1.18 次</td><td>+180</td><td>自动重试，但设失败上限</td></tr>
+        <tr><td>60%</td><td>1.67 次</td><td>+670</td><td>认真考虑打码平台</td></tr>
+        <tr><td>40%</td><td>2.5 次</td><td>+1500</td><td>别硬刚：绕开或换平台</td></tr>
+      </table></div>
+      <div class="callout warn"><b>成本账的另一半：</b>重试循环必须配三道保险——失败就<b>刷新换图</b>（同一张图反复 OCR 没有意义）、设<b>连续失败上限</b>（如 3 次就告警/换号）、重试之间加<b>随机间隔</b>。识别率低于五成的图形码，硬刚的期望成本已经超过打码平台按条计费的价格——这笔账要在动手前算。</div>
+
+      <!-- ============ 6.2 ============ -->
+      <h2>6.2 滑动验证码 <span class="chip tbook">对齐教材 8.2</span></h2>
+      <p>滑动验证码把"拖动滑块到缺口"包装成小游戏，实际上是一道<b>两步合成题</b>：第一步知道<b>缺口在哪</b>（视觉问题），第二步让滑块<b>像人一样滑过去</b>（行为问题）。两步都要对，缺一不可。</p>
+
+      <h3>第一步：缺口位置识别</h3>
+      <p>常规做法是 OpenCV：对背景大图做 Canny 边缘检测 + 模板匹配，缺口边缘的位置就是答案。更省事的路径是 ddddocr 自带的 <code class="inline">slide_match</code>——传入"滑块小图"和"背景大图"两张 bytes，直接返回缺口坐标：</p>
+      <div class="code-title">slide_gap.py</div>
+<pre class="code"><span class="kw">import</span> ddddocr
+
+det = ddddocr.<span class="fn">DdddOcr</span>(det=<span class="kw">False</span>, ocr=<span class="kw">False</span>, show_ad=<span class="kw">False</span>)   <span class="cm"># 只要滑块匹配功能</span>
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"slider.png"</span>, <span class="st">"rb"</span>) <span class="kw">as</span> f1, <span class="fn">open</span>(<span class="st">"bg.png"</span>, <span class="st">"rb"</span>) <span class="kw">as</span> f2:
+    res = det.<span class="fn">slide_match</span>(f1.<span class="fn">read</span>(), f2.<span class="fn">read</span>(), simple_target=<span class="kw">True</span>)
+<span class="fn">print</span>(res)      <span class="cm"># {'target': [180, 32, 258, 110]} → 缺口左上角 x 就是目标距离</span>
+                <span class="cm"># 实际滑动距离 = 缺口 x − 滑块初始偏移（各站实现不同，测一次就知）</span></pre>
+
+      <h3>第二步：轨迹模拟——先快后慢 + 回拉</h3>
+      <p>拿到距离就可以让 Selenium/Playwright 的 <code class="inline">ActionChains</code>/<code class="inline">mouse.move</code> 分段移动过去。但<b>匀速直线移动 = 机器人自首</b>：真人的手是先加速冲、临近目标减速、最后还带一点过冲回拉的抖动——服务端校验的不是终点坐标，而是<b>整条时间序列的行为特征</b>：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>阶段</th><th>行为</th><th>为什么像人</th></tr>
+        <tr><td>加速段（前 ~70%）</td><td>步长大、间隔短，快速冲过中点</td><td>人手起手快，目标远时出手果断</td></tr>
+        <tr><td>减速段（后 ~30%）</td><td>步长按比例衰减，缓慢逼近缺口</td><td>临近目标人眼会校准，速度自然下降</td></tr>
+        <tr><td>回拉段（结尾）</td><td>滑过头 1~2px，再弹回修正</td><td>过冲-修正是人手最典型的微动作</td></tr>
+      </table></div>
+      <div class="code-title">gen_tracks.py（可直接运行的轨迹生成器）</div>
+<pre class="code"><span class="kw">import</span> random
+
+<span class="kw">def</span> <span class="fn">gen_tracks</span>(distance):
+    <span class="st">""""先快后慢 + 回拉"的滑动轨迹：返回每一步的位移列表"""</span>
+    tracks, moved, v = [], <span class="fn">0.0</span>, <span class="fn">0.0</span>
+    <span class="kw">while</span> moved &lt; distance:
+        remain = distance - moved
+        <span class="kw">if</span> remain &gt; distance * <span class="fn">0.3</span>:                 <span class="cm"># 前 70%：加速冲</span>
+            v += random.<span class="fn">uniform</span>(<span class="fn">2</span>, <span class="fn">4</span>)
+        <span class="kw">else</span>:                                       <span class="cm"># 后 30%：减速逼近</span>
+            v = <span class="fn">max</span>(<span class="fn">1.0</span>, v * random.<span class="fn">uniform</span>(<span class="fn">0.55</span>, <span class="fn">0.8</span>))
+        step = <span class="fn">min</span>(v * <span class="fn">0.1</span>, remain)                 <span class="cm"># 每一小步不超过剩余距离</span>
+        tracks.<span class="fn">append</span>(<span class="fn">round</span>(step, <span class="fn">2</span>))
+        moved += step
+    tracks[-<span class="fn">1</span>] -= random.<span class="fn">uniform</span>(<span class="fn">1</span>, <span class="fn">2</span>)              <span class="cm"># 回拉：多滑一点</span>
+    tracks.<span class="fn">append</span>(<span class="fn">1.5</span>)                              <span class="cm"># 再弹回修正</span>
+    <span class="kw">return</span> tracks
+
+<span class="fn">print</span>(<span class="fn">gen_tracks</span>(<span class="fn">200</span>))</pre>
+      <div class="code-title">预期输出（每次随机不同，形态一致）</div>
+<pre class="code">[3.55, 6.93, 9.7, 11.8, 9.9, 7.4, 5.6, 3.2, 2.4, 1.9, 1.4, 1.1, 0.4, -1.62, 1.5]</pre>
+      <p>把这份轨迹喂给自动化框架逐段移动（每步之间 <code class="inline">time.sleep(random.uniform(0.005, 0.02))</code> 加抖动），就是一次完整的滑动。注意三点：<b>总位移要与缺口距离吻合</b>（回拉已包含在内）；<b>步数别太少</b>（少于 10 步的轨迹一眼假）；<b>别复制粘贴网上的固定轨迹数组</b>——固定轨迹被风控端拿去当特征库，一抓一个准。</p>
+
+      <!-- ============ 6.3 ============ -->
+      <h2>6.3 点触 / 宫格验证码 <span class="chip tbook">对齐教材 8.3 / 8.4</span></h2>
+      <p>点触（按语序点击图中的文字）和宫格（点击符合描述的图标）把难度从"看得清"升级到了"看得懂"——需要语义理解，OCR 搞不定，自研模型性价比极低。<b>现实的标准答案只有一个：打码平台</b>——你把截图传上去，平台的真人/AI 混合队列把坐标传回来，按条计费。</p>
+      <h3>打码平台接入思路</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>步骤</th><th>内容</th><th>注意</th></tr>
+        <tr><td>① 截图</td><td>截取验证码区域（点选要连题目一起截或分两次传）</td><td>截图坐标系与页面点击坐标系必须一致，注意缩放比</td></tr>
+        <tr><td>② 上传</td><td>图片 base64 + 题型编号（typeid）POST 给平台</td><td>各平台编号表不同：数字码/点选/滑块各占一个号</td></tr>
+        <tr><td>③ 等结果</td><td>平台返回坐标串或文字序列</td><td>设置 30s 超时；有的平台要轮询取结果</td></tr>
+        <tr><td>④ 还原</td><td>按返回的顺序依次点击对应坐标</td><td>点选类顺序错 = 全盘失败</td></tr>
+      </table></div>
+      <div class="code-title">solver_click.py（通用接入骨架，接口名以所选平台文档为准）</div>
+<pre class="code"><span class="kw">import</span> base64
+<span class="kw">import</span> requests
+
+<span class="kw">def</span> <span class="fn">solve_click</span>(img_bytes):
+    <span class="st">"""把验证码截图交给打码平台，返回点击坐标序列 [[x, y], …]"""</span>
+    resp = requests.<span class="fn">post</span>(
+        <span class="st">"https://api.dama-platform.com/create"</span>,
+        json={
+            <span class="st">"username"</span>: <span class="st">"你的账号"</span>,
+            <span class="st">"password"</span>: <span class="st">"你的密码"</span>,
+            <span class="st">"typeid"</span>: <span class="fn">7</span>,                                   <span class="cm"># 7 = 点选类（查平台编号表）</span>
+            <span class="st">"image"</span>: base64.<span class="fn">b64encode</span>(img_bytes).<span class="fn">decode</span>(),
+        },
+        timeout=<span class="fn">30</span>,
+    )
+    result = resp.<span class="fn">json</span>()        <span class="cm"># {'id': ..., 'result': '[[46,78],[192,64],[305,90]]'}</span>
+    <span class="kw">return</span> <span class="fn">eval</span>(result[<span class="st">"result"</span>])   <span class="cm"># 生产环境请用 json.loads 并做好异常兜底</span></pre>
+
+      <div class="callout ok"><b>本站立场：优先绕开，打码是最后手段。</b>点触/宫格的破解成本（按条计费 + 秒级延迟 + 质量不稳）远高于"绕开它"的成本——<b>人肉过一次验证码，Cookie 复用跑一整周</b>（6.5）。打码平台留给"登录频次高、账号多、必须全自动化"的场景。此外提醒：打码服务同样要用于合规目标，只碰你有权采集的数据。</div>
+
+      <!-- ============ 6.4 ============ -->
+      <h2>6.4 模拟登录 GitHub：方法论 <span class="chip tbook">对齐教材 10.1</span></h2>
+      <p>模拟登录的通用方法论是五步，<b>核心动作是"字段溯源"——载荷里的每个字段，都要能在登录页里找到出处</b>。拿 GitHub 演示（方法论对任何站点通用）：</p>
+
+      <h3>第 ① 步：抓登录请求</h3>
+      <p>打开 <code class="inline">github.com/login</code> → F12 → Network → 勾选 <b>Preserve log</b> → 用测试账号手动登录一次 → 在 Network 里找到 <code class="inline">POST /session</code>，看它的 <b>Payload</b>：<code class="inline">login</code>（用户名）、<code class="inline">password</code>（密码）、<code class="inline">authenticity_token</code>（一长串会变的东西）、<code class="inline">commit</code>（"Sign in"）。</p>
+
+      <h3>第 ② 步：表单字段溯源</h3>
+      <p>逐个字段问"你从哪来"——在登录页右键查看源代码，<code class="inline">Ctrl+F</code> 搜索字段名，答案一目了然：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>载荷字段</th><th>出处</th><th>说明</th></tr>
+        <tr><td><code class="inline">login</code></td><td>你输入的用户名</td><td>明文</td></tr>
+        <tr><td><code class="inline">password</code></td><td>你输入的密码</td><td>注意：有的站前端先加密再提交（见避坑②）</td></tr>
+        <tr><td><code class="inline">authenticity_token</code></td><td>登录页 HTML 里 <code class="inline">&lt;form&gt;</code> 的隐藏 <code class="inline">&lt;input&gt;</code></td><td>CSRF 防护令牌，每次刷新页面都变——所以必须先 GET 登录页</td></tr>
+        <tr><td><code class="inline">commit</code></td><td>提交按钮的固定文字</td><td>照抄抓包值</td></tr>
+        <tr><td>其他杂项字段</td><td>隐藏 input 或 JS 注入</td><td>抓包看到什么就带上什么，宁多勿少</td></tr>
+      </table></div>
+
+      <h3>第 ③~⑤ 步：Session 收证 → POST → 校验</h3>
+      <p>字段来源清楚了，代码就是三件事：<b>用 Session GET 登录页</b>（自动收下第一批 Cookie，并从 HTML 里提取 token）→ <b>POST 表单</b>（Session 自动带 Cookie）→ <b>访问"个人中心"类页面校验登录态</b>（登录成功通常伴随 302 跳转和新的 <code class="inline">logged_in=yes</code> Cookie；失败则回到登录页）。</p>
+      <div class="code-title">login_github.py</div>
+<pre class="code"><span class="kw">import</span> requests
+<span class="kw">from</span> bs4 <span class="kw">import</span> BeautifulSoup
+
+s = requests.<span class="fn">Session</span>()
+s.headers.update({<span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"</span>})
+
+<span class="cm"># ① GET 登录页：Session 自动收 Cookie，顺便拿 HTML</span>
+html = s.<span class="fn">get</span>(<span class="st">"https://github.com/login"</span>, timeout=<span class="fn">10</span>).text
+
+<span class="cm"># ② 字段溯源：token 就藏在 form 的隐藏 input 里</span>
+soup = <span class="fn">BeautifulSoup</span>(html, <span class="st">"html.parser"</span>)
+token = soup.<span class="fn">select_one</span>(<span class="st">'input[name="authenticity_token"]'</span>)[<span class="st">"value"</span>]
+
+<span class="cm"># ③ 按抓包看到的载荷逐字段对齐</span>
+data = {
+    <span class="st">"commit"</span>: <span class="st">"Sign in"</span>,
+    <span class="st">"authenticity_token"</span>: token,
+    <span class="st">"login"</span>: <span class="st">"your_username"</span>,        <span class="cm"># 换成你的测试账号</span>
+    <span class="st">"password"</span>: <span class="st">"your_password"</span>,
+}
+s.<span class="fn">post</span>(<span class="st">"https://github.com/session"</span>, data=data, timeout=<span class="fn">10</span>)   <span class="cm"># ④ POST：Session 自动带 Cookie</span>
+
+<span class="cm"># ⑤ 校验登录态：访问需要登录的页面，看是否返回你的信息</span>
+me = s.<span class="fn">get</span>(<span class="st">"https://github.com/settings/profile"</span>, timeout=<span class="fn">10</span>)
+<span class="fn">print</span>(<span class="st">"登录成功"</span> <span class="kw">if</span> <span class="st">"your_username"</span> <span class="kw">in</span> me.text <span class="kw">else</span> <span class="st">"登录失败"</span>)</pre>
+      <div class="code-title">预期输出</div>
+<pre class="code">登录成功</pre>
+
+      <h3>现代站点的字段套路：难度阶梯</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>梯度</th><th>套路</th><th>破法</th></tr>
+        <tr><td>1</td><td>隐藏 token 字段（CSRF）</td><td>从登录页 HTML 提取（本节做法）</td></tr>
+        <tr><td>2</td><td>密码字段前端 RSA/AES 加密</td><td>引页面 JS 执行，或逆向算法（第 08 章）</td></tr>
+        <tr><td>3</td><td>JSON 接口登录 + sign 签名</td><td>逆向（第 08 章）或浏览器自动化（5.4）</td></tr>
+        <tr><td>4</td><td>短信验证 / 扫码 / OAuth</td><td>浏览器人工登录一次 + Cookie 复用（6.5）</td></tr>
+      </table></div>
+      <div class="callout info"><b>方法论不变，难度在变：</b>从最老套的表单提交到最现代的加密接口，"抓包 → 字段溯源 → 复刻请求"这五步永远成立——变的只是"溯源"的深度。字段全在 HTML 里（本节）→ 复刻请求即可；字段藏在 JS 加密里 → 第 08 章；字段靠扫码/短信 → 人工登录 + 6.5。另外 GitHub 对自动登录风控较强，本节代码用于理解方法论，练手请用授权练习站（如 Scrape Center login 系列）或自己的小号。</div>
+
+      <!-- ============ 6.5 ============ -->
+      <h2>6.5 Cookie 复用：本章最实用技 <span class="chip tnew">必会</span></h2>
+      <p>回头看 6.1~6.4 的成本表，你会发现一个事实：<b>绝大多数验证码困境，最优解是"根本不再遇到它"</b>。登录一次（无论人肉还是自动化）拿到的登录态就是一枚 Cookie，只要不主动退出、Cookie 不过期，之后的采集根本不需要再登录——这就是第 01 章 1.4 那句"保命技"的完整展开：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>步骤</th><th>操作</th><th>在哪里</th></tr>
+        <tr><td>① 登录</td><td>浏览器手动登录目标站（验证码人肉过）</td><td>一次人工，几十秒</td></tr>
+        <tr><td>② 抄 Cookie</td><td>F12 → <b>Application</b> → Cookies → 目标域名 → 复制全部键值</td><td>开发者工具</td></tr>
+        <tr><td>③ 注入</td><td>整包塞进 <code class="inline">requests.Session</code> 的 cookies</td><td>代码</td></tr>
+        <tr><td>④ 探活</td><td>任务开始前请求"个人中心"类页面，确认登录态还在</td><td>代码</td></tr>
+        <tr><td>⑤ 补货</td><td>失效后重抄一次，或触发自动重登（6.6 的登录器）</td><td>人工/定时</td></tr>
+      </table></div>
+      <div class="code-title">cookie_reuse.py</div>
+<pre class="code"><span class="kw">import</span> requests
+
+<span class="cm"># ① 浏览器登录 → F12 → Application → Cookies → 全部抄下来</span>
+cookies = {
+    <span class="st">"sessionid"</span>: <span class="st">"从浏览器抄来的会话凭证"</span>,
+    <span class="st">"csrftoken"</span>: <span class="st">"……"</span>,
+    <span class="st">"uid"</span>: <span class="st">"……"</span>,                    <span class="cm"># 有几个抄几个，宁多勿少</span>
+}
+s = requests.<span class="fn">Session</span>()
+s.headers.update({
+    <span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"</span>,
+    <span class="st">"Referer"</span>: <span class="st">"https://target.site/"</span>,
+})
+s.cookies.<span class="fn">update</span>(cookies)                          <span class="cm"># ② 整包注入：之后每个请求自动带</span>
+
+<span class="cm"># ③ 探活：访问一个"只有登录才看得到"的页面</span>
+resp = s.<span class="fn">get</span>(<span class="st">"https://target.site/user/orders"</span>, timeout=<span class="fn">10</span>)
+<span class="fn">print</span>(<span class="st">"登录态有效"</span> <span class="kw">if</span> <span class="st">"退出登录"</span> <span class="kw">in</span> resp.text <span class="kw">else</span> <span class="st">"Cookie 过期了，重新抄一次"</span>)</pre>
+
+      <h3>有效期管理：让"抄"变成一套机制</h3>
+      <p>Cookie 是有寿命的（<code class="inline">Expires/Max-Age</code>，第 01 章的属性表），工程上要把它当资源管理：<b>探活前置</b>——每次任务开始先访问特征页判断登录态；<b>失效告警</b>——探测失败立即通知补货，别让爬虫带着死 Cookie 空跑两小时；<b>记录失效时间</b>——多观察几次就能总结出"这个站 Cookie 大约活 7 天"的规律，到期前主动更换；<b>多账号轮换</b>——单账号 Cookie 撑不起采集量时，就该上 6.6 的 Cookies 池了。</p>
+
+      <!-- ============ 6.6 ============ -->
+      <h2>6.6 Cookies 池搭建 <span class="chip tbook">对齐教材 10.2</span></h2>
+      <p>当采集量需要多个账号分摊、单个 Cookie 又会过期时，把 6.1~6.5 的全部零件组装起来，就是 <b>Cookies 池</b>——一个"自动登录、自动验活、按需分发登录态"的小型生产系统。数据流一句话：<b>账号队列喂给登录器，登录器产出 Cookie 存进 Redis，检测器定期验活，调度接口对外吐活 Cookie</b>：</p>
+      <div class="flow">
+        <span class="fnode"><b>账号队列</b>待用账号密码</span><span class="farrow">→</span>
+        <span class="fnode"><b>登录器</b>自动登录（含打码）</span><span class="farrow">→</span>
+        <span class="fnode"><b>Redis 存储</b>账号 → Cookie</span><span class="farrow">→</span>
+        <span class="fnode"><b>检测器</b>定时探活/重登</span><span class="farrow">→</span>
+        <span class="fnode"><b>调度接口</b>/random 吐 Cookie</span>
+      </div>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>模块</th><th>职责</th><th>实现要点</th></tr>
+        <tr><td>账号队列</td><td>存待用账号，按需取号</td><td>Redis list/set；登录前先取号，防止重复登录同一账号</td></tr>
+        <tr><td>登录器</td><td>自动登录产出 Cookie</td><td>6.4 的五步 + 6.1~6.3 的验证码手段；登录太难的站允许"人工登录 + 自动收集"混合</td></tr>
+        <tr><td>存储（Redis）</td><td>保存登录态</td><td>hash：<code class="inline">HSET cookies:site 账号 Cookie串</code>；key 唯一，天然去重</td></tr>
+        <tr><td>检测器</td><td>定时探活</td><td>周期请求特征页；失效则剔除/触发重登；记录更新时间</td></tr>
+        <tr><td>调度接口</td><td>对外服务</td><td>Flask 暴露 <code class="inline">/random</code>：随机吐一个"探活通过"的 Cookie</td></tr>
+      </table></div>
+      <div class="code-title">cookies_pool_api.py（调度接口最小实现）</div>
+<pre class="code"><span class="kw">import</span> random
+<span class="kw">from</span> flask <span class="kw">import</span> Flask, jsonify
+<span class="kw">import</span> redis
+
+app = <span class="fn">Flask</span>(__name__)
+r = redis.<span class="fn">Redis</span>(decode_responses=<span class="kw">True</span>)
+
+@app.route(<span class="st">"/random"</span>)
+<span class="kw">def</span> <span class="fn">random_cookie</span>():
+    keys = r.<span class="fn">hkeys</span>(<span class="st">"cookies:target"</span>)        <span class="cm"># hash：field=账号，value=Cookie 串</span>
+    <span class="kw">if not</span> keys:
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"error"</span>: <span class="st">"池子空了，等登录器补货"</span>}), <span class="fn">503</span>
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"cookie"</span>: r.<span class="fn">hget</span>(<span class="st">"cookies:target"</span>, random.<span class="fn">choice</span>(keys))})
+
+<span class="kw">if</span> __name__ == <span class="st">"__main__"</span>:
+    app.<span class="fn">run</span>(port=<span class="fn">5000</span>)</pre>
+      <div class="code-title">预期输出（GET http://127.0.0.1:5000/random）</div>
+<pre class="code">{"cookie": "sessionid=8f3ka9; uid=10086; csrftoken=…"}
+<span class="cm"># 池空时返回 503：{"error": "池子空了，等登录器补货"}</span></pre>
+      <div class="callout ok"><b>闭环达成：</b>这个池子把本章所有零件串成生产线——登录器用 6.4 复刻登录、用 6.1~6.3 过验证码；检测器复用 6.5 的探活逻辑；业务爬虫只管调 <code class="inline">/random</code> 拿 Cookie 干活，完全不知道验证码的存在。第 07 章的代理池是同一套架构思想换了个被池化的资源。</div>
+
+      <div class="pitfall"><b>本章五大坑：</b>① 验证码连败风控——失败重试不设上限等于自爆，失败 3~5 次就应告警/换号/换 IP，重试间隔要拉开；② 密码字段前端加密——抓包看到的是 RSA/AES 密文，明文加密发生在 JS 里，复刻登录前先确认字段有没有加密，有就先去第 08 章报到；③ HttpOnly 不影响抓包——HttpOnly 只禁 JS 读取，F12 Application 面板和抓包工具照样看得到、抄得走，别被它唬住；④ Cookie 跨域失联——Cookie 绑定 Domain，a.com 的 Cookie 发给 b.com 的接口不会生效，整包注入时确认域名一致（含二级域名范围）；⑤ 拿生产账号练打码——多次失败触发账号风控，轻则锁号重则拉黑，练手请用小号或授权练习站。</div>
+
+      <!-- ============ 打卡 ============ -->
+      <h2>✅ 本章打卡清单</h2>
+      <div class="checklist-card check">
+        <label><input type="checkbox" id="c06-1" data-persist><span>掌握 ddddocr 两种用法：classification 识别文字、detection（det=True）出坐标（6.1）</span></label>
+        <label><input type="checkbox" id="c06-2" data-persist><span>能讲滑动验证码三步：缺口识别 → 先快后慢 + 回拉轨迹 → 提交；知道匀速必被识别（6.2）</span></label>
+        <label><input type="checkbox" id="c06-3" data-persist><span>掌握 GitHub 登录字段溯源法：载荷里每个字段都能在登录页找到出处（6.4）</span></label>
+        <label><input type="checkbox" id="c06-4" data-persist><span>独立完成 Cookie 复用全流程：浏览器登录 → F12 抄 → Session 注入 → 探活（6.5）</span></label>
+        <label><input type="checkbox" id="c06-5" data-persist><span>能画出 Cookies 池五模块架构：账号队列 → 登录器 → Redis → 检测器 → 调度接口（6.6）</span></label>
+        <label><input type="checkbox" id="c06-6" data-persist><span>建立"何时打码何时绕"的判断：先 Cookie 复用绕开，打码是最后手段（全章）</span></label>
+      </div>
+
+      <!-- ============ 练习 ============ -->
+      <h2>📝 本章练习</h2>
+      <p class="muted small">先自己想，再展开参考解析。做完到<a href="practice.html">练习场</a>刷综合题。</p>
+
+      <details class="qa"><summary><span class="qno">Q1</span>计算题：ddddocr 对某站图形码的单次识别率是 85%，目标采集 1 万个页面、每页都要过一次验证码。求平均总请求量；若风控规则是"单会话 1 分钟内失败 10 次锁定 30 分钟"，给出重试节奏设计。<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>6.1 成本账的应用——把识别率换算成请求量与风控约束下的节奏。</p>
+          <div class="ans"><b>参考解析：</b>几何分布的期望：平均尝试次数 = 1/p = 1/0.85 ≈ 1.18 次/页，总请求量 ≈ 11800 次（比理想多约 1800 次失败请求）。节奏设计：① 每次失败先<b>刷新换图</b>再重试（同一张图重复 OCR 无意义且浪费风控额度）；② 重试间隔取随机 8~15 秒——1 分钟窗口内最多失败 6~7 次，始终低于"10 次锁定"红线，留出安全余量；③ 单会话<b>连续失败 3 次</b>说明可能触发了更难的验证码（强度升级），应休眠 60 秒或切换账号/IP；④ 全局层面把失败率写进监控：一旦实际失败率显著高于 15%（即识别率跌破 85%），说明对方换了验证码体系，人工介入而不是加大重试。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q2</span>动手：打开 github.com/login（或任意一个传统表单登录站），F12 完成一次登录抓包，列出登录 POST 请求的表单字段，并给每个字段找出它在登录页 HTML 中的出处。<span class="lv badge b-red">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>6.4 字段溯源法——模拟登录方法论的核心动作。</p>
+          <div class="ans"><b>操作路径与预期发现：</b>F12 → Network → 勾 Preserve log → 填表登录 → 找到 <code class="inline">POST /session</code> → Payload 逐字段对照源代码：以 GitHub 为例，<code class="inline">authenticity_token</code> 能在登录页 HTML 的 <code class="inline">&lt;form&gt;</code> 里找到隐藏 <code class="inline">&lt;input&gt;</code>（每次刷新页面值都变，这解释了为什么代码必须先 GET 登录页再 POST）；<code class="inline">login</code> / <code class="inline">password</code> 是你输入的明文；<code class="inline">commit</code> 是按钮固定值 "Sign in"；时间戳等杂项来自其他隐藏 input。练习注意：用测试小号操作，完成后在目标站退出会话；若你在别的站发现 password 抓包值是一长串乱码而非明文——恭喜，撞上了"前端加密"套路（避坑②），那是第 08 章的入场券。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q3</span>设计题：Cookies 池用多个登录器并发向 Redis 写 Cookie。可能产生哪些一致性问题？如何用 Redis 的数据结构设计去重与探活机制？<span class="lv badge b-orange">设计</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>6.6 架构能力 + Redis 数据结构选型（呼应第 04 章）。</p>
+          <div class="ans"><b>参考解析：</b>三个典型问题与对策：① <b>同一账号重复登录</b>——两个登录器同时拿到同一账号，触发风控还浪费打码费。对策：取号用 <code class="inline">SPOP</code>（set 弹出即移除），或登录前 <code class="inline">SETNX lock:账号</code> 抢占 10 分钟的登录锁；② <b>重复写 Cookie</b>——用 hash 存储 <code class="inline">HSET cookies:site 账号 Cookie</code>，field（账号名）唯一，覆盖写天然去重；③ <b>失效 Cookie 被调度出去</b>——加一个 zset 记录探活状态：<code class="inline">ZADD alive:site 时间戳 账号</code>，检测器周期探活、失效即 <code class="inline">HDEL</code> + <code class="inline">ZREM</code>；调度接口只从 alive 里 <code class="inline">ZRANGEBYSCORE alive:site (now-3600) +inf</code> 取最近一小时验活过的账号随机吐出。再加一条：写库操作用 pipeline 批量提交，检测器用定时任务（APScheduler/cron）独立进程跑，与登录器解耦。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q4</span>设计题：为一个点选验证码设计函数接口 solve_click(img_bytes) -&gt; [(x, y), ...]，要求覆盖：上传、超时、失败重试一次、余额不足告警。写出伪代码并说明每个分支的设计理由。<span class="lv badge b-orange">设计</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>6.3 打码平台接入的工程化封装——外部依赖必须有兜底。</p>
+          <div class="ans"><b>参考设计：</b>
+<pre class="code"><span class="kw">def</span> <span class="fn">solve_click</span>(img_bytes, timeout=<span class="fn">30</span>):
+    <span class="kw">try</span>:
+        task_id = upload(img_bytes)             <span class="cm"># ① 上传，立刻拿到任务 id（异步平台）</span>
+    <span class="kw">except</span> requests.RequestException:
+        raise <span class="fn">CaptchaError</span>(<span class="st">"平台不可达"</span>)       <span class="cm"># 网络 fail-fast，不重试（重试也是不可达）</span>
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">6</span>):                         <span class="cm"># ② 每 5 秒轮询一次，共 30s</span>
+        r = query(task_id)
+        <span class="kw">if</span> r.state == <span class="st">"done"</span>:
+            <span class="kw">return</span> parse_coords(r.result)       <span class="cm"># ③ 成功：解析坐标</span>
+        <span class="kw">if</span> r.state == <span class="st">"failed"</span>:
+            <span class="kw">break</span>
+        time.<span class="fn">sleep</span>(<span class="fn">5</span>)
+    <span class="kw">return</span> solve_click_once_more(img_bytes)     <span class="cm"># ④ 失败重试一次（平台误判很常见）</span>
+                                                <span class="cm"># 再失败就抛异常，由上层决定换图/换号</span></pre>
+          设计理由：上传与取结果分离（点选类平台多为异步队列，同步接口也要设 30s 硬超时防挂死）；重试<b>只做一次</b>且重试前换图（同一张图再报一次大概率还是错）；每次调用前查平台余额，低于阈值发告警——打码平台欠费导致的批量失败是最冤枉的爬虫事故；坐标解析后按页面缩放比换算（截图 2x 缩放时坐标要除以 2，这是点选最常见的"明明点对了却判失败"）。</div>
+        </div>
+      </details>
+
+      <div class="book-box">
+        <div class="bx-title">📚 对齐与拓展</div>
+        <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 8 章 验证码识别</b>（8.1 图形验证码 / 8.2 滑动验证码 / 8.3 点触验证码 / 8.4 宫格验证码）与<b>第 10 章</b>（10.1 模拟登录 / 10.2 Cookies 池）；<br>
+           · 拓展阅读：<a href="https://github.com/sml2h3/ddddocr" target="_blank" rel="noopener">ddddocr 项目主页</a>（API 与更多用法）、所用打码平台的题型编号文档；<br>
+           · 配套实战：<a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a> 的 login 系列关卡，专门练登录与验证码；再次提醒——只在授权平台与自有账号上练习。</p>
+      </div>
+
+            <div class="book-box">
+        <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
+        <p>
+         · <a href="https://book.douban.com/subject_search?search_text=Python3反爬虫原理与绕过实战" target="_blank" rel="noopener">韦世东《Python3反爬虫原理与绕过实战》</a>——验证码章节比教材展开更细（崔庆才作序推荐）;
+         · <a href="https://github.com/Kr1s77/awesome-python-login-model" target="_blank" rel="noopener">Kr1s77/awesome-python-login-model</a>——数十个网站登录源码合集，登录方法论的实操场;
+         · <a href="https://github.com/sml2h3/ddddocr" target="_blank" rel="noopener">sml2h3/ddddocr</a>——验证码 OCR 库官方仓库，README 即完整教程。</p>
+      </div>
+
+      <div class="pager">
+        <a class="btn" href="ch05.html">← 上一章：Ajax 与动态渲染</a>
+        <a class="btn primary" href="ch07.html">下一章：代理与反反爬体系 →</a>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 第 06 章 · 验证码识别与模拟登录</p>
+    <p class="muted">对齐《Python3网络爬虫开发实战（第二版）》第 8、10 章 · 进度自动保存</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script src="assets/lesson-player.js"></script>
+<script>
+/* 本章为纯讲解章，无互动组件；脚本保持全站统一的加载顺序。 */
+</script>
+</body>
+</html>

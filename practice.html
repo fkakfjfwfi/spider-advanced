@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>练习场 · 30+ 题库与实战任务 — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="practice">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="library.html" data-nav="library">图书馆</a>
+      <a href="practice.html" data-nav="practice" class="active">练习场</a>
+      <a href="ch01.html" data-nav="c01">从这开始 →</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app doc" style="padding-top:24px;padding-bottom:48px">
+
+  <section class="hero compact">
+    <span class="tag">🛠 实战 · 全站统一练习入口</span>
+    <h1>练习场</h1>
+    <p class="sub">按"入门 → 进阶 → 逆向 → 框架"分级的题库，每题标注考点与出处章节；另有真实平台闯关任务卡。先自己想，再展开参考解析——解析的价值在于"怎么想到"，不是答案本身。</p>
+  </section>
+
+  <!-- ============ 入门 ============ -->
+  <h2>🟢 入门级（第 01~04 章 · 静态页闭环）</h2>
+
+  <details class="qa"><summary><span class="qno">P01</span>requests 发请求时 403，浏览器打开却正常。按优先级列出你的排查步骤。<span class="lv badge b-green">01章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>请求头伪装意识（01/07 章）。</p>
+    <div class="ans"><b>参考解析：</b>① 复刻浏览器请求头（UA 优先，再 Referer/Accept 全套，F12 抄）；② 检查是否需要 Cookie（先 GET 首页用 Session 收证）；③ 换 IP 验证是否被封；④ 看响应体是不是 JS 挑战/字体加密——升级到 05/08 章。顺序的原则：从"最便宜的解释"排起。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P02</span><code class="inline">requests.get(url, params={"kw":"霸 王"})</code> 中带空格与中文的参数，最终发出的 URL 是什么形态？谁负责转换？<span class="lv badge b-green">02章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>URL 编码（02 章）。</p>
+    <div class="ans"><b>参考解析：</b>形如 <code class="inline">?kw=%E9%9C%B8%20%E7%8E%8B</code>——中文按 UTF-8 转 %XX 序列，空格可转 %20 或 +。requests 的 params 会自动 urlencode；若手工拼 URL 则要自己用 <code class="inline">urllib.parse.quote</code>。常见坑：自己拼了中文又让 requests 编码一次，导致双重编码。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P03</span>XPath：<code class="inline">//div[@class="item"]//span[@class="score"]/text()</code> 逐段解释含义；"//" 与 "/" 的区别是什么？<span class="lv badge b-green">03章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>XPath 语法（03 章，对齐教材 4.1）。</p>
+    <div class="ans"><b>参考解析：</b>选取任意位置（//）下 class 为 item 的 div，在其<b>任意后代</b>（//）中找 class 为 score 的 span，取其直接文本。"/" 是严格子级，"//" 是任意层级后代——后者的代价是可能匹配过深，优先用 "/"+ 精确层级，实在结构乱再用 "//"。（连接 408 数据结构：DOM 是树，XPath 就是对树的路径查询。）</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P04</span>同一个页面，BeautifulSoup 用 <code class="inline">html.parser</code> 漏解析了 20% 数据，换 <code class="inline">lxml</code> 就全出来了。为什么？<span class="lv badge b-amber">03章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>解析器差异（03 章）。</p>
+    <div class="ans"><b>参考解析：</b>真实 HTML 常有未闭合标签、嵌套错误等"脏结构"。html.parser 严格按规范容错，遇到怪结构可能放弃子树；lxml（libxml2 实现的 C 库）容错修复能力更强、且速度快一个量级。工程建议：统一用 lxml（BS4 的 parser 参数或直接 parsel/lxml）。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P05</span>设计：要爬一个 5 万条的商品列表并存档供 Python 后续分析用，选 CSV 还是 JSON 还是 SQLite？说出理由。<span class="lv badge b-amber">04章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>存储选型（04 章，对齐教材 5.1~5.3）。</p>
+    <div class="ans"><b>参考解析：</b>数据是同构表格 → CSV（Excel 可开、pandas 直读）；有嵌套结构（多规格/评论列表）→ JSON Lines（每行一个对象，追加友好）；需要去重/查询/增量更新（5 万条还会涨）→ SQLite（单文件零运维，<code class="inline">UNIQUE</code> 约束天然去重）。规模到千万级或要网络访问 → 升级 MySQL/MongoDB。原则：<b>按"之后谁消费这份数据"选存储</b>。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P06</span>代码纠错：找出下面代码的三处问题。<pre class="code">import requests
+for page in range(1, 100):
+    r = requests.get(f"https://x.com/list?page={page}")
+    data = r.json()["data"]</pre><span class="lv badge b-amber">02章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>健壮性三件套（02 章）。</p>
+    <div class="ans"><b>参考解析：</b>① 无 timeout——网络抖动会永久挂起；② 无 UA——默认 python-requests 头大概率被拒；③ 无异常处理——一页失败整个任务崩，应 try/except + 重试。修正版应使用 Session、timeout=10、失败重试 2~3 次、失败记录并 continue。</div></div></details>
+
+  <!-- ============ 进阶 ============ -->
+  <h2 style="margin-top:28px">🟡 进阶级（第 05~07 章 · 动态与对抗）</h2>
+
+  <details class="qa"><summary><span class="qno">P07</span>瀑布流页面往下滚动才加载。你如何用"接口直连"替代"模拟滚动"？写出完整思路。<span class="lv badge b-amber">05章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>Ajax 分析方法论（05 章，对齐教材 6.2）。</p>
+    <div class="ans"><b>参考解析：</b>① Network → XHR/Fetch → 清空 → 滚一屏 → 观察新增请求；② 找到返回列表 JSON 的那条（看 Preview），对比滚动前后的 URL/载荷找规律（page/cursor/offset/timestamp）；③ 用 requests 重放该请求并翻页，直到返回空列表；④ 补齐必要 headers（UA/Referer/Cookie）。若请求带签名参数 → 第 08 章逆向或临时用自动化。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P08</span>Selenium/Playwright 里元素明明在页面上，<code class="inline">find_element</code> 却报找不到。最可能的原因和通用解法？<span class="lv badge b-amber">05章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>等待策略（05 章，对齐教材 7.1）。</p>
+    <div class="ans"><b>参考解析：</b>脚本跑得比渲染快——元素还没渲染出来。解法：显式等待（Playwright 的 locator 自带自动等待；Selenium 用 <code class="inline">WebDriverWait</code> + expected_conditions），或等待特征网络响应/URL 变化。不要用固定 sleep 死等：慢且不稳。另外排查 iframe（要先切进去）。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P09</span>图形验证码用 ddddocr 识别率 70%，够用吗？什么情况下该换策略？换成什么？<span class="lv badge b-orange">06章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>验证码成本观（06 章，对齐教材 8.1）。</p>
+    <div class="ans"><b>参考解析：</b>算总账：70% 意味着平均 1.4 次成功一次，若识别失败可自动刷新重试，整体成功率趋近 100%，只是多耗请求——够用。但若验证码升级为点选/滑块（OCR 失效）或频控按<b>失败次数</b>惩罚，就该换：Cookie 复用（人过一次码用一周）、打码平台、或直接不上验证码的接口。原则：<b>能用 Cookie 复用绕开的验证码，绝不自动打</b>。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P10</span>解释：为什么"随机延时 1~3 秒"的爬虫总吞吐往往高于"极限并发"的爬虫？<span class="lv badge b-orange">07章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>频率与封禁经济学（07 章）。</p>
+    <div class="ans"><b>参考解析：</b>极限并发 → 触发限流/封禁 → 断流 + 换 IP + 验证码成本 + 重试浪费，有效吞吐骤降且可能永久损失账号/IP 资源。礼貌爬虫单请求慢但<b>从不中断</b>，长期看平均吞吐更高。403 实验室演示过：并发超过服务器配额后，耗时不再下降，风险却线性上升。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P11</span>设计一个最小可用的代理池：需要哪几个模块？每个模块的输入输出是什么？<span class="lv badge b-orange">07章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>对齐教材 9.2 代理池的维护。</p>
+    <div class="ans"><b>参考解析：</b>① <b>获取器</b>：从免费源/付费 API 拉原始代理 → 入库；② <b>存储</b>：Redis 集合（带 score 记录可用性）；③ <b>检测器</b>：定时用代理请求一个稳定靶点（如 httpbin.org/ip），可用加分、失败降分、低于阈值剔除；④ <b>调度接口</b>：爬虫来取（随机/轮询/按地域）。要点：检测必须异步定时跑，池子永远提前备货。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P12</span>Cookies 池和代理池分别解决什么问题？能不能互相替代？<span class="lv badge b-orange">06/07章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>对齐教材 9.2 与 10.2 的辨析。</p>
+    <div class="ans"><b>参考解析：</b>代理池解决 <b>IP 维度</b>的封锁（你的出口地址被拉黑）；Cookie 池解决 <b>账号/身份维度</b>的封锁（账号被风控，如需登录态的站点按账号限流）。不可替代：换 IP 不换账号，账号风控照触发；换账号不换 IP，同 IP 多账号易被关联封号。重度对抗场景两者都要，且注意"一号一 IP"的绑定关系。</div></div></details>
+
+  <!-- ============ 逆向 ============ -->
+  <h2 style="margin-top:28px">🔴 逆层级（第 08~09 章 · 分水岭）</h2>
+
+  <details class="qa"><summary><span class="qno">P13</span>遇到一个带 <code class="inline">sign</code> 参数的接口，写出逆向的完整操作序列（从看到 sign 到 Python 出数）。<span class="lv badge b-red">08章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>逆向三板斧（08 章）。</p>
+    <div class="ans"><b>参考解析：</b><b>定位</b>：Sources 全局搜 "sign" → 无果则对该接口下 XHR 断点 → 触发请求 → 沿调用栈上溯到拼参数处。<b>分析</b>：单步执行看变量值（别读混淆代码，看值）→ 识别算法（MD5=32位hex / Base64=4倍长 / AES=U2FsdGVk 开头 / RSA=MIIB 开头）→ 找出盐值与拼接顺序。<b>验证</b>：Console 手算对照真实 sign。<b>还原</b>：Python hashlib/pycryptodome 复刻；复杂则扣 JS 进 Node（execjs）、再不行补环境。<b>闭环</b>：Python 生成的 sign 与浏览器逐字符一致 → 请求 200。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P14</span>密文 <code class="inline">U2FsdGVkX1/+dJ8xQ2w…</code> 是什么算法的证据？"Salted__" 前缀意味着还原时要注意什么？<span class="lv badge b-red">08章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>算法指纹识别（08 章）。</p>
+    <div class="ans"><b>参考解析：</b>U2FsdGVk 是 Base64("Salted__") 的结果——CryptoJS 加密的默认带盐格式，基本可断定 AES（CryptoJS 默认）。注意点：① 有随机盐，同一明文每次密文不同，别试图"反推密文"；② 还原要么拿到 key+mode 后用 pycryptodome 按 OpenSSL 的 EVP_BytesToKey 派生密钥，要么直接扣原 JS 用 execjs 跑，避免手搓派生逻辑出错。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P15</span>扣下来的 JS 在 Node 里报 <code class="inline">window is not defined</code>。这是什么防御？三种处理方案？<span class="lv badge b-red">08章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>环境检测与补环境（08 章）。</p>
+    <div class="ans"><b>参考解析：</b>代码检测浏览器全局对象做反调试/反卸载。方案：① <b>补环境</b>：在 Node 里伪造 <code class="inline">global.window = global; global.document = {...}</code> 等最小骨架，喂到不报错为止；② <b>改代码</b>：把依赖浏览器 API 的分支删掉（前提是理解逻辑）；③ <b>换战场</b>：干脆用 Playwright 让真浏览器算，取其产物——工程上完全合法，等有空再啃。猿人学很多题就是"补环境"练习。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P16</span>Webpack 打包的站点，如何在Sources里快速定位"藏起来的加密函数"？<span class="lv badge b-red">08章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>Webpack 解包（08 章）。</p>
+    <div class="ans"><b>参考解析：</b>① 全局搜加密相关关键字（encrypt / MD5 / sign / 参数名）定位到模块；② 识别 webpack 结构：加载器 <code class="inline">function(e,t,n){…n(moduleId)}</code> + 模块映射表；③ 三种打法：a) 自建 html 引入站点原 JS 后用 <code class="inline">window.webpackJsonp</code> 补丁法掏模块；b) 把整个加载器+模块表抠到本地，调用目标模块；c) 新版 webpack 用 <code class="inline">__webpack_require__.r</code> 运行时 Hook。初学者建议先从 b 抄起，理解"模块表"概念。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P17</span>mitmproxy 抓 App 请求，HTTPS 抓不到（显示 CONNECT 隧道）。缺了哪两步？<span class="lv badge b-red">09章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>对齐教材 11.2，App 抓包基础设施。</p>
+    <div class="ans"><b>参考解析：</b>① <b>装证书</b>：手机访问 mitm.it 安装 mitmproxy CA 证书（Android 7+ 还要装到系统信任区或用 Magisk 模块，iOS 描述文件后需手动开启信任）；② <b>配代理</b>：手机 WiFi 代理指向电脑 IP:8080。此外注意 App 的 <b>SSL Pinning</b>（证书锁定）会拒绝中间人——需 Frida/Objection 反钉扎或换 Xposed 模块，这是 09 章 Frida 部分的引子。</div></div></details>
+
+  <!-- ============ 框架 ============ -->
+  <h2 style="margin-top:28px">🔵 框架级（第 10 章 · 工程化）</h2>
+
+  <details class="qa"><summary><span class="qno">P18</span>Scrapy 里 yield 一个 Request 和 yield 一个 Item 分别发生什么？画出/描述两者的去向。<span class="lv badge b-blue">10章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>对齐教材 13.1 架构（10 章交互图）。</p>
+    <div class="ans"><b>参考解析：</b>yield Request → 交给引擎 → 经调度器入队（去重）→ 出队后经下载中间件 → 下载器发请求 → 响应经下载中间件回引擎 → 回调你的解析函数。yield Item → 引擎 → Item Pipeline 依权重顺序流过（清洗/去重/入库）。一句话：<b>Request 是"更多活"，Item 是"成果"</b>，两者都由引擎统一调度，全链路异步。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P19</span>Scrapy 与 requests 脚本的本质区别是什么？什么情况下"不用 Scrapy"反而正确？<span class="lv badge b-blue">10章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>框架价值观。</p>
+    <div class="ans"><b>参考解析：</b>本质区别：Scrapy 是<b>异步引擎 + 全链路可插拔</b>（调度去重、中间件、管道、并发控制、重试、统计都是框架件），requests 脚本是你自己手搓这些。不该用 Scrapy 的场景：单页面小脚本（杀鸡牛刀）；强依赖浏览器渲染且逻辑简单（Playwright 更顺手）；接口简单但需要极灵活的加密参数处理（有时裸 requests + 自写逆向模块更直观）。框架的价值随规模和对抗强度增长。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P20</span>Scrapy-Redis 的分布式原理：把什么搬到了 Redis？为什么普通 scrapy 原生不支持多机？<span class="lv badge b-blue">10章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>对齐教材 14.1~14.2。</p>
+    <div class="ans"><b>参考解析：</b>把<b>请求队列</b>和<b>指纹去重集合</b>搬进 Redis：多台机器的调度器共享同一队列、同一去重集合，任务不重复、天然负载均衡。原生不支持是因为调度器/去重默认在单机内存里（每台机器各排各的队、各去各的重）。Bloom Filter 的对接是用极小内存代价承载海量 URL 去重（允许极小误判率）。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P21</span>部署：为什么要用 Scrapyd/Docker 管理 Scrapy 项目，而不是 nohup 一跑了之？<span class="lv badge b-blue">10章</span></summary>
+    <div class="qa-body"><p><b>考点：</b>对齐教材 15 章。</p>
+    <div class="ans"><b>参考解析：</b>nohup 方案的问题：环境不可复制、崩了不知道、多机版本不一致、无法远程调度。Scrapyd 提供 HTTP API 实现版本管理与远程调度；Docker 把环境打包成镜像，任何机器 <code class="inline">docker run</code> 即得一致环境；Gerapy 在其上加可视化管理面板。工程化三件套的目标：<b>环境可复制、状态可观测、操作可远程</b>。</div></div></details>
+
+  <!-- ============ 综合 ============ -->
+  <h2 style="margin-top:28px">🟣 综合设计（跨章）</h2>
+
+  <details class="qa"><summary><span class="qno">P22</span>任务：采集某新闻站 10 万篇文章（列表+正文，每日增量）。给出技术方案：库选型、存储、增量、频率、异常处理、监控。<span class="lv badge b-violet">综合</span></summary>
+    <div class="qa-body"><p><b>考点：</b>全课程体系串联。</p>
+    <div class="ans"><b>参考方案：</b>请求层 requests.Session + 完整 headers + 随机延时 1~3s（07）；列表接口若为 Ajax 直连（05），正文若静态用 parsel 解析（03）；存储 SQLite/MySQL，<code class="inline">url_hash</code> 建 UNIQUE 去重实现增量（04）；失败重试 3 次 + 代理池兜底（07）；每日 cron 调度（或 Scrapy + Scrapyd 定时），记录每批抓取量，连续 3 批为 0 告警到飞书（10）。合规：robots 检查、深夜批量、限速。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P23</span>情景判断：以下哪些可以做、哪些不能？（a）爬取公开榜单数据做考研分析；（b）爬取需登录的付费课程视频；（c）爬取公开商品价格比价；（d）采集用户手机号打营销电话。<span class="lv badge b-violet">合规</span></summary>
+    <div class="qa-body"><p><b>考点：</b>法律与伦理边界。</p>
+    <div class="ans"><b>参考解析：</b>(a) 可以——公开数据+正当用途，遵守频率礼仪；(b) 不可以——绕过付费墙属于侵犯版权/突破技术措施；(c) 可以——公开商业信息，正当用途；(d) 绝对不可以——个人信息收集+骚扰用途，触碰《个人信息保护法》《刑法》红线。判断框架：<b>数据是否公开 × 用途是否正当 × 手段是否破坏技术措施 × 是否涉及个人信息</b>。</div></div></details>
+
+  <details class="qa"><summary><span class="qno">P24</span>元问题：拿到任何一个新网站，你的"前五分钟动作清单"是什么？<span class="lv badge b-violet">方法论</span></summary>
+    <div class="qa-body"><p><b>考点：</b>把全书压缩成一个工作流。</p>
+    <div class="ans"><b>参考清单：</b>① 右键源代码搜目标数据 → 有则静态直爬；② 无则 F12 Network 筛 XHR 刷新，找数据请求；③ 看请求是否带加密参数（sign/token）→ 有则第 08 章三板斧或 Playwright 过渡；④ 看是否要登录 → Cookie 复用（06）；⑤ 发第一个 requests 试水：看状态码与响应长度，判断反爬强度 → 决定后续对抗等级（07）。这五步来自第 01~08 章的顺序，也是本站学习顺序的倒影。</div></div></details>
+
+  <!-- ============ 实战任务卡 ============ -->
+  <h2 style="margin-top:34px">🗺 实战任务卡（授权练习平台）</h2>
+  <div class="tbl-wrap"><table class="tbl">
+    <tr><th>关卡</th><th>练什么</th><th>对应章节</th><th>通关标准</th></tr>
+    <tr><td><a href="https://quotes.toscrape.com" target="_blank" rel="noopener">quotes.toscrape.com</a></td><td>静态列表 + 翻页 + 存储</td><td>02/03/04</td><td>10 页名句入库，字段完整</td></tr>
+    <tr><td><a href="https://books.toscrape.com" target="_blank" rel="noopener">books.toscrape.com</a></td><td>分类聚合 + 详情页跟进</td><td>03/04</td><td>全站图书带分类入库</td></tr>
+    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener">scrape.center ssr1~5</a></td><td>服务端渲染页</td><td>02/03</td><td>5 关全清</td></tr>
+    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener">scrape.center spa1~9</a></td><td>前端渲染 + 接口分析</td><td>05</td><td>spa5 前全部接口直连拿下</td></tr>
+    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener">scrape.center login 系列</a></td><td>登录与验证码</td><td>06</td><td>至少 2 种登录方式跑通</td></tr>
+    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener">scrape.center antispider1~9</a></td><td>反爬阶梯</td><td>07</td><td>全清并写出每关的"盾"是什么</td></tr>
+    <tr><td><a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match 1~10</a></td><td>JS 逆向</td><td>08</td><td>1~5 独立解出；6~10 有笔记</td></tr>
+    <tr><td><a href="https://github.com/hhuayuan/spiderbuf" target="_blank" rel="noopener">Spiderbuf</a></td><td>攻防综合</td><td>07/08</td><td>连闯 3 关</td></tr>
+  </table></div>
+
+  <div class="callout warn" style="margin-top:20px"><b>提醒：</b>所有练习仅在授权平台进行；真实站点务必遵守 robots 与频率礼仪。把每道卡关的题发给 AI 助教，一起复盘"卡在哪一步"。</div>
+
+  <div class="pager">
+    <a class="btn" href="index.html">← 返回课程总览</a>
+    <a class="btn primary" href="ch01.html">从第 01 章开始 →</a>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 练习场</p>
+    <p class="muted">答案的价值在于"怎么想到" · 实战仅在授权平台进行</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

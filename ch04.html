@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>04 · 数据存储：文件 / MySQL / MongoDB — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="c04">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+      <a href="ch05.html" data-nav="c05">下一章 →</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app" style="padding-top:20px;padding-bottom:48px">
+  <div class="crumb"><a href="index.html">首页</a> / 基础篇 / <b>04 · 数据存储：文件 / MySQL / MongoDB</b></div>
+  <div class="layout">
+
+    <aside class="chapnav">
+      <div class="cap">课程目录</div>
+      <div class="grp">🧱 基础篇</div>
+      <a href="ch01.html" data-nav="c01"><span class="no">01</span>基础与抓包 <span class="pg" data-chapter-progress="c01">0/6</span></a>
+      <a href="ch02.html" data-nav="c02"><span class="no">02</span>请求与正则 <span class="pg" data-chapter-progress="c02">0/6</span></a>
+      <a href="ch03.html" data-nav="c03"><span class="no">03</span>解析库全解 <span class="pg" data-chapter-progress="c03">0/6</span></a>
+      <a href="ch04.html" data-nav="c04" class="active"><span class="no">04</span>数据存储 <span class="pg" data-chapter-progress="c04">0/6</span></a>
+      <div class="grp">⚔️ 进阶篇</div>
+      <a href="ch05.html" data-nav="c05"><span class="no">05</span>Ajax与动态渲染 <span class="pg" data-chapter-progress="c05">0/6</span></a>
+      <a href="ch06.html" data-nav="c06"><span class="no">06</span>验证码与登录 <span class="pg" data-chapter-progress="c06">0/6</span></a>
+      <a href="ch07.html" data-nav="c07"><span class="no">07</span>代理与反反爬 <span class="pg" data-chapter-progress="c07">0/6</span></a>
+      <div class="grp">🔍 逆向篇</div>
+      <a href="ch08.html" data-nav="c08"><span class="no">08</span>JS 逆向专题 <span class="pg" data-chapter-progress="c08">0/6</span></a>
+      <a href="ch09.html" data-nav="c09"><span class="no">09</span>App 爬取 <span class="pg" data-chapter-progress="c09">0/6</span></a>
+      <div class="grp">🏭 框架篇</div>
+      <a href="ch10.html" data-nav="c10"><span class="no">10</span>Scrapy与分布式 <span class="pg" data-chapter-progress="c10">0/6</span></a>
+      <div class="grp">🛠 实战</div>
+      <a href="practice.html" data-nav="practice"><span class="no">📝</span>练习场</a>
+      <a href="library.html" data-nav="library"><span class="no">📚</span>多源图书馆</a>
+    </aside>
+
+    <div class="appmain doc">
+
+      <section class="hero compact">
+        <span class="tag">基础篇 · 对齐教材 5.1 ~ 5.3</span>
+        <h1>04 · 数据存储：文件 / MySQL / MongoDB</h1>
+        <p class="sub">抓得到、解析得出，最后要"落得下"。这一章补齐爬虫三段式的最后一环：文件存储（TXT / JSON / CSV）、关系型数据库（SQLite 单机零配置、MySQL 参数化与事务）、非关系型数据库（MongoDB 文档库、Redis 三大结构），最后给你一张"数据形态 × 规模 × 消费方式"的选型决策表——从此拿到任何需求都能立刻回答"往哪儿存"。</p>
+        <div class="pwrap">
+          <div class="progress"><div class="fill" data-progress-bar="c04"></div></div>
+          <span class="plabel" data-progress-label="c04"></span>
+        </div>
+      </section>
+
+      <div class="connect-box">
+        <div class="bx-title">🔗 连接你已有的知识（考研 408 · 数据库 × 数据结构）</div>
+        <p>· 408 数据库的关系模型（表 / 键 / 完整性约束）就是建表的依据：SQLite 的 <code class="inline">PRIMARY KEY / UNIQUE</code> 是你背过的<b>实体完整性</b>，它直接决定你能不能写对"去重入库"；<br>
+           · <b>事务 ACID</b>（原子性、一致性、隔离性、持久性）对应 <code class="inline">commit / rollback</code>：爬虫爬到一半崩溃，回滚保证库里不残留半批脏数据——这是 408 经典考点第一次真正帮你写对代码；<br>
+           · 索引：408 里 B+ 树加速查询，数据库里 <code class="inline">WHERE score &gt; 9.6</code> 快不快就看它——去重键上建 UNIQUE 索引，一石二鸟；<br>
+           · Redis 的三大结构全是 408 数据结构常客：<b>set = 集合</b>（判重 O(1)）、<b>zset = 有序集合</b>（底层跳表，408 拓展考点）、<b>list = 队列</b>（FIFO）——第 07 章代理池与第 10 章分布式队列全靠它们。</p>
+      </div>
+
+      <!-- ============ 4.1 ============ -->
+      <h2>4.1 文件存储 <span class="chip tbook">对齐教材 5.1</span></h2>
+      <p>数据量小、一次性任务，文件就是最诚实的答案。三种格式各有脾气：</p>
+
+      <h3>TXT：追加写日志</h3>
+      <p>最朴素，适合做原始数据留底、调试日志。关键是 <b>"a" 追加模式</b>（"w" 会整文件覆盖，爬虫跑第二次就清空第一次的成果）：</p>
+      <div class="code-title">txt_save.py</div>
+<pre class="code"><span class="kw">with</span> <span class="fn">open</span>(<span class="st">"movies.txt"</span>, <span class="st">"a"</span>, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
+    f.write(<span class="st">f"肖申克的救赎\t9.7\n"</span>)     <span class="cm"># 制表符分列、每条一行，pandas 随时可 read_csv 读回来</span></pre>
+
+      <h3>JSON 与 JSON Lines：结构化的程序友好格式</h3>
+      <p>3.5 已打下基础，这里补齐参数全家福：<code class="inline">ensure_ascii=False</code> 中文原样、<code class="inline">indent</code> 美化（人看时加，机器读时不加省体积）。日常爬虫首选 <b>JSON Lines</b>（一行一个对象、追加安全）：</p>
+      <div class="code-title">json_save.py</div>
+<pre class="code"><span class="kw">import</span> json
+
+item = {<span class="st">"title"</span>: <span class="st">"三体"</span>, <span class="st">"score"</span>: <span class="fn">9.3</span>}
+
+<span class="cm"># 整文件写（小数据、配置类）；ensure_ascii=False 保证中文不转义</span>
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"books.json"</span>, <span class="st">"w"</span>, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
+    json.dump([item], f, ensure_ascii=<span class="kw">False</span>, indent=<span class="fn">2</span>)
+
+<span class="cm"># JSON Lines：追加写，断点续爬友好（爬虫首选）</span>
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"books.jsonl"</span>, <span class="st">"a"</span>, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
+    f.write(json.dumps(item, ensure_ascii=<span class="kw">False</span>) + <span class="st">"\n"</span>)</pre>
+
+      <h3>CSV：给 Excel 用户和业务方</h3>
+      <p>用 <code class="inline">csv.DictWriter</code>，字典列表直接写。两个保命参数：<b><code class="inline">newline=""</code></b> 防 Windows 下每行之间空一行（csv 模块自己管换行，别让 open 再插一手）；<b><code class="inline">encoding="utf-8-sig"</code></b> 带上 BOM 头，Excel 双击打开不乱码：</p>
+      <div class="code-title">csv_save.py</div>
+<pre class="code"><span class="kw">import</span> csv
+
+rows = [
+    {<span class="st">"rank"</span>: <span class="fn">1</span>, <span class="st">"title"</span>: <span class="st">"肖申克的救赎"</span>, <span class="st">"score"</span>: <span class="fn">9.7</span>},
+    {<span class="st">"rank"</span>: <span class="fn">2</span>, <span class="st">"title"</span>: <span class="st">"霸王别姬"</span>, <span class="st">"score"</span>: <span class="fn">9.6</span>},
+]
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"movies.csv"</span>, <span class="st">"w"</span>, newline=<span class="st">""</span>, encoding=<span class="st">"utf-8-sig"</span>) <span class="kw">as</span> f:
+    writer = csv.DictWriter(f, fieldnames=[<span class="st">"rank"</span>, <span class="st">"title"</span>, <span class="st">"score"</span>])
+    writer.writeheader()          <span class="cm"># 表头只写一次</span>
+    writer.writerows(rows)
+<span class="cm"># 追加模式续写时：open(..., "a", ...)，不要再 writeheader，用 writer.writerow(row)</span></pre>
+
+      <h3>三者选型对比</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>格式</th><th>优点</th><th>缺点</th><th>适用</th></tr>
+        <tr><td>TXT</td><td>零依赖、人能看、最抗造</td><td>无结构、难查询难过滤</td><td>日志、原始留底</td></tr>
+        <tr><td>JSON / JSON Lines</td><td>结构化、嵌套照收、程序友好、追加安全</td><td>Excel 打不开、体积偏大</td><td>接口数据、给下游程序消费</td></tr>
+        <tr><td>CSV</td><td>Excel 直开、通用交换格式</td><td>表达不了嵌套、类型全退化成字符串</td><td>表格型数据、交付给业务方</td></tr>
+      </table></div>
+
+      <!-- ============ 4.2 ============ -->
+      <h2>4.2 关系型存储 <span class="chip tbook">对齐教材 5.2</span></h2>
+      <p>数据要<b>查询、去重、增量更新</b>时，文件就不够了——该上数据库。关系型的两条路：SQLite（单机文件库）与 MySQL（服务端库）。</p>
+
+      <h3>① SQLite：零配置的单机首选</h3>
+      <p><code class="inline">import sqlite3</code> 即用——整个数据库就是<b>一个文件</b>，无安装、无服务、无账号密码。爬虫单机项目（几十万行以内）的默认答案。核心看点是 <b>UNIQUE 约束 + INSERT OR IGNORE 实现去重入库</b>：</p>
+      <div class="code-title">sqlite_demo.py</div>
+<pre class="code"><span class="kw">import</span> sqlite3
+
+conn = sqlite3.connect(<span class="st">"movies.db"</span>)        <span class="cm"># 文件不存在自动创建，即"整库"</span>
+cur = conn.cursor()
+
+<span class="cm"># 建表：rank 加 UNIQUE 约束 —— 数据库层帮你挡重复，比代码里 if 判断可靠</span>
+cur.execute(<span class="st">"""
+CREATE TABLE IF NOT EXISTS movie (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    rank         INTEGER UNIQUE,
+    title        TEXT NOT NULL,
+    score        REAL,
+    release_time TEXT
+)
+"""</span>)
+
+rows = [
+    (<span class="fn">1</span>, <span class="st">"肖申克的救赎"</span>, <span class="fn">9.7</span>, <span class="st">"1994-09-10"</span>),
+    (<span class="fn">1</span>, <span class="st">"肖申克的救赎"</span>, <span class="fn">9.5</span>, <span class="st">"1994-09-10"</span>),   <span class="cm"># rank 重复：被 IGNORE 静默跳过</span>
+    (<span class="fn">2</span>, <span class="st">"霸王别姬"</span>, <span class="fn">9.6</span>, <span class="st">"1994-01-01"</span>),
+]
+cur.executemany(
+    <span class="st">"INSERT OR IGNORE INTO movie (rank, title, score, release_time) VALUES (?, ?, ?, ?)"</span>,
+    rows,                                    <span class="cm"># ? 占位符 = 参数化，自动转义</span>
+)
+conn.commit()                                <span class="cm"># 不 commit 等于白写！</span>
+
+<span class="kw">for</span> title, score <span class="kw">in</span> cur.execute(
+        <span class="st">"SELECT title, score FROM movie WHERE score &gt;= 9.6 ORDER BY score DESC"</span>):
+    <span class="fn">print</span>(title, score)
+<span class="cm"># 肖申克的救赎 9.7</span>
+<span class="cm"># 霸王别姬 9.6</span>
+
+conn.close()</pre>
+      <p>三个 408 对应点：<code class="inline">UNIQUE</code> 是<b>实体完整性约束</b>（重复插入直接被拒，IGNORE 是"拒绝但不报错"）；<code class="inline">? 占位符</code>是<b>参数化查询</b>（防注入，MySQL 节展开讲）；<code class="inline">commit</code> 是<b>事务提交</b>（ACID 的持久性）。</p>
+
+      <h3>② MySQL：参数化与事务</h3>
+      <p>数据要长期迭代、多端共享时上 MySQL（<code class="inline">pip install pymysql</code>）。四个要点：连接参数化、<b>execute 的参数化占位符（%s）防 SQL 注入</b>、事务 commit/rollback、连接复用（连接是昂贵资源，别每条数据建一个）：</p>
+      <div class="code-title">mysql_demo.py</div>
+<pre class="code"><span class="kw">import</span> pymysql
+
+conn = pymysql.connect(
+    host=<span class="st">"127.0.0.1"</span>, port=<span class="fn">3306</span>,
+    user=<span class="st">"spider"</span>, password=<span class="st">"你的密码"</span>,
+    database=<span class="st">"spider_db"</span>, charset=<span class="st">"utf8mb4"</span>,   <span class="cm"># utf8mb4 才收 emoji，utf8 收不全</span>
+    autocommit=<span class="kw">False</span>,                          <span class="cm"># 手动管事务</span>
+)
+cur = conn.cursor()
+
+sql = <span class="st">"INSERT INTO movie (rank, title, score) VALUES (%s, %s, %s)"</span>   <span class="cm"># 占位符，不是 f-string！</span>
+<span class="kw">try</span>:
+    cur.execute(sql, (<span class="fn">1</span>, <span class="st">"肖申克的救赎"</span>, <span class="fn">9.7</span>))     <span class="cm"># 数据永远作为"参数"传入</span>
+    cur.executemany(sql, [(<span class="fn">2</span>, <span class="st">"霸王别姬"</span>, <span class="fn">9.6</span>), (<span class="fn">3</span>, <span class="st">"活着"</span>, <span class="fn">9.4</span>)])
+    conn.commit()                            <span class="cm"># 全部成功才提交 —— 原子性</span>
+<span class="kw">except</span> Exception:
+    conn.rollback()                          <span class="cm"># 任一步失败，整批回滚 —— 半批脏数据不存在</span>
+    <span class="kw">raise</span>
+<span class="kw">finally</span>:
+    cur.close()
+    conn.close()</pre>
+      <div class="callout warn"><b>SQL 注入：一条警告 Worth 一整节。</b>把用户数据 f-string 进 SQL：<code class="inline">f"SELECT * FROM users WHERE name = '{name}'"</code>，当 name 是 <code class="inline">' OR '1'='1</code> 时，引号闭合、条件恒真，语句被<b>改写</b>——别人的输入变成了你的 SQL 语法。参数化的原理：SQL 模板先预编译成语法树，参数<b>只作为数据</b>绑定进去，永远没有机会被当成语法执行。SQLite 用 ?、PyMySQL 用 %s，本质相同。铁律：<b>任何来自外部（网页、接口、你爬来的数据）的值，只许走占位符。</b></div>
+
+      <!-- ============ 4.3 ============ -->
+      <h2>4.3 非关系型存储 <span class="chip tbook">对齐教材 5.3</span></h2>
+      <h3>① MongoDB：文档型，字段不固定就找它</h3>
+      <p>网页数据的字段经常"缺胳膊少腿"（有的电影没有评分，有的商品没有副标题），关系型建表会被 NULL 灌满；MongoDB 存的是 <b>BSON 文档</b>，字段随写随有（<code class="inline">pip install pymongo</code>）：</p>
+      <div class="code-title">mongo_demo.py</div>
+<pre class="code"><span class="kw">from</span> pymongo <span class="kw">import</span> MongoClient, ASCENDING
+
+client = MongoClient(<span class="st">"mongodb://127.0.0.1:27017/"</span>, serverSelectionTimeoutMS=<span class="fn">5000</span>)
+col = client[<span class="st">"spider_db"</span>][<span class="st">"movie"</span>]          <span class="cm"># 库和集合都不存在？插入时自动创建</span>
+
+<span class="cm"># 增</span>
+col.insert_one({<span class="st">"rank"</span>: <span class="fn">1</span>, <span class="st">"title"</span>: <span class="st">"肖申克的救赎"</span>, <span class="st">"score"</span>: <span class="fn">9.7</span>, <span class="st">"tags"</span>: [<span class="st">"犯罪"</span>, <span class="st">"剧情"</span>]})
+col.insert_many([{<span class="st">"rank"</span>: <span class="fn">2</span>, <span class="st">"title"</span>: <span class="st">"霸王别姬"</span>, <span class="st">"score"</span>: <span class="fn">9.6</span>},
+                 {<span class="st">"rank"</span>: <span class="fn">3</span>, <span class="st">"title"</span>: <span class="st">"活着"</span>}])   <span class="cm"># 字段不齐？没关系 —— 文档型的底气</span>
+
+<span class="cm"># 查：条件 + 排序</span>
+<span class="kw">for</span> doc <span class="kw">in</span> col.find({<span class="st">"score"</span>: {<span class="st">"$gte"</span>: <span class="fn">9.6</span>}}).sort(<span class="st">"rank"</span>, ASCENDING):
+    <span class="fn">print</span>(doc[<span class="st">"title"</span>])
+
+<span class="cm"># 改 + 去重：upsert —— 存在则更新、不存在则插入，增量爬取的标配</span>
+col.update_one(
+    {<span class="st">"rank"</span>: <span class="fn">1</span>},                                        <span class="cm"># 查找条件（相当于主键）</span>
+    {<span class="st">"$set"</span>: {<span class="st">"title"</span>: <span class="st">"肖申克的救赎"</span>, <span class="st">"score"</span>: <span class="fn">9.7</span>}},  <span class="cm"># 只改这些字段</span>
+    upsert=<span class="kw">True</span>,                                        <span class="cm"># 没找到就插入</span>
+)
+<span class="cm"># 查询慢？给常用条件建索引：col.create_index([("rank", ASCENDING)], unique=True)</span></pre>
+
+      <h3>② Redis：不只是缓存，是爬虫的调度中枢</h3>
+      <p>Redis 是内存键值库（<code class="inline">pip install redis</code>），爬虫用它的三大结构干三件事——<b>去重集合、评分排行、待爬队列</b>，为第 07 章（代理池）与第 10 章（分布式）埋下伏笔：</p>
+      <div class="code-title">redis_demo.py</div>
+<pre class="code"><span class="kw">import</span> redis
+
+r = redis.Redis(host=<span class="st">"127.0.0.1"</span>, port=<span class="fn">6379</span>, db=<span class="fn">0</span>, decode_responses=<span class="kw">True</span>)
+<span class="cm"># decode_responses=True：返回 str 而不是 bytes</span>
+
+<span class="cm"># ① set 去重集合：sadd 添加成功返回 1（新）、0（已存在）—— O(1) 判重</span>
+<span class="kw">if</span> r.sadd(<span class="st">"seen_urls"</span>, <span class="st">"https://example.com/page/1"</span>):
+    <span class="fn">print</span>(<span class="st">"新 URL，去爬"</span>)
+<span class="kw">else</span>:
+    <span class="fn">print</span>(<span class="st">"爬过了，跳过"</span>)
+
+<span class="cm"># ② zset 有序集合：按 score 排行 —— 代理池打分、热点榜单</span>
+r.zadd(<span class="st">"hot_movies"</span>, {<span class="st">"肖申克的救赎"</span>: <span class="fn">9.7</span>, <span class="st">"霸王别姬"</span>: <span class="fn">9.6</span>})
+<span class="fn">print</span>(r.zrevrange(<span class="st">"hot_movies"</span>, <span class="fn">0</span>, <span class="fn">2</span>, withscores=<span class="kw">True</span>))   <span class="cm"># Top3：按分从高到低</span>
+
+<span class="cm"># ③ list 队列：lpush 进队 + rpop 出队 = FIFO 待爬队列（第 10 章分布式的基础）</span>
+r.lpush(<span class="st">"queue"</span>, <span class="st">"https://example.com/page/2"</span>)
+<span class="fn">print</span>(r.rpop(<span class="st">"queue"</span>))                        <span class="cm"># https://example.com/page/2</span></pre>
+
+      <!-- ============ 4.4 ============ -->
+      <h2>4.4 存储选型决策 <span class="chip tnew">方法论</span></h2>
+      <p>选型不看"哪个高级"，看三个变量：<b>数据形态</b>（表格还是嵌套文档？）、<b>规模</b>（千行还是亿行？）、<b>消费方式</b>（人看？程序读？多端查询？）。对着下表走一遍就有答案：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>数据形态</th><th>规模</th><th>消费方式</th><th>推荐</th></tr>
+        <tr><td>表格型、字段整齐</td><td>&lt; 1 万行</td><td>Excel 打开给业务看</td><td><b>CSV</b>（utf-8-sig）</td></tr>
+        <tr><td>结构化/嵌套 JSON</td><td>任意</td><td>程序继续处理、断点续爬</td><td><b>JSON Lines</b></td></tr>
+        <tr><td>结构化、要查询去重</td><td>&lt; 百万行</td><td>单机脚本本地读</td><td><b>SQLite</b>（零配置）</td></tr>
+        <tr><td>结构化、长期迭代</td><td>百万行以上</td><td>多端并发读写、事务保证</td><td><b>MySQL</b></td></tr>
+        <tr><td>文档型、字段不齐、嵌套深</td><td>百万行以上</td><td>服务端灵活查询</td><td><b>MongoDB</b></td></tr>
+        <tr><td>（中间件）URL 判重 / 排行 / 待爬队列</td><td>任意</td><td>爬虫自身调度</td><td><b>Redis</b> set / zset / list</td></tr>
+      </table></div>
+      <div class="flow">
+        <span class="fnode"><b>先问</b>给谁用？</span><span class="farrow">→</span>
+        <span class="fnode"><b>人看</b>CSV / 文本</span><span class="farrow">→</span>
+        <span class="fnode"><b>程序读</b>JSONL → 入库</span><span class="farrow">→</span>
+        <span class="fnode"><b>要查询？</b>SQLite→MySQL/MongoDB</span><span class="farrow">→</span>
+        <span class="fnode"><b>要调度？</b>Redis</span>
+      </div>
+      <p>实战组合拳：第 02 章的猫眼 TOP100（表格型、百行、要看）→ CSV；名句整站爬取（要增量去重）→ SQLite + UNIQUE；第 05 章起的接口数据（嵌套 JSON）→ MongoDB + upsert；第 07 章代理池 → Redis zset 打分。把第 03 章《解析器的艺术》动画里那句"落库三兄弟，按需选择"真正落地。</p>
+
+      <div class="pitfall"><b>本章避坑清单：</b>① CSV 用 <code class="inline">utf-8</code> 写、Excel 打开全是乱码——Excel 不认无 BOM 的 UTF-8，写盘一律 <code class="inline">utf-8-sig</code>；② csv 写文件漏了 <code class="inline">newline=""</code>——Windows 下每行之间多一个空行，pandas 读回来全是 NaN；③ f-string 拼 SQL 是注入温床（<code class="inline">f"…'{value}'"</code>）——任何外部值只许走占位符 <code class="inline">? / %s</code>；④ 忘了 <code class="inline">commit</code>——SQLite/MySQL 默认走事务，程序跑完没提交，数据根本没落盘，"爬了一晚上库是空的"多半是它；⑤ MongoDB 的 <code class="inline">update_one</code> 修改器写错：不用 <code class="inline">$set</code> 会<b>整文档替换</b>；增量去重要记得 <code class="inline">upsert=True</code>，光用 insert_one 每天重爬只会堆积重复。</div>
+
+      <!-- ============ 打卡 ============ -->
+      <h2>✅ 本章打卡清单</h2>
+      <div class="checklist-card check">
+        <label><input type="checkbox" id="c04-1" data-persist><span>TXT 追加写、JSON(dumps ensure_ascii=False)/JSON Lines、CSV(DictWriter + utf-8-sig + newline="") 三种文件存储都会写（4.1）</span></label>
+        <label><input type="checkbox" id="c04-2" data-persist><span>SQLite 全流程跑通：建表、UNIQUE 约束 + INSERT OR IGNORE 去重入库、参数化查询（4.2）</span></label>
+        <label><input type="checkbox" id="c04-3" data-persist><span>MySQL：pymysql 连接、%s 参数化、事务 commit/rollback 会用，能向别人解释 SQL 注入成因（4.2）</span></label>
+        <label><input type="checkbox" id="c04-4" data-persist><span>MongoDB：insert_one/insert_many、find 条件排序、update_one + upsert 去重增量全通（4.3）</span></label>
+        <label><input type="checkbox" id="c04-5" data-persist><span>说得出 Redis set（判重）/ zset（排行）/ list（队列）三种结构在爬虫里的用途（4.3）</span></label>
+        <label><input type="checkbox" id="c04-6" data-persist><span>面对任意新数据源，会用 4.4 决策表（形态×规模×消费方式）说出存哪儿、为什么</span></label>
+      </div>
+
+      <!-- ============ 练习 ============ -->
+      <h2>📝 本章练习</h2>
+      <p class="muted small">先自己想，再展开参考解析。做完到<a href="practice.html">练习场</a>刷综合题。</p>
+
+      <details class="qa"><summary><span class="qno">Q1</span>同事生成的 movies.csv 在记事本里中文正常，Excel 双击打开却全是乱码。原因是什么？给出两种修复方案。<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>4.1 CSV 编码细节，最经典的"交付事故"。</p>
+          <div class="ans"><b>参考解析：</b>文件是<b>无 BOM 的 UTF-8</b>。记事本会尝试多种编码（能认出 UTF-8），而 Excel 双击打开 CSV 时按系统默认 ANSI（中文 Windows 是 GBK）解码，UTF-8 的中文字节被 GBK 误读成乱码。修复方案：① 治本——写文件时用 <code class="inline">open("movies.csv", "w", newline="", encoding="utf-8-sig")</code>，utf-8-sig 会在文件头写入 BOM（EF BB BF），Excel 看到 BOM 就按 UTF-8 解码；② 治标——Excel 里走"数据 → 从文本/CSV 导入"，手动指定编码为 UTF-8（65001）。另外两个 CSV 高频坑一并复查：open 少了 <code class="inline">newline=""</code>（空行问题）、DictWriter 的 fieldnames 与字典键不一致（ValueError 或丢列）。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q2</span>动手：为"每天重爬猫眼 TOP100"设计 SQLite 去重入库方案——同一 rank 绝不能出现两行，重复数据来了要安静跳过。写出建表与插入代码，并说明它和 MongoDB 的 upsert 是什么关系。<span class="lv badge b-orange">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>4.2 UNIQUE 约束 + INSERT OR IGNORE，实体完整性的落地。</p>
+          <div class="ans"><b>参考解析：</b>去重键（rank，或真实场景的影片 id）上加 UNIQUE 约束，让<b>数据库</b>而不是 Python 代码负责判重：
+<pre class="code"><span class="kw">import</span> sqlite3
+
+conn = sqlite3.connect(<span class="st">"movies.db"</span>)
+cur = conn.cursor()
+cur.execute(<span class="st">"""
+CREATE TABLE IF NOT EXISTS movie (
+    rank  INTEGER UNIQUE,          -- 去重键：实体完整性约束
+    title TEXT NOT NULL,
+    score REAL
+)"""</span>)
+
+rows = [(<span class="fn">1</span>, <span class="st">"肖申克的救赎"</span>, <span class="fn">9.7</span>), (<span class="fn">1</span>, <span class="st">"肖申克的救赎"</span>, <span class="fn">9.5</span>)]  <span class="cm"># 第二条 rank 重复</span>
+cur.executemany(<span class="st">"INSERT OR IGNORE INTO movie (rank, title, score) VALUES (?, ?, ?)"</span>, rows)
+conn.commit()
+<span class="fn">print</span>(cur.execute(<span class="st">"SELECT COUNT(*) FROM movie"</span>).fetchone())   <span class="cm"># (1,) —— 重复行被安静挡掉</span></pre>
+          INSERT OR IGNORE 语义是"冲突就不插、不报错"；若要"重复时更新成新值"，换 <code class="inline">INSERT … ON CONFLICT(rank) DO UPDATE SET score=excluded.score</code>（UPSERT 语义）。它与 MongoDB 的 <code class="inline">update_one(..., upsert=True)</code> 是<b>同一种思想的两种方言</b>：都把"存在即更新、不存在即插入"交给存储引擎原子完成——比自己先 SELECT 再 INSERT 更安全（并发下不会竞态重复），这也是第 10 章分布式去重的地基。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q3</span>分析：要求每天增量爬取电影数据进 MongoDB——新片插入、老片字段更新、绝不产生重复文档。为什么光用 insert_one 做不到？写出正确实现。<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>4.3 upsert 增量模式，爬虫长期运行的核心设计。</p>
+          <div class="ans"><b>参考解析：</b>insert_one 是纯追加：每天重爬同一榜单，同一 rank 会插入 N 份文档，集合里堆满"同片不同日"的重复——查询时还要自己挑最新。正确姿势是<b>以业务唯一键为条件做 upsert</b>：
+<pre class="code">col.update_one(
+    {<span class="st">"rank"</span>: rank},                          <span class="cm"># 唯一键：先按它找</span>
+    {<span class="st">"$set"</span>: {<span class="st">"title"</span>: title, <span class="st">"score"</span>: score, <span class="st">"updated_at"</span>: now}},  <span class="cm"># 只更新这些字段</span>
+    upsert=<span class="kw">True</span>,                              <span class="cm"># 找不到就整条插入</span>
+)</pre>
+          要点：① 查找条件必须是<b>业务唯一键</b>（rank / 影片 id / 详情页 URL），别用会变的字段；② 用 $set 只更新需要的字段，保留首次采集的 created_at 等历史字段；③ 再给唯一键建唯一索引 <code class="inline">col.create_index([("rank", 1)], unique=True)</code> 兜底，并发写入也不会插出重复；④ 配合 $currentDate 或自填时间戳，天然得到"数据最后更新日"。这套"唯一键 + upsert + 时间戳"就是增量爬取存储的标准范式。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q4</span>下面这段登录查询代码有致命漏洞。指出漏洞名称、构造一个能绕过密码校验的输入，并用参数化修复。<span class="lv badge b-red">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>4.2 SQL 注入成因 + 参数化原理（408 安全高频延伸）。</p>
+<pre class="code">name = <span class="fn">input</span>(<span class="st">"用户名: "</span>)
+pwd  = <span class="fn">input</span>(<span class="st">"密码: "</span>)
+sql = <span class="st">f"SELECT * FROM users WHERE name = '{name}' AND pwd = '{pwd}'"</span>   <span class="cm"># 漏洞在这</span>
+cur.execute(sql)</pre>
+          <div class="ans"><b>参考解析：</b>漏洞是 <b>SQL 注入</b>：外部输入被 f-string 直接拼进 SQL，输入中的单引号会<b>闭合字符串并注入新的 SQL 语法</b>。构造绕过：用户名输 <code class="inline">' OR '1'='1</code>，密码随便输 x，拼接后变成：<code class="inline">SELECT * FROM users WHERE name = '' OR '1'='1' AND pwd = 'x'</code>——由于 OR 优先级与恒真条件，全表命中，密码校验形同虚设；更狠的输入甚至能 ; DROP TABLE。修复（参数化）：
+<pre class="code">cur.execute(<span class="st">"SELECT * FROM users WHERE name = %s AND pwd = %s"</span>, (name, pwd))</pre>
+          原理：SQL 模板先由数据库<b>预编译</b>成执行计划（语法树），参数在编译<b>之后</b>作为纯数据绑定——引号、分号都只是普通字符，永远不能改变语句结构。工程上再补两层：数据库账号只授最小权限（爬虫账号不给 DROP）、对 Web 层输入做白名单校验。一句话总结：<b>语法归模板，数据归参数，两者永不相遇。</b></div>
+        </div>
+      </details>
+
+      <div class="book-box">
+        <div class="bx-title">📚 对齐与拓展</div>
+        <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 5 章 数据的存储</b>（5.1 文件存储 / 5.2 关系型数据库存储 / 5.3 非关系型数据库存储）；<br>
+           · 拓展阅读：<a href="https://docs.python.org/zh-cn/3/library/sqlite3.html" target="_blank" rel="noopener">sqlite3 官方文档</a>、<a href="https://pymysql.readthedocs.io/" target="_blank" rel="noopener">PyMySQL 文档</a>、<a href="https://pymongo.readthedocs.io/" target="_blank" rel="noopener">PyMongo 教程</a>（重点 CRUD + upsert）、<a href="https://redis-py.readthedocs.io/" target="_blank" rel="noopener">redis-py 文档</a>；<br>
+           · 自检实验：本地起 MongoDB 与 Redis（Docker 一条命令），把第 02 章猫眼数据改存 SQLite → MongoDB → Redis zset 各练一遍。</p>
+      </div>
+
+            <div class="book-box">
+        <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
+        <p>
+         · 《Python网络爬虫权威指南》第 5 章"数据库"——存储选型的国际视角;
+         · <a href="https://www.mongodb.com/docs/manual/" target="_blank" rel="noopener">MongoDB 官方手册</a>——文档模型与增查改权威参考;
+         · <a href="https://redis.io/docs/latest/develop/data-types/" target="_blank" rel="noopener">Redis 数据类型文档</a>——set/zlist/list 的正源，第 07/10 章的地基。</p>
+      </div>
+
+      <div class="pager">
+        <a class="btn" href="ch03.html">← 上一章：解析库全解</a>
+        <a class="btn primary" href="ch05.html">下一章：Ajax与动态渲染 →</a>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 第 04 章 · 数据存储</p>
+    <p class="muted">对齐《Python3网络爬虫开发实战（第二版）》第 5 章 · 进度自动保存</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

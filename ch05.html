@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>05 · Ajax 分析与动态渲染 — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="c05">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+      <a href="ch06.html" data-nav="c06">下一章 →</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app" style="padding-top:20px;padding-bottom:48px">
+  <div class="crumb"><a href="index.html">首页</a> / 进阶篇 / <b>05 · Ajax 分析与动态渲染</b></div>
+  <div class="layout">
+
+    <aside class="chapnav">
+      <div class="cap">课程目录</div>
+      <div class="grp">🧱 基础篇</div>
+      <a href="ch01.html" data-nav="c01"><span class="no">01</span>基础与抓包 <span class="pg" data-chapter-progress="c01">0/6</span></a>
+      <a href="ch02.html" data-nav="c02"><span class="no">02</span>请求与正则 <span class="pg" data-chapter-progress="c02">0/6</span></a>
+      <a href="ch03.html" data-nav="c03"><span class="no">03</span>解析库全解 <span class="pg" data-chapter-progress="c03">0/6</span></a>
+      <a href="ch04.html" data-nav="c04"><span class="no">04</span>数据存储 <span class="pg" data-chapter-progress="c04">0/6</span></a>
+      <div class="grp">⚔️ 进阶篇</div>
+      <a href="ch05.html" data-nav="c05" class="active"><span class="no">05</span>Ajax与动态渲染 <span class="pg" data-chapter-progress="c05">0/6</span></a>
+      <a href="ch06.html" data-nav="c06"><span class="no">06</span>验证码与登录 <span class="pg" data-chapter-progress="c06">0/6</span></a>
+      <a href="ch07.html" data-nav="c07"><span class="no">07</span>代理与反反爬 <span class="pg" data-chapter-progress="c07">0/6</span></a>
+      <div class="grp">🔍 逆向篇</div>
+      <a href="ch08.html" data-nav="c08"><span class="no">08</span>JS 逆向专题 <span class="pg" data-chapter-progress="c08">0/6</span></a>
+      <a href="ch09.html" data-nav="c09"><span class="no">09</span>App 爬取 <span class="pg" data-chapter-progress="c09">0/6</span></a>
+      <div class="grp">🏭 框架篇</div>
+      <a href="ch10.html" data-nav="c10"><span class="no">10</span>Scrapy与分布式 <span class="pg" data-chapter-progress="c10">0/6</span></a>
+      <div class="grp">🛠 实战</div>
+      <a href="practice.html" data-nav="practice"><span class="no">📝</span>练习场</a>
+      <a href="library.html" data-nav="library"><span class="no">📚</span>多源图书馆</a>
+    </aside>
+
+    <div class="appmain doc">
+
+      <section class="hero compact">
+        <span class="tag">进阶篇 · 对齐教材 6.1 ~ 6.4 + 7.1 ~ 7.4</span>
+        <h1>05 · Ajax 分析与动态渲染</h1>
+        <p class="sub">右键"查看源代码"里没有的数据，怎么抓？这一章给你两条路：把 Ajax 分析到一根参数都不剩（接口直连，快），或者让真浏览器替你把页面渲染出来（Selenium / Playwright，稳）。学完这一章，"动态页面"不再是一道墙。</p>
+        <div class="pwrap">
+          <div class="progress"><div class="fill" data-progress-bar="c05"></div></div>
+          <span class="plabel" data-progress-label="c05"></span>
+        </div>
+      </section>
+
+      <div class="connect-box">
+        <div class="bx-title">🔗 连接你已有的知识（考研 408 · 计算机网络 + 操作系统）</div>
+        <p>· AJAX = 408 计网<b>"异步 + HTTP"的组合应用</b>：异步 JS 在不重载页面的前提下向服务器发 HTTP 请求——你学过的请求/响应模型原样成立，只是发起者从"地址栏"换成了"JS 引擎"；<br>
+           · Playwright 的<b>自动等待</b> = 操作系统"同步原语"的思想：<b>等条件就绪，而不是等固定时间</b>——"轮询忙等 vs 条件阻塞"这道 408 经典选择题，在爬虫等待策略里原题重演；<br>
+           · 本章没有新协议、新魔法：动态渲染只是把第 01 章"数据总在某个响应里"的结论，藏得更深了一层。找到那条请求，一切照旧。</p>
+      </div>
+
+      <!-- ============ 5.1 ============ -->
+      <h2>5.1 什么是 Ajax <span class="chip tbook">对齐教材 6.1</span></h2>
+      <p>Ajax（Asynchronous JavaScript and XML）<b>不是协议、不是库，而是一种技术组合</b>：页面里的 JS 在<b>不刷新、不跳转</b>的前提下，自己在后台向服务器发起 HTTP 请求，拿到数据后只更新页面的某一块区域。今天 Ajax 背的早就不只是 XML，<b>主流是 JSON</b>；发请求的 API 也从老派的 <code class="inline">XMLHttpRequest</code> 进化到了现代的 <code class="inline">fetch</code>，但"异步 + HTTP + 局部更新"这个骨架二十年没变过。</p>
+
+      <h3>页面里的 JS 是怎么要数据的</h3>
+      <div class="code-title">页面里的 JS（简化示意）</div>
+<pre class="code"><span class="cm">// 现代写法：fetch——页面加载后，JS 悄悄向接口要数据</span>
+<span class="kw">const</span> resp = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="st">"/api/movies?page=1"</span>);
+<span class="kw">const</span> json = <span class="kw">await</span> resp.<span class="fn">json</span>();
+document.<span class="fn">querySelector</span>(<span class="st">"#list"</span>).innerHTML =
+  json.data.<span class="fn">map</span>(m =&gt; <span class="st">`&lt;li&gt;${m.name} ${m.score}&lt;/li&gt;`</span>).<span class="fn">join</span>(<span class="st">""</span>);   <span class="cm">// 局部更新，页面不刷新</span>
+
+<span class="cm">// 老一辈的写法：XMLHttpRequest（老站仍在用，逻辑一模一样）</span>
+<span class="kw">var</span> xhr = <span class="kw">new</span> <span class="fn">XMLHttpRequest</span>();
+xhr.<span class="fn">open</span>(<span class="st">"GET"</span>, <span class="st">"/api/movies?page=1"</span>);
+xhr.<span class="fn">onload</span> = <span class="kw">function</span> () { <span class="cm">/* 数据到手，改 DOM */</span> };
+xhr.<span class="fn">send</span>();</pre>
+
+      <h3>为什么"源代码里没有"</h3>
+      <p>把网页想象成一场演出：<b>服务器返回的原始 HTML 是"开播前的空舞台"</b>——标题、骨架、脚本引用都在，但列表是空的。页面加载完成后，JS 才向 <code class="inline">/api/movies</code> 发起 XHR，把 JSON 数据搬回来，塞进 DOM——这就是<b>局部更新</b>。而右键"查看网页源代码"看到的，永远是<b>开播前的那份原始 HTML</b>；数据不在里面，在后来那条 XHR 响应里。</p>
+      <div class="callout info"><b>三层定位法（第 01 章 1.3 的结论回收）：</b>源代码里有 → requests 直接抓；源代码没有但 Elements 有 → 数据是 JS 事后塞的，真正的源头是某条 XHR/Fetch 接口；接口都要带算不出的加密参数 → 逆向（第 08 章）或浏览器自动化（本章 5.4）。F12 的 <b>Network 面板</b>就是看穿这一切的透视镜。</div>
+
+      <!-- ============ 5.2 ============ -->
+      <h2>5.2 Ajax 分析方法论 <span class="chip tbook">对齐教材 6.2</span> <span class="chip tnew">本章重点</span></h2>
+      <p>接口分析是爬虫工程师的<b>核心肌肉记忆</b>，五步走，一步都不要省。目标只有一个：找到那条<b>能被 requests 原样重放</b>的数据请求。</p>
+
+      <div class="flow">
+        <span class="fnode"><b>① 筛选</b>Network 勾 XHR/Fetch</span><span class="farrow">→</span>
+        <span class="fnode"><b>② 清空</b>🚫 清掉历史请求</span><span class="farrow">→</span>
+        <span class="fnode"><b>③ 触发</b>翻页 / 滚动 / 搜索</span><span class="farrow">→</span>
+        <span class="fnode"><b>④ 对比</b>Payload 找参数规律</span><span class="farrow">→</span>
+        <span class="fnode"><b>⑤ 确认重放</b>Preview + Copy as cURL</span>
+      </div>
+
+      <h3>第 ① 步：打开 Network 面板，筛出 XHR / Fetch</h3>
+      <p>F12 → Network 标签 → 点筛选栏的 <b>Fetch/XHR</b> 按钮。这一步是把 document、图片、CSS、JS 等噪音全部滤掉，<b>只看"数据请求"</b>——Ajax 拉的数据几乎必然走这两类。顺手勾上顶部的 <b>Preserve log</b>（保留日志），防止页面跳转把请求记录清空。</p>
+
+      <h3>第 ② 步：清空列表，留一块干净画布</h3>
+      <p>点左上角的 🚫（Clear）图标，把页面加载时的几十条历史请求全部清掉。<b>为什么？</b>因为接下来要看的是"<b>哪个请求是在我做了动作之后新出现的</b>"——画布越干净，新增的请求越显眼。这一步是新手最容易省略、老手绝不会省的一步。</p>
+
+      <h3>第 ③ 步：触发动作，看谁冒出来了</h3>
+      <p>在页面上点"下一页"、往下滚动、输关键词点搜索——<b>页面哪里更新了，就触发哪里</b>。此时 Network 里新冒出来的那几条请求，就是嫌疑人。把鼠标移上去看名字：<code class="inline">/api/list?page=2</code> 这种一看就是；<code class="inline">track.gif</code>、<code class="inline">report</code> 这种多半是埋点统计，别追错人。</p>
+
+      <h3>第 ④ 步：对比载荷，找翻页参数的规律</h3>
+      <p>连点三次"下一页"，得到三条同路径的请求。逐条点开 <b>Payload</b>（旧版叫 Params/Query String Parameters）标签，<b>把三次的参数摆在一起对比</b>——哪个参数变了，哪个参数就是控制翻页的开关。参数家族基本逃不出这张表：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>参数家族</th><th>载荷里的长相</th><th>规律</th><th>循环策略</th></tr>
+        <tr><td><code class="inline">page</code> 型</td><td>page=1 → 2 → 3</td><td>整数自增，最直白</td><td>while 循环 +1，空列表停（5.3）</td></tr>
+        <tr><td>游标型 <code class="inline">cursor</code> / <code class="inline">offset</code></td><td>cursor=AbC123…</td><td>下一页的"门票"藏在上一页响应里</td><td>从响应取 next_cursor，空/null 停</td></tr>
+        <tr><td>时间戳型 <code class="inline">timestamp</code></td><td>1730000000000</td><td>毫秒级当前时间，防重放</td><td>代码现生成当前毫秒时间戳</td></tr>
+        <tr><td>签名型 <code class="inline">sign</code></td><td>32/64 位十六进制串</td><td>由参数 + 密钥算出，删掉就 403</td><td>先试直连；真校验就上第 08 章或 5.4 自动化</td></tr>
+      </table></div>
+
+      <h3>第 ⑤ 步：Preview 确认数据，Copy as cURL 重放</h3>
+      <p>选中目标请求 → <b>Preview</b> 标签页，JSON 会折叠展开成一棵树——确认目标字段真的在这里、看清它的层级路径（比如 <code class="inline">data.list</code>）。然后右键这条请求 → <b>Copy → Copy as cURL (bash)</b>，粘到终端回车：<b>终端里能吐出数据，说明这条请求是"自包含"的</b>（Cookie、headers、参数全齐），可以直接转成 requests 代码（curlconverter.com 能自动转换）。转不出来（缺签名/Cookie）也别慌，记下缺什么——那是第 08 章或 5.4 要解决的问题。</p>
+      <div class="callout ok"><b>肌肉记忆口诀：</b>筛选 → 清空 → 触发 → 对比 → 确认重放。十分钟内分析不出翻页规律，九成是漏了"清空"或没对比 Payload。</div>
+
+      <div class="lab-card">
+        <h3>🧪 实验室 · 接口参数实验室 <span class="chip tlab">互动</span></h3>
+        <p class="muted small">接口是死的，参数是活的。<b>翻页、搜索、筛选，本质上都只是参数在变</b>——动手改参数，看请求和响应怎么联动。这正是上面第 ④ 步在真实站点里的样子。</p>
+        <div class="pwrap" style="margin:0 0 10px">
+          <label class="switchline" style="gap:6px">搜索关键词 <input id="pl-kw" placeholder="如：霸 / 千 / 星" style="border:1px solid var(--line);border-radius:8px;padding:5px 10px;width:140px"></label>
+          <button class="btn primary" id="pl-go" type="button">发送请求</button>
+          <button class="btn" id="pl-next" type="button">下一页 →</button>
+          <span class="plabel" id="pl-page">当前第 1 页</span>
+        </div>
+        <div class="req-view" id="pl-req" aria-live="polite"></div>
+        <div class="lab-grid" style="margin-top:12px">
+          <div>
+            <p style="font-weight:600;margin:0 0 6px">响应 JSON（截取）</p>
+            <pre class="code" id="pl-json" style="max-height:230px;overflow:auto"></pre>
+          </div>
+          <div>
+            <p style="font-weight:600;margin:0 0 6px">页面渲染结果</p>
+            <div id="pl-rows" style="font-size:13.5px"></div>
+          </div>
+        </div>
+        <table class="tbl kv-table" style="margin-top:8px">
+          <tr><th>参数</th><th>作用</th><th>爬虫怎么用</th></tr>
+          <tr><td>page</td><td>翻页</td><td>while 循环自增，直到返回空列表</td></tr>
+          <tr><td>kw</td><td>搜索词</td><td>需要 URL 编码（中文→%E9%9C%B8），requests 的 params= 自动处理</td></tr>
+          <tr><td>timestamp</td><td>请求时间戳</td><td>很多站拿它做防重放；有的还拼进签名——那是第 08 章逆向的事</td></tr>
+        </table>
+      </div>
+
+      <!-- ============ 5.3 ============ -->
+      <h2>5.3 Ajax 结果提取 <span class="chip tbook">对齐教材 6.3</span></h2>
+      <p>接口找到了，接下来是把它变成代码。接口返回的是 JSON——比 HTML 好解析得多，不需要 XPath，只要<b>按层级取数</b>。先看一眼真实接口的返回长什么样：</p>
+      <div class="code-title">接口返回的 JSON（典型双层封装）</div>
+<pre class="code">{
+  <span class="st">"code"</span>: 0,                        <span class="cm">← 业务状态码，0 表示成功（不是 HTTP 状态码！）</span>
+  <span class="st">"msg"</span>: <span class="st">"success"</span>,
+  <span class="st">"data"</span>: {                          <span class="cm">← 业务数据包在 data 里，有时还更深：data.list</span>
+    <span class="st">"total"</span>: 52,
+    <span class="st">"list"</span>: [
+      {<span class="st">"name"</span>: <span class="st">"肖申克的救赎"</span>, <span class="st">"score"</span>: 9.7},
+      {<span class="st">"name"</span>: <span class="st">"霸王别姬"</span>,     <span class="st">"score"</span>: 9.6}
+    ]
+  }
+}</pre>
+      <p><code class="inline">resp.json()</code> 把响应体解析成 Python 字典，之后就是普通的字典操作：<b>先看清楚真实层级，再一层层往下取</b>——上面这个例子要写 <code class="inline">resp.json()["data"]["list"]</code>，直接取 <code class="inline">["list"]</code> 就会 KeyError。</p>
+
+      <h3>接口翻页循环：while 直到空列表</h3>
+      <div class="code-title">ajax_pager.py</div>
+<pre class="code"><span class="kw">import</span> random
+<span class="kw">import</span> time
+<span class="kw">import</span> requests
+
+s = requests.Session()
+s.headers.update({
+    <span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36"</span>,
+    <span class="st">"Referer"</span>: <span class="st">"https://demo-movies.site/hot"</span>,   <span class="cm"># 从哪条页面发现接口，就填哪个页面</span>
+    <span class="st">"X-Requested-With"</span>: <span class="st">"XMLHttpRequest"</span>,        <span class="cm"># 部分老站校验"这是不是 Ajax 请求"</span>
+})
+
+page, movies = <span class="fn">1</span>, []
+<span class="kw">while</span> <span class="kw">True</span>:                                        <span class="cm"># ① 循环翻页</span>
+    resp = s.<span class="fn">get</span>(<span class="st">"https://demo-movies.site/api/movies"</span>,
+                 params={<span class="st">"page"</span>: page, <span class="st">"size"</span>: <span class="fn">20</span>}, timeout=<span class="fn">10</span>)
+    resp.<span class="fn">raise_for_status</span>()
+    items = resp.<span class="fn">json</span>()[<span class="st">"data"</span>][<span class="st">"list"</span>]            <span class="cm"># ② 按层级取数</span>
+    <span class="kw">if not</span> items:                                  <span class="cm"># ③ 空列表 = 翻到头了，跳出</span>
+        <span class="kw">break</span>
+    movies.extend(items)
+    <span class="fn">print</span>(<span class="st">f"第 {page} 页拿到 {len(items)} 条"</span>)
+    page += <span class="fn">1</span>
+    time.<span class="fn">sleep</span>(random.<span class="fn">uniform</span>(<span class="fn">1</span>, <span class="fn">2</span>))               <span class="cm"># ④ 体面：随机延时（第 07 章展开）</span>
+
+<span class="fn">print</span>(<span class="st">f"共 {len(movies)} 条，前 2 条：{movies[:2]}"</span>)</pre>
+
+      <div class="code-title">预期输出</div>
+<pre class="code">第 1 页拿到 20 条
+第 2 页拿到 20 条
+第 3 页拿到 12 条
+共 52 条，前 2 条：[{'name': '肖申克的救赎', 'score': 9.7}, {'name': '霸王别姬', 'score': 9.6}]</pre>
+
+      <p><b>三个必要 headers</b> 别省：<code class="inline">User-Agent</code>（冒充浏览器，requests 默认 UA 一秒暴露）、<code class="inline">Referer</code>（接口常校验来源页）、<code class="inline">X-Requested-With</code>（老站用来确认"你是 Ajax"）。游标型接口同理，只是把 <code class="inline">page + 1</code> 换成 <code class="inline">cursor = 上一页响应里的 next_cursor</code>，停止条件换成游标为空。另外注意有些接口把"有没有更多"放在 <code class="inline">data.has_more</code> 字段里，拿它当 while 条件更稳。</p>
+
+      <!-- ============ 5.4 ============ -->
+      <h2>5.4 动态渲染处理：两条路 <span class="chip tbook">对齐教材 7.1 ~ 7.4</span></h2>
+      <p>什么时候放弃接口直连、改走"浏览器自动化"？三个信号：<b>接口带算不出的加密参数</b>（sign/token）、<b>数据只在登录/点击/滚动之后出现</b>、<b>接口层层套娃找不到源头</b>。自动化的本质是：<b>用代码驾驶一台真浏览器</b>——它该渲染渲染、该执行 JS 执行 JS，你在旁边收割结果。代价是慢（一次渲染抵几十次直连），所以口诀永远是：<b>先 A 后 B，A 快 B 稳</b>。</p>
+
+      <h3>路 ①：Selenium（老牌经典，对齐教材 7.1）</h3>
+      <p>安装就两行：<code class="inline">pip install selenium</code>——新版内置 Selenium Manager，会<b>自动下载匹配的浏览器驱动</b>，不用再手动对版本号。Selenium 的全部招式可以浓缩成"八要素"：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>#</th><th>要素</th><th>代码</th></tr>
+        <tr><td>1</td><td>驱动管理</td><td><code class="inline">webdriver.Chrome(options)</code>，Manager 自动配 ChromeDriver</td></tr>
+        <tr><td>2</td><td>启动浏览器</td><td><code class="inline">options.add_argument("--headless=new")</code> 无头模式</td></tr>
+        <tr><td>3</td><td>打开页面</td><td><code class="inline">driver.get(url)</code></td></tr>
+        <tr><td>4</td><td>定位元素</td><td><code class="inline">find_element(By.CSS_SELECTOR, …)</code> / <code class="inline">find_elements</code>（复数）</td></tr>
+        <tr><td>5</td><td>交互</td><td><code class="inline">send_keys()</code> 输入 / <code class="inline">click()</code> 点击 / <code class="inline">clear()</code> 清空</td></tr>
+        <tr><td>6</td><td>执行 JS</td><td><code class="inline">driver.execute_script("window.scrollTo(0, …)")</code></td></tr>
+        <tr><td>7</td><td>显式等待</td><td><code class="inline">WebDriverWait</code> + <code class="inline">expected_conditions</code>（等条件，不等人）</td></tr>
+        <tr><td>8</td><td>收尾</td><td><code class="inline">driver.get_cookies()</code> 拿登录态 → <code class="inline">driver.quit()</code> 必须退出</td></tr>
+      </table></div>
+
+      <div class="code-title">selenium_render.py</div>
+<pre class="code"><span class="kw">from</span> selenium <span class="kw">import</span> webdriver
+<span class="kw">from</span> selenium.webdriver.common.by <span class="kw">import</span> By
+<span class="kw">from</span> selenium.webdriver.support.ui <span class="kw">import</span> WebDriverWait
+<span class="kw">from</span> selenium.webdriver.support <span class="kw">import</span> expected_conditions <span class="kw">as</span> EC
+
+options = webdriver.ChromeOptions()
+options.add_argument(<span class="st">"--headless=new"</span>)                                <span class="cm"># 无窗口运行</span>
+options.add_argument(<span class="st">"--disable-blink-features=AutomationControlled"</span>) <span class="cm"># 抹掉最显眼的 webdriver 特征</span>
+driver = webdriver.<span class="fn">Chrome</span>(options=options)
+
+<span class="kw">try</span>:
+    driver.<span class="fn">get</span>(<span class="st">"https://spa.demo-movies.site/hot"</span>)        <span class="cm"># ① 打开页面，浏览器自己渲染</span>
+
+    wait = <span class="fn">WebDriverWait</span>(driver, <span class="fn">10</span>)                     <span class="cm"># ② 显式等待：最多 10 秒，条件满足立即放行</span>
+    wait.<span class="fn">until</span>(EC.<span class="fn">presence_of_element_located</span>((By.CSS_SELECTOR, <span class="st">".movie-item"</span>)))
+
+    <span class="kw">for</span> item <span class="kw">in</span> driver.<span class="fn">find_elements</span>(By.CSS_SELECTOR, <span class="st">".movie-item"</span>):   <span class="cm"># ③ 从渲染好的 DOM 提取</span>
+        <span class="fn">print</span>(item.<span class="fn">find_element</span>(By.CSS_SELECTOR, <span class="st">".name"</span>).text,
+              item.<span class="fn">find_element</span>(By.CSS_SELECTOR, <span class="st">".score"</span>).text)
+
+    driver.<span class="fn">execute_script</span>(<span class="st">"window.scrollTo(0, document.body.scrollHeight)"</span>)  <span class="cm"># ④ 执行 JS：滚到底触发加载</span>
+
+    cookies = {c[<span class="st">"name"</span>]: c[<span class="st">"value"</span>] <span class="kw">for</span> c <span class="kw">in</span> driver.<span class="fn">get_cookies</span>()}          <span class="cm"># ⑤ 拿走 Cookie 交给 requests</span>
+    <span class="fn">print</span>(<span class="st">f"拿到 {len(cookies)} 枚 Cookie"</span>)
+<span class="kw">finally</span>:
+    driver.<span class="fn">quit</span>()                                        <span class="cm"># ⑥ 不 quit 会残留进程占内存</span></pre>
+
+      <div class="code-title">预期输出</div>
+<pre class="code">肖申克的救赎 9.7
+霸王别姬 9.6
+千与千寻 9.4
+星际穿越 9.4
+拿到 7 枚 Cookie</pre>
+
+      <h3>路 ②：Playwright（现代首选，重点掌握）</h3>
+      <p>Selenium 能做的 Playwright 都能做，而且更顺手：<b>locator 操作前自动等待元素出现</b>（天然少一半等待代码）、API 更现代、支持 Chrome/Firefox/WebKit 三内核。安装：<code class="inline">pip install playwright</code> 然后 <code class="inline">playwright install chromium</code>。但真正的<b>杀手锏是响应监听</b>：<code class="inline">page.on("response")</code> 让你挂在浏览器旁边，<b>接口数据一到就直接截走 JSON</b>——页面照常渲染，你却根本不用解析 DOM，"渲染"与"提取"两条需求一次满足：</p>
+
+      <div class="code-title">playwright_direct.py</div>
+<pre class="code"><span class="kw">from</span> playwright.sync_api <span class="kw">import</span> sync_playwright
+
+results = []                                          <span class="cm"># 截获的数据都进这里</span>
+
+<span class="kw">def</span> <span class="fn">catch_api</span>(response):                            <span class="cm"># 杀手锏：监听每一张响应</span>
+    <span class="kw">if</span> <span class="st">"/api/movies"</span> <span class="kw">in</span> response.url <span class="kw">and</span> response.status == <span class="fn">200</span>:
+        results.extend(response.<span class="fn">json</span>()[<span class="st">"data"</span>])       <span class="cm"># 直接截获 JSON，绕过 DOM 解析</span>
+
+<span class="kw">with</span> <span class="fn">sync_playwright</span>() <span class="kw">as</span> p:
+    browser = p.chromium.<span class="fn">launch</span>(headless=<span class="kw">True</span>)
+    page = browser.<span class="fn">new_page</span>()
+    page.<span class="fn">on</span>(<span class="st">"response"</span>, catch_api)                    <span class="cm"># 先挂监听，再开页面</span>
+
+    page.<span class="fn">goto</span>(<span class="st">"https://spa.demo-movies.site/hot"</span>)
+    page.<span class="fn">wait_for_selector</span>(<span class="st">".movie-item"</span>)             <span class="cm"># 自动等待：条件不满足就一直等</span>
+    page.<span class="fn">screenshot</span>(path=<span class="st">"hot.png"</span>, full_page=<span class="kw">True</span>)   <span class="cm"># 顺手截图存档</span>
+
+    page.<span class="fn">locator</span>(<span class="st">".movie-item"</span>).<span class="fn">first</span>.<span class="fn">click</span>()         <span class="cm"># locator 交互前自动等待，不用手写 wait</span>
+    browser.<span class="fn">close</span>()
+
+<span class="fn">print</span>(results[:<span class="fn">2</span>])</pre>
+
+      <div class="code-title">预期输出</div>
+<pre class="code">[{'name': '肖申克的救赎', 'score': 9.7}, {'name': '霸王别姬', 'score': 9.6}]</pre>
+
+      <div class="callout ok"><b>为什么响应监听是杀手锏：</b>遇到"参数算不出来"的接口，常规思路是两条——花三天逆向 sign（第 08 章），或者花三秒让浏览器自己算。Playwright 选后者：浏览器替你执行全部 JS，接口响应回来时你在 <code class="inline">page.on("response")</code> 里<b>半路截胡</b>，拿到的是浏览器"亲口"承认的 JSON。逆向保证"拿得漂亮"，自动化保证"先拿得到"，两条腿走路。</div>
+
+      <h3>路 ③：Splash（了解即可）</h3>
+      <div class="callout warn"><b>一句话定位（对齐教材 7.2/7.3）：</b>Splash 是一个带 JavaScript 渲染引擎的"无头浏览器即服务"，用 Lua 脚本描述"打开页面→等渲染→返回 HTML"，可配合 Scrapy 批量渲染。教材成书时它是主流方案之一，<b>如今 Playwright/Selenium 已全面覆盖它的场景且生态更活跃</b>——知道它是"渲染服务"这个角色即可，新项目不必选它。</div>
+
+      <div class="pitfall"><b>本章五大坑：</b>① 只看 Elements 不看 Network——Elements 是 JS 改过的实时 DOM，源代码里没有的数据要找的是那条 XHR；② iframe 没切入——iframe 里的元素必须先 <code class="inline">driver.switch_to.frame(...)</code>，否则 find_element 永远扑空；③ 把显式等待写成固定 sleep——<code class="inline">time.sleep(5)</code> 网快时白等、网慢时崩，WebDriverWait 等条件不等人；④ json 多包一层 data——<code class="inline">{"code":0,"data":{"list":[…]}}</code> 直接取 ["list"] 必 KeyError，先在 Preview 看清真实层级；⑤ 翻页参数双重编码——requests 的 params= 会自动 URL 编码，自己拼 URL 又手动 quote 一次，中文就变成 %25 双重编码，接口装聋作哑。</div>
+
+      <!-- ============ 动画课堂 ============ -->
+      <h2 id="lesson">🎬 动画课堂 · 《动态网页的两条路》 <span class="chip tanim">第 3 集</span></h2>
+      <p class="muted small">本集逻辑主线：源代码空壳之谜 → AJAX 真相 → 接口直连 vs 浏览器自动化，对应上方 5.1~5.4 全部知识点。▶ 播放 / 空格暂停 / 进度条可拖 / ⏮⏭ 跳场景 / 可调速。</p>
+      <div class="lesson" id="lesson3">
+        <div class="screen"><div class="theater" id="th3">
+          <div class="row">
+            <div class="panel col" id="k3-br"><h4>🖥 浏览器世界</h4>
+              <div class="th-screen" data-dyn id="k3-page"></div>
+              <div style="margin-top:10px">
+                <div class="th-tr"><span class="meth">GET /hot</span><span class="type" data-dyn id="k3-n1t">document</span></div>
+                <div class="th-tr"><span class="meth">GET /static/app.js</span><span class="type" data-dyn id="k3-n2t">script</span></div>
+                <div class="th-tr"><span class="meth">GET /api/movies</span><span class="type" data-dyn id="k3-n3t">xhr</span></div>
+              </div>
+            </div>
+            <div class="col">
+              <div class="panel" id="k3-routeA"><h4>路线 A · 接口直连（快）</h4><div class="th-mono" data-dyn id="k3-a" style="min-height:110px"></div></div>
+              <div class="panel" id="k3-routeB" style="margin-top:10px"><h4>路线 B · 浏览器自动化（稳）</h4><div class="th-mono" data-dyn id="k3-b" style="min-height:110px"></div></div>
+              <div class="note" data-dyn id="k3-note"></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- ============ 打卡 ============ -->
+      <h2>✅ 本章打卡清单</h2>
+      <div class="checklist-card check">
+        <label><input type="checkbox" id="c05-1" data-persist><span>能独立完成 Ajax 分析五步：筛 XHR → 清空 → 触发 → 对比载荷 → Preview 确认（5.2）</span></label>
+        <label><input type="checkbox" id="c05-2" data-persist><span>会写接口翻页循环：while 直到空列表，认得 page / cursor / timestamp 三类参数（5.2/5.3）</span></label>
+        <label><input type="checkbox" id="c05-3" data-persist><span>Selenium 八要素配置齐全：驱动、get、find_element、交互、执行 JS、显式等待、get_cookies、quit（5.4）</span></label>
+        <label><input type="checkbox" id="c05-4" data-persist><span>会用 Playwright 的 page.on("response") 直接截获接口数据（5.4）</span></label>
+        <label><input type="checkbox" id="c05-5" data-persist><span>能讲清显式等待为什么优于固定 sleep：等条件 ≠ 等时间（5.4）</span></label>
+        <label><input type="checkbox" id="c05-6" data-persist><span>记住两条路决策口诀（源代码有→requests；接口清晰→直连；交互复杂→自动化兜底），看完动画并做完练习（全章）</span></label>
+      </div>
+
+      <!-- ============ 练习 ============ -->
+      <h2>📝 本章练习</h2>
+      <p class="muted small">先自己想，再展开参考解析。做完到<a href="practice.html">练习场</a>刷综合题。</p>
+
+      <details class="qa"><summary><span class="qno">Q1</span>一个瀑布流图片站，往下滚动才加载新图。如何把它"接口化"，变成一个纯 requests 的翻页爬虫？写出判断依据和循环代码。<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>5.2 方法论 + 5.3 翻页循环，"滚动的本质是 XHR"的转化能力。</p>
+          <div class="ans"><b>参考解析：</b>判断依据：F12 → Network → 筛 XHR → 清空 → 慢慢往下滚，观察每次滚动新增一条 <code class="inline">/api/photos?page=N</code> 类请求 → Preview 确认图片数据在 JSON 里。既然"滚动到底 = 触发 page 自增的 XHR"，滚动加载就完全可以翻译成 while 循环：
+<pre class="code"><span class="kw">import</span> random, time, requests
+
+s = requests.Session()
+s.headers.update({<span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0"</span>, <span class="st">"Referer"</span>: <span class="st">"https://gallery.demo.site/"</span>})
+
+page, photos = <span class="fn">1</span>, []
+<span class="kw">while</span> <span class="kw">True</span>:
+    data = s.<span class="fn">get</span>(<span class="st">"https://gallery.demo.site/api/photos"</span>,
+                 params={<span class="st">"page"</span>: page}, timeout=<span class="fn">10</span>).<span class="fn">json</span>().<span class="fn">get</span>(<span class="st">"data"</span>, [])
+    <span class="kw">if not</span> data:        <span class="cm"># 空列表 = 没有更多了</span>
+        <span class="kw">break</span>
+    photos.extend(data)
+    page += <span class="fn">1</span>
+    time.<span class="fn">sleep</span>(random.<span class="fn">uniform</span>(<span class="fn">1</span>, <span class="fn">2</span>))
+<span class="fn">print</span>(<span class="st">f"共 {len(photos)} 张"</span>)</pre>
+          注意事项：首屏数据可能是 page=1，避免重复请求；若是游标型（cursor 在响应里），停止条件是 next_cursor 为空；直连被拒先补 Referer/UA，再考虑 5.4 自动化兜底。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q2</span>动手：目标站列表数据来自 /api/movies，但每次请求都带一个你算不出来的 sign 参数。写出用 Playwright 打开页面、截获该接口全部 JSON 并落盘 books.json 的完整代码。<span class="lv badge b-red">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>5.4 杀手锏 page.on("response")，"让浏览器替你算签名"。</p>
+          <div class="ans"><b>参考代码：</b>
+<pre class="code"><span class="kw">from</span> playwright.sync_api <span class="kw">import</span> sync_playwright
+<span class="kw">import</span> json
+
+data = []
+
+<span class="kw">def</span> <span class="fn">catch</span>(resp):
+    <span class="kw">if</span> <span class="st">"/api/movies"</span> <span class="kw">in</span> resp.url <span class="kw">and</span> resp.status == <span class="fn">200</span>:
+        data.extend(resp.<span class="fn">json</span>()[<span class="st">"data"</span>][<span class="st">"list"</span>])
+
+<span class="kw">with</span> <span class="fn">sync_playwright</span>() <span class="kw">as</span> p:
+    browser = p.chromium.<span class="fn">launch</span>(headless=<span class="kw">True</span>)
+    page = browser.<span class="fn">new_page</span>()
+    page.<span class="fn">on</span>(<span class="st">"response"</span>, catch)              <span class="cm"># 必须在 goto 之前挂监听</span>
+    page.<span class="fn">goto</span>(<span class="st">"https://spa.demo-movies.site/hot"</span>)
+    page.<span class="fn">wait_for_selector</span>(<span class="st">".movie-item"</span>)   <span class="cm"># 等首屏渲染，保证 XHR 已发出</span>
+    <span class="cm"># 翻页触发更多请求：点下一页直到按钮变灰，或滚动到底</span>
+    <span class="kw">while</span> page.locator(<span class="st">"a.next:not(.disabled)"</span>).<span class="fn">count</span>():
+        page.locator(<span class="st">"a.next"</span>).<span class="fn">click</span>()
+        page.<span class="fn">wait_for_timeout</span>(<span class="fn">1500</span>)
+    browser.<span class="fn">close</span>()
+
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"books.json"</span>, <span class="st">"w"</span>, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
+    json.<span class="fn">dump</span>(data, f, ensure_ascii=<span class="kw">False</span>, indent=<span class="fn">2</span>)
+<span class="fn">print</span>(<span class="st">f"共截获 {len(data)} 条"</span>)</pre>
+          两个易错点：监听必须在 goto 之前挂上，否则首屏那一条 XHR 会漏掉；截获回调里只做"收数据"，别做重活（它是浏览器的事件循环在调你）。长期方案是把 sign 的算法排进第 08 章逆向清单。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q3</span>设计一个实验：同一列表抓 10 页，对比"Playwright 渲染提取"与"接口直连"的耗时。说明测量口径、要控制的变量、预期差距和结论怎么写。<span class="lv badge b-orange">设计</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>工程化实验设计能力——"自动化慢一个数量级"要靠实验说出口，而不是背结论。</p>
+          <div class="ans"><b>参考解析：</b>测量口径：用 <code class="inline">time.perf_counter()</code> 包住"从第一次请求到 10 页数据全部入库"的全过程（含等待与解析），两边各跑 3 轮取中位数，排除网络抖动。控制变量：同一网络环境、同一时间窗、同一 10 页范围、直连侧不加人为延时（或两边加同样的体面延时）。实验骨架：
+<pre class="code"><span class="kw">import</span> time
+
+t0 = time.<span class="fn">perf_counter</span>()
+<span class="cm"># ……跑完 10 页（两条路各封装成一个函数）</span>
+<span class="fn">print</span>(<span class="st">f"耗时 {time.perf_counter() - t0:.2f}s"</span>)</pre>
+          预期差距：渲染路每页要等图片/JS/CSS 全加载，10 页通常几十秒；直连路每轮几十毫秒，10 页往往 1~2 秒（其中大半还是你自己的延时）——<b>10~50 倍很正常</b>。结论写法："在数据可通过接口稳定获取的前提下，接口直连应作为默认路径；仅当接口不可得时降级到自动化"，并给出本实验的实测倍数作为依据。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q4</span>某接口每次请求都带 timestamp=1730000000000，删掉它返回 412。观察这个参数有什么规律？它和 sign 参数是什么关系？现阶段你怎么处理？<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>5.2 第 ④ 步"对比载荷"的实战应用，参数家族识别。</p>
+          <div class="ans"><b>参考解析：</b>连续发几次请求对比载荷：timestamp 的值每次都变，且等于<b>当前毫秒级 Unix 时间戳</b>（13 位数字 ÷1000 ≈ datetime.now()）——它不是秘密，是"防重放"：服务器拒绝时间偏移过大的旧请求。与 sign 的关系：很多站把 timestamp 拼进签名串一起算，<b>改了 timestamp 就必须重算 sign</b>，所以它常是 sign 的"盐"。处理策略分级：① 如果服务端只校验时间偏移不校验签名 → 代码里 <code class="inline">int(time.time() * 1000)</code> 现生成即可直连；② 如果连 sign 一起校验 → 短期用 Playwright 让浏览器自己算（5.4），长期排进第 08 章逆向清单。判断属于哪种情况的方法：只改 timestamp 发请求，看返回 412 还是 200。</div>
+        </div>
+      </details>
+
+      <div class="book-box">
+        <div class="bx-title">📚 对齐与拓展</div>
+        <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 6 章 Ajax 数据爬取</b>（6.1 什么是 Ajax / 6.2 Ajax 分析方法 / 6.3 Ajax 结果提取 / 6.4 爬取实战）与<b>第 7 章 动态渲染页面爬取</b>（7.1 Selenium / 7.2 Splash 基础 / 7.3 Splash 用法详解 / 7.4 Playwright）；<br>
+           · 拓展阅读：<a href="https://playwright.dev/python/" target="_blank" rel="noopener">Playwright Python 官方文档</a>（重点看 auto-waiting 与 network 事件）、<a href="https://www.selenium.dev/documentation/" target="_blank" rel="noopener">Selenium 官方文档</a>；<br>
+           · 配套实战：<a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a> 的 spa1 → spa5 关卡——先抓接口直连，不行再上 Playwright，正好把"两条路"各走一遍。</p>
+      </div>
+
+            <div class="book-box">
+        <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
+        <p>
+         · <a href="https://playwright.dev/python/" target="_blank" rel="noopener">Playwright 官方文档</a>——自动等待与网络拦截是现代自动化事实标准;
+         · <a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center spa 关卡</a>——崔庆才书 6/7 章的配套实战，边学边闯;
+         · 《Python网络爬虫权威指南》第 10 章"读懂 JavaScript"——渲染问题的另一讲法。</p>
+      </div>
+
+      <div class="pager">
+        <a class="btn" href="ch04.html">← 上一章：数据存储</a>
+        <a class="btn primary" href="ch06.html">下一章：验证码与模拟登录 →</a>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 第 05 章 · Ajax 分析与动态渲染</p>
+    <p class="muted">对齐《Python3网络爬虫开发实战（第二版）》第 6、7 章 · 进度自动保存</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script src="assets/lesson-player.js"></script>
+<script>
+/* ===== 接口参数实验室 ===== */
+(function () {
+  var MOVIES = [
+    { n: '肖申克的救赎', y: 1994, s: 9.7 }, { n: '霸王别姬', y: 1993, s: 9.6 },
+    { n: '千与千寻', y: 2001, s: 9.4 }, { n: '星际穿越', y: 2014, s: 9.4 },
+    { n: '盗梦空间', y: 2010, s: 9.4 }, { n: '楚门的世界', y: 1998, s: 9.4 },
+    { n: '忠犬八公的故事', y: 2009, s: 9.4 }, { n: '海上钢琴师', y: 1998, s: 9.3 },
+    { n: '三傻大闹宝莱坞', y: 2009, s: 9.2 }, { n: '放牛班的春天', y: 2004, s: 9.3 },
+    { n: '当幸福来敲门', y: 2006, s: 9.2 }, { n: '怦然心动', y: 2010, s: 9.1 }
+  ];
+  var PAGE_SIZE = 6, page = 1;
+  function send(p) {
+    page = p;
+    var kw = document.getElementById('pl-kw').value.trim();
+    var filtered = kw ? MOVIES.filter(function (m) { return m.n.indexOf(kw) !== -1; }) : MOVIES;
+    var pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (page > pages) page = pages;
+    var slice = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    document.getElementById('pl-req').textContent =
+      'GET https://api.demo-movies.site/v1/list?page=' + page + (kw ? '&kw=' + encodeURIComponent(kw) : '') + '  →  200 OK  (98 ms)';
+    var json = { code: 0, page: page, kw: kw || null, total: filtered.length, data: slice };
+    document.getElementById('pl-json').textContent = JSON.stringify(json, null, 2);
+    document.getElementById('pl-rows').innerHTML = slice.length
+      ? slice.map(function (m, i) { return '<div class="mv"><span>' + ((page - 1) * PAGE_SIZE + i + 1) + '. ' + m.n + '（' + m.y + '）</span><span class="score">' + m.s.toFixed(1) + '</span></div>'; }).join('')
+      : '<div class="muted">空列表 —— 这就是"翻到头"的信号，循环该停了。</div>';
+    document.getElementById('pl-page').textContent = '当前第 ' + page + ' 页 / 共 ' + pages + ' 页';
+  }
+  document.getElementById('pl-go').addEventListener('click', function () { send(1); });
+  document.getElementById('pl-next').addEventListener('click', function () { send(page + 1); });
+  send(1);
+})();
+
+/* ===== 动画课堂 ===== */
+(function () {
+  function g(r, id) { return r.querySelector('#' + id); }
+  function T(r, id, s) { g(r, id).textContent = s; }
+  function onE(r, id, c) { g(r, id).classList.add(c || 'on'); }
+  var S = [
+    { d: 10, cap: '这一集回答一个致命问题：为什么"查看网页源代码"里没有列表数据？', set: { 'k3-page': '（右键 → 查看源代码…）', 'k3-note': '一个所有新手都会撞上的谜团。' }, cls: { 'k3-br': 'on' } },
+    { d: 12, cap: '浏览器拿到的第一个 HTML 是空壳：标题在，列表空空。数据根本不在里面。', set: { 'k3-page': '🎬 电影热榜\n列表：（空空如也）', 'k3-note': 'HTML 里没有 ≠ 网页上没有。' }, cls: { 'k3-n1t': 'on' } },
+    { d: 13, cap: '页面加载后，JS 才向 /api/movies 发起 XHR——数据是"事后"悄悄拿的，这个机制叫 AJAX。', set: { 'k3-note': '表演还没开始，后台已经在搬数据了。' }, cls: { 'k3-n2t': 'on' } },
+    { d: 12, cap: 'JSON 响应回来：10 部电影全在里面。数据一直都在接口里，只是晚到一步。', set: { 'k3-note': '数据一直都在接口里。' }, cls: { 'k3-n3t': 'good' } },
+    { d: 11, cap: 'JS 把 JSON 渲染成你看见的榜单。渲染只是"表演"，接口才是"后台"。', set: { 'k3-page': '🎬 电影热榜\n1. 肖申克的救赎 9.7\n2. 霸王别姬 9.6 …' } },
+    { d: 13, cap: '所以爬虫别盯着表演看。第一条路：伪装成 JS，直接找接口要 JSON。', set: { 'k3-note': '路线 A：接口直连 —— 默认首选。' }, cls: { 'k3-routeA': 'on' } },
+    { d: 15, cap: '接口直连三步：Network 找到 XHR → 复制 URL 和参数 → requests 带 headers 请求。一轮 0.08 秒，比渲染快几十倍。', set: { 'k3-a': '① Network 里找到 XHR\n② 复制 URL + 参数 + headers\n③ requests.get() 直连\n→ 200 OK（0.08s）', 'k3-note': '一轮 0.08 秒，快几十倍。' } },
+    { d: 14, cap: '翻页不过是参数在变：page=1、2、3……while 循环伺候，直到返回空列表。', set: { 'k3-a': 'page=1 ✓   page=2 ✓   page=3 ✓\npage=4 → data: [] → 停', 'k3-note': '翻页 = 参数循环。' } },
+    { d: 14, cap: '但有的站要登录、要点击、要过验证码——第二条路：让真浏览器替你干活，这就是浏览器自动化。', set: { 'k3-note': '路线 B：Playwright / Selenium 兜底。' }, cls: { 'k3-routeB': 'on' } },
+    { d: 13, cap: '自动化 = 代码扮演人类：打开页面、等待渲染、点击滚动，再从渲染好的页面里提取数据。', set: { 'k3-b': '① 打开页面\n② 等待渲染完成\n③ 点击 / 滚动 / 登录\n④ 从 DOM 提取数据', 'k3-note': '慢，但全能。' } },
+    { d: 13, cap: '选择口诀：源代码里有 → requests；接口清晰 → 直连；交互复杂或死活抓不到 → 自动化兜底。', set: { 'k3-note': '先 A 后 B：A 快 B 稳，两条路都要会。' }, cls: { 'k3-routeA': 'on' } },
+    { d: 12, cap: '两条路都会了，就没人能藏得住数据。回到上面的参数实验室，把接口直连这条路亲手走一遍。', set: { 'k3-note': '▲ 参数实验室在上面' }, cls: { 'k3-routeA': 'good', 'k3-routeB': 'good' } }
+  ];
+  new LessonPlayer({ root: '#lesson3', title: '动态网页的两条路', scenes: S });
+})();
+</script>
+</body>
+</html>

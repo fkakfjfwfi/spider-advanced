@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>09 · App 爬取：抓包与自动化 — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="c09">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+      <a href="ch08.html" data-nav="c08">← 上一章</a>
+      <a href="ch10.html" data-nav="c10">下一章 →</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app" style="padding-top:20px;padding-bottom:48px">
+  <div class="crumb"><a href="index.html">首页</a> / 逆向篇 / <b>09 · App 爬取：抓包与自动化</b></div>
+  <div class="layout">
+
+    <aside class="chapnav">
+      <div class="cap">课程目录</div>
+      <div class="grp">🧱 基础篇</div>
+      <a href="ch01.html" data-nav="c01"><span class="no">01</span>基础与抓包 <span class="pg" data-chapter-progress="c01">0/6</span></a>
+      <a href="ch02.html" data-nav="c02"><span class="no">02</span>请求与正则 <span class="pg" data-chapter-progress="c02">0/6</span></a>
+      <a href="ch03.html" data-nav="c03"><span class="no">03</span>解析库全解 <span class="pg" data-chapter-progress="c03">0/6</span></a>
+      <a href="ch04.html" data-nav="c04"><span class="no">04</span>数据存储 <span class="pg" data-chapter-progress="c04">0/6</span></a>
+      <div class="grp">⚔️ 进阶篇</div>
+      <a href="ch05.html" data-nav="c05"><span class="no">05</span>Ajax与动态渲染 <span class="pg" data-chapter-progress="c05">0/6</span></a>
+      <a href="ch06.html" data-nav="c06"><span class="no">06</span>验证码与登录 <span class="pg" data-chapter-progress="c06">0/6</span></a>
+      <a href="ch07.html" data-nav="c07"><span class="no">07</span>代理与反反爬 <span class="pg" data-chapter-progress="c07">0/6</span></a>
+      <div class="grp">🔍 逆向篇</div>
+      <a href="ch08.html" data-nav="c08"><span class="no">08</span>JS 逆向专题 <span class="pg" data-chapter-progress="c08">0/6</span></a>
+      <a href="ch09.html" data-nav="c09" class="active"><span class="no">09</span>App 爬取 <span class="pg" data-chapter-progress="c09">0/6</span></a>
+      <div class="grp">🏭 框架篇</div>
+      <a href="ch10.html" data-nav="c10"><span class="no">10</span>Scrapy与分布式 <span class="pg" data-chapter-progress="c10">0/6</span></a>
+      <div class="grp">🛠 实战</div>
+      <a href="practice.html" data-nav="practice"><span class="no">📝</span>练习场</a>
+      <a href="library.html" data-nav="library"><span class="no">📚</span>多源图书馆</a>
+    </aside>
+
+    <div class="appmain doc">
+
+      <section class="hero compact">
+        <span class="tag">逆向篇 · 对齐教材 11.1 ~ 11.6 · 含 Frida 拓展</span>
+        <h1>09 · App 爬取：抓包与自动化</h1>
+        <p class="sub">数据不只在网页上——App 的接口往往比网页更干净，但风控更"硬件化"。这一章打通四层能力：装证书抓 HTTPS、mitmproxy 脚本化自动采集、Appium 让 App 自己跑、Frida 在运行时拿到加密前的明文。</p>
+        <div class="pwrap">
+          <div class="progress"><div class="fill" data-progress-bar="c09"></div></div>
+          <span class="plabel" data-progress-label="c09"></span>
+        </div>
+      </section>
+
+      <div class="connect-box">
+        <div class="bx-title">🔗 连接你已有的知识（考研 408 · 网络安全）</div>
+        <p>· mitmproxy 抓包 = 408 安全章节 <b>TLS / CA 证书体系的直接应用</b>：中间人之所以能解密 HTTPS，完全依赖"设备信任了你的根证书"——你在 01 章见过的握手流程，这里要亲手操作一遍；<br>
+           · 会话密钥：抓包工具替两端各协商一把对称密钥（数字信封的原理），所以才能既骗过 App 又骗过服务器；<br>
+           · Frida Hook = <b>运行时函数调用拦截</b>：在"调用"与"实现"之间插一层，本质是对函数入口地址/虚表的改写——理解成"给函数装了个代理"；<br>
+           · Appium 控件树 = 你已经会的 DOM 定位思想：树换成了 uiautomator 的控件树，定位器语法换了，思路一模一样。</p>
+      </div>
+
+      <!-- ============ 9.1 ============ -->
+      <h2>9.1 抓包基础设施 <span class="chip tbook">对齐教材 11.1</span></h2>
+      <p>手机抓包的原理和网页抓包完全一样：都是<b>中间人</b>。手机的全部流量先经过电脑上的抓包工具，工具装一张自己的 CA 证书替两边加解密。区别在于手机不归你写代码控制，所以要先搭好三件基础设施：电脑开代理服务 → 手机 WiFi 代理指向电脑 → 手机安装并信任工具的 CA 证书。任何一步缺失，表现都是"抓不到包"或"抓到一堆看不懂的密文"。</p>
+      <h3>Charles 证书安装（两大平台流程）</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>平台</th><th>证书安装</th><th>信任设置</th><th>代理指向</th></tr>
+        <tr><td><b>Android</b></td><td>Charles：Help → SSL Proxying → Save Root Certificate 导出 pem/crt → 设置里"从存储设备安装证书"</td><td><b>Android 7+ 的坑：</b>App 默认只信<b>系统证书</b>，用户证书不生效——需 Root 后用 Magisk 模块把用户证书移入系统分区，或用 Android ≤ 6.0 的测试机</td><td>长按已连 WiFi → 修改网络 → 手动代理 → 服务器填电脑局域网 IP，端口 8888</td></tr>
+        <tr><td><b>iOS</b></td><td>Safari 访问 <code class="inline">chls.pro/ssl</code> 下载描述文件 → 设置 → 已下载的描述文件 → 安装</td><td>必须再去 设置 → 通用 → 关于本机 → <b>证书信任设置</b> → 打开对 Charles 根证书的"完全信任"（这步漏掉 = 白装）</td><td>WiFi → 配置代理 → 手动 → 电脑 IP:8888</td></tr>
+      </table></div>
+      <p>装好证书只是第一步，Charles 还要<b>开启 HTTPS 解密</b>：Proxy → SSL Proxying Settings → 勾选 Enable SSL Proxying → 在 include 列表添加 <code class="inline">*:443</code>（或只加目标域名）。之后 App 的 HTTPS 响应在 Charles 里才是明文 JSON。验证方法：手机随便打开一个 App，Charles 里能看到请求列表且 Response 可读，基础设施就算搭好了。</p>
+      <div class="callout info"><b>搭好了还抓不到？</b>先分两种情况：① Charles 里<b>有这条请求但内容乱码/显示 SSL 错误</b> → 大概率是 9.3 的 SSL Pinning 证书锁定，不是你操作错了；② Charles 里<b>连请求都没有</b> → 检查手机与电脑是否同一网段、防火墙是否放行 8888 端口。</div>
+
+      <!-- ============ 9.2 ============ -->
+      <h2>9.2 mitmproxy <span class="chip tbook">对齐教材 11.2~11.3</span></h2>
+      <p>Charles 适合人肉翻看，但爬虫工程师真正的主力是 <b>mitmproxy</b>：它开源、跨平台，最重要的是支持<b>命令行与脚本化</b>——抓包过程可以写成 Python 代码自动落库，这才叫"采集"而不是"查看"。它有三种运行模式，对应三种场景：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>模式</th><th>启动命令</th><th>形态</th><th>适用场景</th></tr>
+        <tr><td><b>mitmproxy</b></td><td><code class="inline">mitmproxy -p 8080</code></td><td>终端交互式界面</td><td>现场翻看分析，快捷键浏览</td></tr>
+        <tr><td><b>mitmweb</b></td><td><code class="inline">mitmweb -p 8080</code></td><td>浏览器界面（127.0.0.1:8081）</td><td>喜欢图形界面的人肉分析</td></tr>
+        <tr><td><b>mitmdump</b></td><td><code class="inline">mitmdump -s addon.py -p 8080</code></td><td>无界面、纯脚本</td><td><b>工程化采集主力</b>：边抓边过滤边落库</td></tr>
+      </table></div>
+      <h3>证书与常用快捷键</h3>
+      <p>mitmproxy 的证书安装最省心的方式：手机挂上代理后，用浏览器访问 <code class="inline">http://mitm.it</code>——它会自动识别平台给出证书下载与安装指引（Android/iOS 步骤同 9.1，Android 7+ 系统证书问题同样存在）。交互模式（mitmproxy）下最常用的快捷键：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>快捷键</th><th>作用</th><th>快捷键</th><th>作用</th></tr>
+        <tr><td><code class="inline">j / k</code> 或方向键</td><td>上下移动请求列表</td><td><code class="inline">Enter</code></td><td>查看请求/响应详情</td></tr>
+        <tr><td><code class="inline">Tab</code></td><td>详情页切换 请求/响应/详情</td><td><code class="inline">q</code></td><td>返回上一层 / 退出</td></tr>
+        <tr><td><code class="inline">f</code></td><td>设置过滤表达式，如 <code class="inline">~u api</code> 只看含 api 的 URL</td><td><code class="inline">w</code></td><td>保存当前流量到文件</td></tr>
+        <tr><td><code class="inline">r</code></td><td>重放当前请求（调参利器）</td><td><code class="inline">e</code></td><td>导出为 cURL / Python 代码等格式</td></tr>
+      </table></div>
+      <h3>mitmdump addon 脚本（重点）</h3>
+      <p>addon 就是一个普通 Python 文件：mitmproxy 是<b>事件驱动</b>的，每收到一个请求、一个响应，就触发你定义的对应函数。教材 11.3 用"得到 App"演示的抓包落库方法，通用化后就是这个模板——<code class="inline">def request</code> 做请求期处理，<code class="inline">def response</code> 做响应期过滤与保存：</p>
+      <div class="code-title">app_capture.py —— mitmdump addon 完整示例</div>
+<pre class="code"><span class="cm"># 运行：mitmdump -s app_capture.py -p 8080</span>
+<span class="kw">import</span> json, time
+<span class="kw">from</span> mitmproxy <span class="kw">import</span> http
+
+TARGET = <span class="st">"api.example.com"</span>          <span class="cm"># 只关心这个域名的流量</span>
+OUT    = <span class="st">"app_capture.jsonl"</span>
+
+<span class="kw">def</span> <span class="fn">request</span>(flow: http.HTTPFlow) -&gt; <span class="kw">None</span>:
+    <span class="kw">if</span> TARGET <span class="kw">in</span> flow.request.host:
+        <span class="fn">print</span>(<span class="st">f"[→] </span>{flow.request.method}<span class="st"> </span>{flow.request.pretty_url}<span class="st">"</span>)
+
+<span class="kw">def</span> <span class="fn">response</span>(flow: http.HTTPFlow) -&gt; <span class="kw">None</span>:
+    <span class="kw">if</span> TARGET <span class="kw">not in</span> flow.request.host:
+        <span class="kw">return</span>                       <span class="cm"># 不是目标域名直接放行</span>
+    <span class="kw">try</span>:
+        body = flow.response.<span class="fn">get_text</span>()
+        data = json.<span class="fn">loads</span>(body) <span class="kw">if</span> body <span class="kw">else</span> {}
+    <span class="kw">except</span> Exception:
+        <span class="kw">return</span>                       <span class="cm"># 非 JSON 响应跳过</span>
+    item = {
+        <span class="st">"url"</span>: flow.request.pretty_url,
+        <span class="st">"method"</span>: flow.request.method,
+        <span class="st">"req_headers"</span>: <span class="fn">dict</span>(flow.request.headers),
+        <span class="st">"req_body"</span>: flow.request.<span class="fn">get_text</span>() <span class="kw">or</span> <span class="st">""</span>,
+        <span class="st">"status"</span>: flow.response.status_code,
+        <span class="st">"resp"</span>: data,
+        <span class="st">"ts"</span>: time.<span class="fn">time</span>(),
+    }
+    <span class="kw">with</span> <span class="fn">open</span>(OUT, <span class="st">"a"</span>, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
+        f.<span class="fn">write</span>(json.<span class="fn">dumps</span>(item, ensure_ascii=<span class="kw">False</span>) + <span class="st">"\n"</span>)</pre>
+      <div class="callout ok"><b>工程化提示：</b>落盘用 <b>JSONL</b>（每行一个 JSON 对象）——手机一直产生数据，追加写不会损坏旧数据；后续 <code class="inline">pandas.read_json(..., lines=True)</code> 一行读入，直接接第 04 章的存储体系。人在 App 里正常点屏幕，数据就源源不断进文件——这就是教材 11.3 方法的通用化。</div>
+
+      <!-- ============ 9.3 ============ -->
+      <h2>9.3 App 请求分析的特殊性 <span class="chip tnew">拓展</span></h2>
+      <p>App 抓包不是"网页抓包换个小屏幕"。App 与服务器的关系更紧密，因此多了两道网页爬虫不会遇到的门槛：<b>SSL Pinning</b> 和 <b>so 层加密</b>。认识它们的边界，比多背几个工具更重要。</p>
+      <h3>SSL Pinning 证书锁定</h3>
+      <p><b>概念</b>：普通程序校验证书走系统证书链（你的中间人证书装进系统就生效）；但 App 可以<b>在代码里内置服务器证书或公钥指纹</b>，每次握手时额外校验"对面给的证书和我内置的是不是同一张"——不是就直接断开。这叫 SSL Pinning（证书锁定）。<b>表现</b>：证书装好了、代理也通了，浏览器能抓，唯独这个 App 一打开就断网/全部请求失败。</p>
+      <p><b>应对思路</b>：① <b>Frida 反钉扎</b>——用 Frida hook 住 App 的证书校验函数（如 OkHttp 的 CertificatePinner），让校验永远返回"通过"，社区有现成的通用 unpinning 脚本（9.5 给出 hook 最小模板）；② <b>换测试对象</b>——有些 App 的低版本未启用 pinning，或存在关闭校验的调试包；③ <b>换数据源</b>——看看有没有 Web 端、小程序端提供同源接口，绕开整个 App。思路 ③ 往往是性价比最高的。</p>
+      <h3>so 层加密的边界</h3>
+      <p>更深的门槛是<b>参数在 so 库（C/C++ 编译的动态库）里计算</b>：Java 层只是调个 JNI 接口，真正的加密逻辑在汇编级。逆向 so 需要 IDA/Ghidra 的静态分析功底，属于 App 逆向的另一门功课，投入产出比要冷静评估。<b>务实的边界判断</b>：遇到 so 层加密，先估算还原成本；成本过高就换数据源——Web 端接口、官方开放 API、或合规的数据采购。爬虫工程师的核心能力是<b>判断"这条路值不值"</b>，而不是头铁硬啃。</p>
+      <div class="callout info"><b>成本排序（从低到高）：</b>直连接口 &lt; 浏览器自动化（05 章）&lt; Appium（9.4）&lt; Frida Hook（9.5）&lt; so 层逆向。永远先从最左边试起，每上一级之前问一句：这个数据值不值这个价。</div>
+
+      <!-- ============ 9.4 ============ -->
+      <h2>9.4 Appium 自动化 <span class="chip tbook">对齐教材 11.4~11.6</span></h2>
+      <p>当接口加密太深、还原成本过高时，有一条"降维"路线：<b>让 App 自己跑</b>。Appium 用代码模拟人点屏幕、读屏幕上的控件数据（UI 自动化）——请求是 App 自己发出的，签名自然是合法的，参数加密问题<b>整个被绕开</b>。代价是速度慢、脚本脆（UI 改版就要修），所以它是"接口打不动时"的选择，而不是第一选择。</p>
+      <h3>环境四件套</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>组件</th><th>作用</th><th>安装</th></tr>
+        <tr><td>Node.js</td><td>Appium Server 的运行时</td><td>官网安装，<code class="inline">node -v</code> 验证</td></tr>
+        <tr><td>Java（JDK 8+）</td><td>Android 工具链依赖</td><td>装 JDK 并配 JAVA_HOME</td></tr>
+        <tr><td>Appium Server</td><td>自动化服务，默认监听 4723 端口</td><td><code class="inline">npm i -g appium</code>，或 Appium Server GUI；驱动装 <code class="inline">appium driver install uiautomator2</code></td></tr>
+        <tr><td>Python 客户端 + Android 工具</td><td>写自动化脚本；真机/模拟器调试</td><td><code class="inline">pip install Appium-Python-Client</code>；Android SDK platform-tools（含 adb），真机开 USB 调试</td></tr>
+      </table></div>
+      <h3>Capabilities 模板代码</h3>
+      <p>Capabilities 是一段"启动说明书"：告诉 Appium Server 连哪台设备、启动哪个 App、用哪个自动化引擎。下面是 Android 最常用的模板：</p>
+      <div class="code-title">appium_demo.py —— 启动会话</div>
+<pre class="code"><span class="kw">from</span> appium <span class="kw">import</span> webdriver
+<span class="kw">from</span> appium.options.android <span class="kw">import</span> UiAutomator2Options
+<span class="kw">from</span> appium.webdriver.common.appiumby <span class="kw">import</span> AppiumBy
+
+options = UiAutomator2Options()
+options.platform_name = <span class="st">"Android"</span>
+options.device_name   = <span class="st">"emulator-5554"</span>          <span class="cm"># adb devices 查到的设备名</span>
+options.app_package   = <span class="st">"com.example.app"</span>        <span class="cm"># 目标 App 包名（adb shell pm list packages 查）</span>
+options.app_activity  = <span class="st">".MainActivity"</span>          <span class="cm"># 启动 Activity</span>
+options.automation_name = <span class="st">"UiAutomator2"</span>
+options.no_reset      = <span class="kw">True</span>                     <span class="cm"># 不清数据：保留已登录状态</span>
+
+driver = webdriver.<span class="fn">Remote</span>(<span class="st">"http://127.0.0.1:4723"</span>, options=options)</pre>
+      <h3>控件定位</h3>
+      <p>定位器和第 03 章的解析思想一脉相承，只是"树"换成了 uiautomator 控件树。定位器从哪来？用 Android Studio 的 <b>Layout Inspector</b>、旧版 <b>uiautomatorviewer</b>，或 Appium Inspector 扫描屏幕，点哪个控件看哪个属性：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>定位方式</th><th>写法示例</th><th>评价</th></tr>
+        <tr><td><code class="inline">id</code></td><td><code class="inline">AppiumBy.ID, "com.example.app:id/title"</code></td><td><b>最快最稳，永远优先</b></td></tr>
+        <tr><td><code class="inline">accessibility_id</code></td><td><code class="inline">AppiumBy.ACCESSIBILITY_ID, "搜索"</code></td><td>对应 content-desc 属性，跨端友好</td></tr>
+        <tr><td><code class="inline">android_uiautomator</code></td><td><code class="inline">AppiumBy.ANDROID_UIAUTOMATOR, 'new UiSelector().text("登录")'</code></td><td>原生语法最灵活，可组合条件</td></tr>
+        <tr><td><code class="inline">xpath</code></td><td><code class="inline">AppiumBy.XPATH, "//android.widget.TextView[@text='登录']"</code></td><td>万能兜底，但慢且 UI 改版易碎</td></tr>
+      </table></div>
+      <h3>滑动与等待</h3>
+      <div class="code-title">appium_demo.py —— 滑动与显式等待（续）</div>
+<pre class="code"><span class="cm"># 上滑加载更多：按屏幕比例算起止点，别写死像素</span>
+size = driver.<span class="fn">get_window_size</span>()
+driver.<span class="fn">swipe</span>(size[<span class="st">"width"</span>] * <span class="fn">0.5</span>, size[<span class="st">"height"</span>] * <span class="fn">0.8</span>,
+             size[<span class="st">"width"</span>] * <span class="fn">0.5</span>, size[<span class="st">"height"</span>] * <span class="fn">0.2</span>, <span class="fn">600</span>)
+
+<span class="cm"># 显式等待：最多等 15 秒，直到列表项出现——和 05 章 Selenium 同一思想</span>
+<span class="kw">from</span> selenium.webdriver.support.ui <span class="kw">import</span> WebDriverWait
+WebDriverWait(driver, <span class="fn">15</span>).<span class="fn">until</span>(
+    <span class="kw">lambda</span> d: d.<span class="fn">find_elements</span>(AppiumBy.ID, <span class="st">"com.example.app:id/title"</span>))
+
+<span class="kw">for</span> el <span class="kw">in</span> driver.<span class="fn">find_elements</span>(AppiumBy.ID, <span class="st">"com.example.app:id/title"</span>):
+    <span class="fn">print</span>(el.text)          <span class="cm"># 屏幕上看得见的，都读得到</span></pre>
+      <h3>何时选 Appium</h3>
+      <p>① 接口参数被 so 层加密或深度风控，还原成本明显过高 → Appium；② 数据直接显示在 UI 上且采集量不大 → Appium 简单直接；③ 量大、要求长期稳定跑几万次 → 先想接口方案，Appium 是最后手段；④ 登录有验证码/扫码等人工环节 → 半自动：人登录一次，<code class="inline">no_reset=True</code> 保住登录态，脚本接管后续。</p>
+      <div class="callout ok"><b>上手成本：</b>Appium 本质是 <b>WebDriver 协议</b>——和你在 05 章用过的 Selenium 是同一套协议思想。会 Selenium 的人学 Appium，成本只有半天：换一套定位器和 Capabilities 而已。</div>
+
+      <!-- ============ 9.5 ============ -->
+      <h2>9.5 Frida 入门 <span class="chip tnew">拓展</span></h2>
+      <p>Frida 是<b>动态插桩框架</b>：把一段 JS 注入目标进程，在运行时改写任意函数的行为。对爬虫的意义有两点：<b>hook 加密函数</b>——明文输入和密文输出直接打印出来，还原算法变成"抄答案"；<b>绕证书锁定</b>——hook 住校验点让它永远通过（9.3 的应对①）。它站在比 Appium 更深的一层：不看 UI，直接看函数调用。</p>
+      <h3>attach 与 spawn</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>姿势</th><th>命令</th><th>区别与适用</th></tr>
+        <tr><td><b>attach</b></td><td><code class="inline">frida -U -F -l hook.js</code></td><td>挂到<b>已在运行</b>的进程；适合启动后才调用的函数</td></tr>
+        <tr><td><b>spawn</b></td><td><code class="inline">frida -U -f com.example.app -l hook.js --no-pause</code></td><td>由 Frida <b>重启并注入</b>；要在启动早期（如应用初始化阶段）拦截时必须用它</td></tr>
+      </table></div>
+      <h3>最小 hook 模板：Java.perform</h3>
+      <div class="code-title">hook.js —— hook 一个方法，打印输入与输出</div>
+<pre class="code"><span class="cm">// 目标类名/方法名从哪来：用 jadx 反编译 apk，全局搜加密参数名</span>
+Java.<span class="fn">perform</span>(<span class="kw">function</span> () {                          <span class="cm">// 进入 Android Java 运行时</span>
+  <span class="kw">var</span> SignUtil = Java.<span class="fn">use</span>(<span class="st">"com.example.app.SignUtil"</span>);  <span class="cm">// 定位目标类</span>
+  SignUtil.sign.implementation = <span class="kw">function</span> (input) {     <span class="cm">// 重写 sign 方法</span>
+    <span class="kw">var</span> result = <span class="kw">this</span>.<span class="fn">sign</span>(input);                  <span class="cm">// 先照常执行原逻辑</span>
+    console.<span class="fn">log</span>(<span class="st">"[sign] in ="</span>, input, <span class="st">"out ="</span>, result);
+    <span class="kw">return</span> result;                                   <span class="cm">// 明文与密文全拿到，再原样返回</span>
+  };
+});</pre>
+      <div class="code-title">终端用法</div>
+<pre class="code">adb devices                          <span class="cm"># 确认设备已连接（真机开 USB 调试 / 模拟器）</span>
+pip install frida-tools              <span class="cm"># 电脑侧工具</span>
+<span class="cm"># 设备上需运行对应版本的 frida-server：adb push 后 ./frida-server &amp;</span>
+frida -U -f com.example.app -l hook.js --no-pause    <span class="cm"># spawn：重启并注入</span>
+frida -U -F -l hook.js                               <span class="cm"># attach：挂到前台应用</span></pre>
+      <p>两大典型用途：① <b>hook 加密函数拿明文</b>——配合 jadx 反编译定位到类与方法，一次 hook，参数明文与签名结果全部打印，比扣 so 层代码便宜一个数量级；② <b>绕证书锁定</b>——hook OkHttp CertificatePinner 等校验类，社区有现成通用脚本（如 objection 自带的 android sslpinning disable）。提醒一句：Frida 的版本管理是出名的坑——<b>pip 装的 frida 版本必须与设备上 frida-server 版本完全一致</b>，报错先查版本。</p>
+
+      <!-- ============ 9.6 ============ -->
+      <h2>9.6 合规特别提醒 <span class="chip">红线</span></h2>
+      <p>App 爬取直接运行在真实设备与真实账号环境上，触碰的敏感面比网页爬虫大得多。以下红线不是"建议"，是"底线"：</p>
+      <div class="callout warn"><b>⚠️ 合规红线：</b>① 只在<b>自有设备</b>与<b>授权环境</b>（自己的测试机、公司明确授权的项目）上操作，不动他人设备与账号；② <b>不破解付费内容</b>、不绕过版权保护；③ <b>不碰支付、账号隐私、个人通信数据</b>——这类数据看一眼都可能构成违法；④ 抓到的数据同样要遵守第 01 章合规自查：公开数据、频率礼仪、用途合法；⑤ 《刑法》第 285、286 条对非法获取计算机信息系统数据、破坏计算机信息系统有明确规定——技术无罪，用法有界。</div>
+
+      <div class="pitfall"><b>App 爬取五大坑：</b>① Android 7+ 用户证书不被 App 信任——要么 Root 后用 Magisk 模块装成系统证书，要么换 Android ≤ 6.0 的测试机，别对着"抓不到"干瞪眼；② App 检测代理/Root 后拒绝运行——先关代理启动 App、再挂代理刷新，或用隐藏 Root 的方案；③ WebView 混合页抓不到——H5 走了另一套网络栈，先用 <code class="inline">chrome://inspect</code> 分清请求来自 native 还是 WebView 再对症下药；④ Frida 报错先查版本——pip 的 frida 与设备上的 frida-server 必须版本完全一致，其次查 frida-server 是否已启动、USB 是否授权；⑤ mitmproxy 挂上没流量——手机与电脑不在同一网段、或电脑防火墙拦了 8080 端口，先 ping 通再说。</div>
+
+      <!-- ============ 打卡 ============ -->
+      <h2>✅ 本章打卡清单</h2>
+      <div class="checklist-card check">
+        <label><input type="checkbox" id="c09-1" data-persist><span>证书两步装会做：Android（系统证书/Magisk）与 iOS（描述文件+完全信任），代理指向与 HTTPS 解密开关（9.1）</span></label>
+        <label><input type="checkbox" id="c09-2" data-persist><span>mitmdump addon 脚本会写：def request/def response 过滤目标域名并保存 JSONL（9.2）</span></label>
+        <label><input type="checkbox" id="c09-3" data-persist><span>能讲清 SSL Pinning 的原理、表现与应对思路，知道 so 层加密的边界（9.3）</span></label>
+        <label><input type="checkbox" id="c09-4" data-persist><span>Appium 环境四件套装好，Capabilities Demo 跑通，会 id/xpath 定位与显式等待（9.4）</span></label>
+        <label><input type="checkbox" id="c09-5" data-persist><span>Frida 最小 hook 跑通：attach/spawn 概念清楚，Java.perform 模板能用（9.5）</span></label>
+        <label><input type="checkbox" id="c09-6" data-persist><span>合规边界清晰：自有设备、授权环境、不碰付费/支付/隐私（9.6）</span></label>
+      </div>
+
+      <!-- ============ 练习 ============ -->
+      <h2>📝 本章练习</h2>
+      <p class="muted small">先自己想，再展开参考解析。做完到<a href="practice.html">练习场</a>刷综合题。</p>
+
+      <details class="qa"><summary><span class="qno">Q1</span>动手：改造 9.2 的 addon 脚本——只保存目标 App 的 JSON 响应，并写入 SQLite（表结构含 url、method、resp、ts 四列），启动命令写出来。<span class="lv badge b-orange">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>9.2 mitmdump addon 事件模型 + 第 04 章 SQLite 落库的衔接。</p>
+          <div class="ans"><b>参考解析：</b>核心改动：把 <code class="inline">open(OUT, "a")</code> 换成 sqlite3 连接，并在脚本顶部建表一次（addon 被 mitmdump 加载时执行一次即可）：<br>
+<pre class="code"><span class="kw">import</span> sqlite3, json
+<span class="kw">from</span> mitmproxy <span class="kw">import</span> http
+
+db = sqlite3.<span class="fn">connect</span>(<span class="st">"app.db"</span>)
+db.<span class="fn">execute</span>(<span class="st">"CREATE TABLE IF NOT EXISTS cap"</span>
+           <span class="st">"(id INTEGER PRIMARY KEY, url TEXT, method TEXT, resp TEXT, ts REAL)"</span>)
+
+<span class="kw">def</span> <span class="fn">response</span>(flow: http.HTTPFlow):
+    <span class="kw">if</span> <span class="st">"api.example.com"</span> <span class="kw">not in</span> flow.request.host: <span class="kw">return</span>
+    db.<span class="fn">execute</span>(<span class="st">"INSERT INTO cap(url, method, resp, ts) VALUES(?,?,?,?)"</span>,
+               (flow.request.pretty_url, flow.request.method,
+                flow.response.<span class="fn">get_text</span>(), time.<span class="fn">time</span>()))
+    db.<span class="fn">commit</span>()</pre>
+          启动：<code class="inline">mitmdump -s app_capture.py -p 8080</code>。要点：addon 模块级代码只执行一次，适合建表；每条 insert 后 commit 防止异常丢数据。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q2</span>分析：某 App 在抓包工具开启后所有请求立刻失败、关闭抓包恢复正常。这是什么机制？给出至少两种应对思路并说明各自适用场景。<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>9.3 SSL Pinning 的概念与应对决策。</p>
+          <div class="ans"><b>参考解析：</b>这是 <b>SSL Pinning 证书锁定</b>：App 在代码里内置了服务器证书/公钥指纹，握手时额外校验，发现是抓包工具的中间人证书就主动断开——所以浏览器能抓、这个 App 抓不到。应对：① <b>Frida 反钉扎</b>（hook 校验类如 OkHttp CertificatePinner 使其恒通过）——适合需要长期稳定抓取、且愿意搭 Frida 环境的场景；② <b>换测试对象</b>（低版本 App/未启用 pinning 的调试包）——零额外工具，最快见效，但版本可能缺新接口；③ <b>换数据源</b>（Web 端/小程序端同源接口）——当目标数据有其他渠道时性价比最高，应优先评估。决策原则回到 9.3 成本排序：先试便宜的路线。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q3</span>决策：你要采集某 App 的 10 万条商品数据，发现接口参数由 so 层加密、团队没有逆向经验、工期两周。直连接口、Appium、Frida Hook、so 层逆向四条路，你怎么选？给出决策依据与风险。<span class="lv badge b-blue">设计</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>9.3/9.4 的成本排序思想与 9.4"何时选 Appium"。</p>
+          <div class="ans"><b>参考解析：</b>按成本排序逐级评估：① <b>直连接口</b>——so 层加密+无逆向经验+两周工期 → 排除（还原成本远超工期）；② <b>Frida Hook</b>——有希望（hook 加密函数拿明文），但需要 jadx 逆向定位+真机环境，对新手有学习曲线，可作为备选路线并行试一周；③ <b>Appium</b>——最符合约束：无需理解加密，让 App 自己跑。10 万条数据量对 Appium 偏大（每屏几十条、要滑几万次），预计单机要跑数天，风险是 UI 改版与 App 崩溃；缓解：no_reset 保登录态、显式等待、失败重试、断点续采。④ <b>so 层逆向</b>——排除（经验与工期都不支持）。<b>结论</b>：主攻 Appium，同时用一周业余时间验证 Frida 路线；若数据源存在 Web 端，立刻切换直连。这题没有唯一答案，考的是"成本—工期—风险"的权衡表达。</div>
+        </div>
+      </details>
+
+      <div class="book-box">
+        <div class="bx-title">📚 对齐与拓展</div>
+        <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 11 章 App 爬取</b>（11.1 抓包原理与 Charles / 11.2 mitmproxy / 11.3 安卓模拟器抓包实战 / 11.4~11.6 Appium 自动化）；<br>
+           · Frida 为拓展内容，手册：<a href="https://frida.re" target="_blank" rel="noopener">Frida 官方文档</a> · <a href="https://mitmproxy.org" target="_blank" rel="noopener">mitmproxy 文档</a> · <a href="https://appium.io" target="_blank" rel="noopener">Appium 文档</a>；<br>
+           · 实战加练：<a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a> 的 App 系列练习（授权平台），从 mApp 系列入门 Frida。</p>
+      </div>
+
+            <div class="book-box">
+        <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
+        <p>
+         · <a href="https://docs.mitmproxy.org/stable/" target="_blank" rel="noopener">mitmproxy 官方文档</a>——抓包三模式与 addon 脚本权威手册;
+         · <a href="https://frida.re/docs/home/" target="_blank" rel="noopener">Frida 官方文档</a>——短而精，建议直接啃英文原版;
+         · 崔庆才书第 11 章 11.1~11.6——Charles/Appium 流程的教材原版。</p>
+      </div>
+
+      <div class="pager">
+        <a class="btn" href="ch08.html">← 上一章：JS 逆向专题</a>
+        <a class="btn primary" href="ch10.html">下一章：Scrapy 与分布式 →</a>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 第 09 章 · App 爬取：抓包与自动化</p>
+    <p class="muted">对齐《Python3网络爬虫开发实战（第二版）》第 11 章 · 进度自动保存</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script src="assets/lesson-player.js"></script>
+</body>
+</html>

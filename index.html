@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="爬虫进阶：对齐《Python3网络爬虫开发实战（第二版）》知识体系，配动画课堂、互动实验室与练习场，面向有 Python 基础的进阶学习者。">
+<title>爬虫进阶 · 对齐优质教材的爬虫体系课</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="home">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home" class="active">首页</a>
+      <a href="library.html" data-nav="library">图书馆</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+      <a href="ch01.html" data-nav="c01">从这开始 →</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app" style="padding-top:24px;padding-bottom:48px">
+
+  <section class="hero">
+    <span class="tag">v0.1 · 先跑起来，再慢慢改</span>
+    <h1>爬虫进阶</h1>
+    <p class="sub">知识体系对齐崔庆才《Python3网络爬虫开发实战（第二版）》，并聚合全网高质量来源做<b>多源精读</b>：韦世东《Python3反爬虫原理与绕过实战》、Ryan Mitchell《Python网络爬虫权威指南》、《精通Scrapy网络爬虫》、K哥《JS逆向百例》、夜幕团队 NightTeam、B站系统网课与高星开源仓库。每章标注教材对应章节与 408 知识连接点，配动画课堂、互动实验室、可展开解析的练习题。</p>
+    <div class="pwrap">
+      <div class="progress"><div class="fill" data-progress-bar="all"></div></div>
+      <span class="plabel" data-progress-label="all">0 / 60 项已打卡</span>
+    </div>
+  </section>
+
+  <div class="stats-row">
+    <div class="stat-card"><div class="num">10</div><div class="lab">章节 · 覆盖教材 15 章核心</div></div>
+    <div class="stat-card"><div class="num">60</div><div class="lab">打卡点 · 进度自动保存</div></div>
+    <div class="stat-card"><div class="num">6</div><div class="lab">集动画课堂 · 约 16 分钟</div></div>
+    <div class="stat-card"><div class="num">30+</div><div class="lab">练习题 · 答案可展开</div></div>
+  </div>
+
+  <!-- ================= 知识体系 ================= -->
+  <section class="section">
+    <h2>知识体系总览</h2>
+    <p class="desc">四篇十章。每章标注对应的教材章节（对齐《Python3网络爬虫开发实战·第二版》目录），点卡片进入章节。</p>
+
+    <h3 style="margin:18px 0 8px">🧱 基础篇 · 把地基打成一堵墙</h3>
+    <div class="grid-2">
+      <a class="card cardlink" href="ch01.html"><h3>01 · 爬虫基础与抓包分析 <span class="badge b-green" data-chapter-progress="c01" style="float:right">0/6</span></h3>
+        <p>HTTP 原理 / Web 网页基础 / 爬虫基本原理 / 会话和 Cookies / 代理基本原理。配：请求解剖台、状态码速查、动画《一次 HTTP 请求的一生》。</p>
+        <div><span class="chip tbook">教材 2.1~2.5</span><span class="chip tconnect">连接 408 计网</span><span class="chip tlab">2 个实验室</span><span class="chip tanim">动画课堂</span></div>
+      </a>
+      <a class="card cardlink" href="ch02.html"><h3>02 · 请求的艺术：urllib / requests / 正则 <span class="badge b-green" data-chapter-progress="c02" style="float:right">0/6</span></h3>
+        <p>urllib 与 requests 的演进、Session 会话、超时重试、SSL 验证、文件上传、正则表达式系统精讲、实战：爬取猫眼电影排行。</p>
+        <div><span class="chip tbook">教材 3.1~3.4</span><span class="chip tconnect">连接 408 网络+Python</span></div>
+      </a>
+      <a class="card cardlink" href="ch03.html"><h3>03 · 解析库全解：XPath / BS4 / pyquery <span class="badge b-green" data-chapter-progress="c03" style="float:right">0/6</span></h3>
+        <p>XPath 语法全表、BeautifulSoup 遍历与搜索、pyquery、parsel、JSON 解析。配：CSS/XPath 双模式选择器游乐场、动画《解析器的艺术》。</p>
+        <div><span class="chip tbook">教材 4.1~4.3</span><span class="chip tconnect">连接 408 树结构</span><span class="chip tlab">游乐场</span><span class="chip tanim">动画课堂</span></div>
+      </a>
+      <a class="card cardlink" href="ch04.html"><h3>04 · 数据存储：文件 / MySQL / MongoDB <span class="badge b-green" data-chapter-progress="c04" style="float:right">0/6</span></h3>
+        <p>TXT/JSON/CSV 的取舍、关系型存储（SQLite/MySQL + pymysql）、非关系型存储（MongoDB/Redis）、何时选谁。</p>
+        <div><span class="chip tbook">教材 5.1~5.3</span><span class="chip tconnect">连接 408 数据库</span></div>
+      </a>
+    </div>
+
+    <h3 style="margin:22px 0 8px">⚔️ 进阶篇 · 对付"滚出来"和"藏起来"的数据</h3>
+    <div class="grid-2">
+      <a class="card cardlink" href="ch05.html"><h3>05 · Ajax 分析与动态渲染 <span class="badge b-green" data-chapter-progress="c05" style="float:right">0/6</span></h3>
+        <p>Ajax 分析方法论、Ajax 结果提取、Selenium / Playwright 动态渲染、等待策略。配：动画《动态网页的两条路》、参数分析实验室。</p>
+        <div><span class="chip tbook">教材 6.1~6.4 + 7.1~7.4</span><span class="chip tlab">2 个实验室</span><span class="chip tanim">动画课堂</span></div>
+      </a>
+      <a class="card cardlink" href="ch06.html"><h3>06 · 验证码识别与模拟登录 <span class="badge b-green" data-chapter-progress="c06" style="float:right">0/6</span></h3>
+        <p>图形验证码 OCR（ddddocr）、滑动/点触/宫格验证码思路、模拟登录 GitHub、Cookies 池搭建。</p>
+        <div><span class="chip tbook">教材 8.1~8.4 + 10.1~10.2</span><span class="chip tconnect">连接 408 安全</span></div>
+      </a>
+      <a class="card cardlink" href="ch07.html"><h3>07 · 代理与反反爬体系 <span class="badge b-green" data-chapter-progress="c07" style="float:right">0/6</span></h3>
+        <p>代理设置与匿名度、代理池的维护、付费代理与 ADSL、频率控制与降级策略。配：动画《矛与盾的一整天》、403 实验室。</p>
+        <div><span class="chip tbook">教材 9.1~9.5</span><span class="chip tlab">403 实验室</span><span class="chip tanim">动画课堂</span></div>
+      </a>
+    </div>
+
+    <h3 style="margin:22px 0 8px">🔍 逆向篇 · 分水岭：加密参数不再有秘密</h3>
+    <div class="grid-2">
+      <a class="card cardlink" href="ch08.html"><h3>08 · JS 逆向专题 <span class="badge b-green" data-chapter-progress="c08" style="float:right">0/6</span></h3>
+        <p>浏览器调试三板斧、扣代码与补环境、Webpack 解包、ob 混淆与 AST、常见加密还原。配：动画《一块 token 的解剖报告》、算法识别训练场。</p>
+        <div><span class="chip tnew">教材外拓展</span><span class="chip tconnect">连接 408 密码学</span><span class="chip tlab">2 个实验室</span><span class="chip tanim">动画课堂</span></div>
+      </a>
+      <a class="card cardlink" href="ch09.html"><h3>09 · App 爬取：抓包与自动化 <span class="badge b-green" data-chapter-progress="c09" style="float:right">0/6</span></h3>
+        <p>Charles / mitmproxy 抓包、mitmdump 实战、Appium 自动化、Frida Hook 入门。</p>
+        <div><span class="chip tbook">教材 11.1~11.6</span><span class="chip tnew">含 Frida 拓展</span></div>
+      </a>
+    </div>
+
+    <h3 style="margin:22px 0 8px">🏭 框架篇 · 从脚本到采集系统</h3>
+    <div class="grid-2">
+      <a class="card cardlink" href="ch10.html"><h3>10 · Scrapy 框架与分布式部署 <span class="badge b-green" data-chapter-progress="c10" style="float:right">0/6</span></h3>
+        <p>Scrapy 架构与数据流、Spider/Item/Pipeline/Middleware、CrawlSpider、Scrapy-Redis 分布式、Bloom Filter、Scrapyd 部署与 Gerapy 管理。配：交互架构图、并发模拟器、动画《从脚本到采集系统》。</p>
+        <div><span class="chip tbook">教材 13.1~13.13 + 14~15 章</span><span class="chip tlab">2 个实验室</span><span class="chip tanim">动画课堂</span></div>
+      </a>
+    </div>
+  </section>
+
+  <!-- ================= 学习路径 ================= -->
+  <section class="section">
+    <h2>学习路径</h2>
+    <p class="desc">你已有 requests 抓静态页的基础和 408 计算机功底——两条路线任选，打卡进度互通。</p>
+    <div class="card">
+      <h3>路线 A · 有基础速通（推荐，约 6~8 周）</h3>
+      <div class="flow">
+        <span class="fnode"><b>01 基础校准</b>补齐抓包内功</span><span class="farrow">→</span>
+        <span class="fnode"><b>03 解析</b>游乐场练到闭眼写</span><span class="farrow">→</span>
+        <span class="fnode"><b>05 动态</b>两条路都走通</span><span class="farrow">→</span>
+        <span class="fnode"><b>07 代理</b>403 实验室通关</span><span class="farrow">→</span>
+        <span class="fnode"><b>08 JS逆向</b>分水岭主攻</span><span class="farrow">→</span>
+        <span class="fnode"><b>10 Scrapy</b>工程化毕业</span>
+      </div>
+      <p class="muted small">跳过 02/04/06/09 时，把它们的"练习场题目"当自测：答得上来就跳，答不上来回头补。</p>
+      <h3 style="margin-top:14px">路线 B · 系统逐章（约 10~12 周）</h3>
+      <div class="flow">
+        <span class="fnode">01→02→03→04→05→06→07→08→09→10</span>
+      </div>
+      <p class="muted small">完全对齐教材顺序推进，适合想把地基打得绝对扎实的学法。每章先看"连接已有知识"，把新知识挂到 408 已有框架上。</p>
+    </div>
+  </section>
+
+  <!-- ================= 可视化课堂 ================= -->
+  <section class="section">
+    <h2>🎬 动画课堂（6 集 · 约 16 分钟）</h2>
+    <p class="desc">像看视频一样自动播放：▶ 播放 / 空格暂停 / 进度条可拖 / ⏮⏭ 跳场景 / 倍速。每集都是该章逻辑主线，先看动画建立全局图景，再读教材级详解。</p>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <tr><th>集数</th><th>片名</th><th>所在章节</th><th>逻辑主线</th></tr>
+        <tr><td>第 1 集</td><td>《一次 HTTP 请求的一生》</td><td><a href="ch01.html#lesson">第 01 章</a></td><td>DNS → 握手 → 请求 → 响应 → XHR → 渲染，理解"数据从哪个请求来"</td></tr>
+        <tr><td>第 2 集</td><td>《解析器的艺术》</td><td><a href="ch03.html#lesson">第 03 章</a></td><td>文本 → DOM 树 → 坐标提取 → 数据表 → 翻页循环</td></tr>
+        <tr><td>第 3 集</td><td>《动态网页的两条路》</td><td><a href="ch05.html#lesson">第 05 章</a></td><td>空壳之谜 → AJAX 真相 → 接口直连 vs 浏览器自动化</td></tr>
+        <tr><td>第 4 集</td><td>《矛与盾的一整天》</td><td><a href="ch07.html#lesson">第 07 章</a></td><td>UA → 频率 → Cookie → 字体 → 验证码，五个回合的攻防</td></tr>
+        <tr><td>第 5 集</td><td>《一块 token 的解剖报告》</td><td><a href="ch08.html#lesson">第 08 章</a></td><td>Network → 断点 → 调用栈 → 算法识别 → Python 还原</td></tr>
+        <tr><td>第 6 集</td><td>《从脚本到采集系统》</td><td><a href="ch10.html#lesson">第 10 章</a></td><td>脚本之死 → Scrapy 闭环 → 七件套工程化</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= 练习与实战 ================= -->
+  <section class="section">
+    <h2>练习与实战</h2>
+    <div class="grid-2">
+      <a class="card cardlink" href="practice.html">
+        <h3>📝 练习场（30+ 题，答案可展开）</h3>
+        <p>按"入门 → 进阶 → 逆向 → 框架"分级：概念辨析、代码纠错、场景设计、逆向推理。每题给考点、提示和参考解析，先自己想再展开。</p>
+        <div><span class="chip tlab">每章末也有配套练习</span></div>
+      </a>
+      <div class="card">
+        <h3>🗺 练习平台闯关地图（授权平台）</h3>
+        <p>• <a href="https://quotes.toscrape.com" target="_blank" rel="noopener">quotes / books.toscrape.com</a> — 静态页入门<br>
+           • <a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a> — ssr → spa → login → antispider 全谱系<br>
+           • <a href="https://github.com/hhuayuan/spiderbuf" target="_blank" rel="noopener">Spiderbuf</a> — 矛与盾攻防闯关<br>
+           • <a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match</a> — JS 逆向刷题圣地（第 1~10 题起步）<br>
+           • <a href="https://www.python-spider.com/challenge/" target="_blank" rel="noopener">python-spider.com</a> — 挑战题加练</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 资源 ================= -->
+  <section class="section">
+    <h2>资源速查</h2>
+    <a class="card cardlink" href="library.html" style="display:block;margin-bottom:14px">
+      <h3>🌐 多源图书馆 <span class="badge b-green">多源对齐</span></h3>
+      <p>全网优质知识地图：韦世东《Python3反爬虫原理与绕过实战》· Ryan Mitchell《Python网络爬虫权威指南》· 《精通Scrapy网络爬虫》· K哥《JS逆向百例》· 夜幕团队 NightTeam · JSREI · KGtools · proxy_pool · Crawlab · B站系统网课……按知识域组织，每条附"为什么值得+怎么读"，三条混合阅读路径任选。</p>
+      <div><span class="chip tbook">书</span><span class="chip tconnect">课</span><span class="chip tlab">仓库</span><span class="chip tanim">博客</span><span class="chip">工具</span></div>
+    </a>
+    <div class="grid-2">
+      <div class="card">
+        <h3>📖 主教材与文档</h3>
+        <p>• 崔庆才《Python3 网络爬虫开发实战（第二版）》——本站主对齐教材，<a href="https://python3webspider.cuiqingcai.com/" target="_blank" rel="noopener">官方文档站</a><br>
+           • <a href="https://developer.mozilla.org/zh-CN/docs/Web/HTTP" target="_blank" rel="noopener">MDN HTTP 文档</a> · <a href="https://scrapy.org" target="_blank" rel="noopener">Scrapy 官方文档</a> · <a href="https://playwright.dev/python/" target="_blank" rel="noopener">Playwright 文档</a></p>
+      </div>
+      <div class="card">
+        <h3>📺 视频与代码仓库</h3>
+        <p>• <a href="https://www.bilibili.com/video/BV1TC1jYmEve" target="_blank" rel="noopener">B站 · JS 逆向技术剖析与实战</a>（21h，配第 08 章）<br>
+           • <a href="https://github.com/wistbean/learn_python3_spider" target="_blank" rel="noopener">wistbean/learn_python3_spider</a>（22k★）<br>
+           • <a href="https://github.com/Kr1s77/Python-crawler-tutorial-starts-from-zero" target="_blank" rel="noopener">Kr1s77 从零教程</a>（含 js 逆向）</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="grid-2">
+      <div class="card">
+        <h3>📌 使用说明</h3>
+        <p>1. 每章结构固定：学习目标 → 连接已有知识 → 分节详解（对齐教材小节）→ 可视化 → 避坑清单 → 配套练习 → 打卡清单；<br>
+           2. 打卡进度存浏览器 localStorage，换页面不丢；<br>
+           3. v0.1 先跑起来再慢慢改，发现讲得不透的地方直接告诉 AI 助教改哪节。</p>
+      </div>
+      <div class="card">
+        <h3>⚖️ 合规红线（技术之上）</h3>
+        <p>• 只采公开数据，遵守 robots.txt 与服务条款；<br>
+           • 频率 ≥1~3 秒/请求，大批量放深夜；<br>
+           • 不绕过权限拿非公开数据，不碰个人信息；<br>
+           • 逆向练习仅限猿人学 / Scrape Center 等<b>授权平台</b>与学习用途。</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 知识体系对齐《Python3网络爬虫开发实战（第二版）》· 逆向实战对齐猿人学体系</p>
+    <p class="muted">动画课堂 + 互动实验室 + 可展开解析的练习 · 进度自动保存在本机浏览器</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

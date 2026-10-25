@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 · 解析库全解：XPath / BeautifulSoup / pyquery — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="c03">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+      <a href="ch04.html" data-nav="c04">下一章 →</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app" style="padding-top:20px;padding-bottom:48px">
+  <div class="crumb"><a href="index.html">首页</a> / 基础篇 / <b>03 · 解析库全解：XPath / BeautifulSoup / pyquery</b></div>
+  <div class="layout">
+
+    <aside class="chapnav">
+      <div class="cap">课程目录</div>
+      <div class="grp">🧱 基础篇</div>
+      <a href="ch01.html" data-nav="c01"><span class="no">01</span>基础与抓包 <span class="pg" data-chapter-progress="c01">0/6</span></a>
+      <a href="ch02.html" data-nav="c02"><span class="no">02</span>请求与正则 <span class="pg" data-chapter-progress="c02">0/6</span></a>
+      <a href="ch03.html" data-nav="c03" class="active"><span class="no">03</span>解析库全解 <span class="pg" data-chapter-progress="c03">0/6</span></a>
+      <a href="ch04.html" data-nav="c04"><span class="no">04</span>数据存储 <span class="pg" data-chapter-progress="c04">0/6</span></a>
+      <div class="grp">⚔️ 进阶篇</div>
+      <a href="ch05.html" data-nav="c05"><span class="no">05</span>Ajax与动态渲染 <span class="pg" data-chapter-progress="c05">0/6</span></a>
+      <a href="ch06.html" data-nav="c06"><span class="no">06</span>验证码与登录 <span class="pg" data-chapter-progress="c06">0/6</span></a>
+      <a href="ch07.html" data-nav="c07"><span class="no">07</span>代理与反反爬 <span class="pg" data-chapter-progress="c07">0/6</span></a>
+      <div class="grp">🔍 逆向篇</div>
+      <a href="ch08.html" data-nav="c08"><span class="no">08</span>JS 逆向专题 <span class="pg" data-chapter-progress="c08">0/6</span></a>
+      <a href="ch09.html" data-nav="c09"><span class="no">09</span>App 爬取 <span class="pg" data-chapter-progress="c09">0/6</span></a>
+      <div class="grp">🏭 框架篇</div>
+      <a href="ch10.html" data-nav="c10"><span class="no">10</span>Scrapy与分布式 <span class="pg" data-chapter-progress="c10">0/6</span></a>
+      <div class="grp">🛠 实战</div>
+      <a href="practice.html" data-nav="practice"><span class="no">📝</span>练习场</a>
+      <a href="library.html" data-nav="library"><span class="no">📚</span>多源图书馆</a>
+    </aside>
+
+    <div class="appmain doc">
+
+      <section class="hero compact">
+        <span class="tag">基础篇 · 对齐教材 4.1 ~ 4.3</span>
+        <h1>03 · 解析库全解：XPath / BeautifulSoup / pyquery</h1>
+        <p class="sub">抓下来只是第一步，数据要从结构里"精准抠"出来。这一章把四大解析方案一次讲全：XPath（功能最强）、BeautifulSoup（对新手最友好）、pyquery（jQuery 风格）、parsel（Scrapy 同源、工程首选），外加 JSON 数据解析；配一个能亲手练选择器的游乐场和一集解析器动画。学完你将拥有"拿到任何 HTML 都知道用什么表达式取什么数据"的手感。</p>
+        <div class="pwrap">
+          <div class="progress"><div class="fill" data-progress-bar="c03"></div></div>
+          <span class="plabel" data-progress-label="c03"></span>
+        </div>
+      </section>
+
+      <div class="connect-box">
+        <div class="bx-title">🔗 连接你已有的知识（考研 408 · 数据结构）</div>
+        <p>· 解析器做的事，本质是把你 408 数据结构课里熟悉的<b>树</b>搬进浏览器：HTML 文本 → <b>DOM 树</b>，每个标签是一个节点，父子/兄弟/先辈/后代关系与树的结构术语一一对应；<br>
+           · XPath 的 <code class="inline">//</code> 与轴（ancestor/descendant/sibling）就是<b>树的遍历与亲戚查询</b>——树的先序遍历正是 DOM 的解析顺序，谓词 <code class="inline">[position()&lt;=3]</code> 是"取前 k 个孩子"；<br>
+           · <b>CSS 选择器 / XPath 谓词 = 树上的索引查询</b>：与其自己写递归遍历，不如用一门"坐标语言"直接描述目标节点；<br>
+           · 顺带一句编译原理：HTML 解析器 = 词法分析（切 token）+ 语法分析（建树）的现成实现——解析器报"标签未闭合"时，你听到的就是语法分析器的抱怨。</p>
+      </div>
+
+      <!-- ============ 3.1 ============ -->
+      <h2>3.1 lxml 与 XPath <span class="chip tbook">对齐教材 4.1</span> <span class="chip tlab">本章重点</span></h2>
+      <p>安装：<code class="inline">pip install lxml</code>。lxml 是 C 实现的解析库，速度最快；它承载的 <b>XPath</b>（XML Path Language）是一门在树里"找地址"的语言——功能最强：能按属性找、按文本找、按位置找、按亲戚关系找。先建树的心智模型：</p>
+
+      <h3>节点关系：把 408 的树搬进网页</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>关系</th><th>含义</th><th>XPath 写法</th><th>例子（对 &lt;h3 class="title"&gt; 而言）</th></tr>
+        <tr><td>父 parent</td><td>直接上一层</td><td><code class="inline">..</code> / <code class="inline">parent::</code></td><td>&lt;article class="item"&gt;</td></tr>
+        <tr><td>子 child</td><td>直接下一层</td><td><code class="inline">/</code> / <code class="inline">child::</code></td><td>（无，h3 没有子标签）</td></tr>
+        <tr><td>先辈 ancestor</td><td>所有上层</td><td><code class="inline">ancestor::</code></td><td>article → section → body → html</td></tr>
+        <tr><td>后代 descendant</td><td>所有下层（含孙辈）</td><td><code class="inline">//</code>（当前节点下）/ <code class="inline">descendant::</code></td><td>h3 里的文本节点</td></tr>
+        <tr><td>兄弟 sibling</td><td>同父的左右节点</td><td><code class="inline">following-sibling::</code> / <code class="inline">preceding-sibling::</code></td><td>&lt;span class="score"&gt;（后兄弟）</td></tr>
+      </table></div>
+      <p>对照书影快报的页面（游乐场里就有）：article 是 h3 与 span 的<b>父</b>，h3 与 span 互为<b>兄弟</b>，section.list 是它们的<b>先辈</b>，<code class="inline">//</code> 则"跳到任意层直接找"——这就是为什么推荐 <code class="inline">//article[@class="item"]</code> 而不是 <code class="inline">/html/body/section/article</code>：绝对路径一改版就断。</p>
+
+      <h3>XPath 语法大表</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>类别</th><th>写法</th><th>含义 / 示例</th></tr>
+        <tr><td rowspan="2">路径</td><td><code class="inline">/</code></td><td>根节点起逐级下探：<code class="inline">/html/body/div</code></td></tr>
+        <tr><td><code class="inline">//</code></td><td>任意层级直取：<code class="inline">//div[@class="item"]</code>；当前节点下再任意层：<code class="inline">.//a</code></td></tr>
+        <tr><td rowspan="3">谓词（筛选）</td><td><code class="inline">[@class="x"]</code></td><td>按属性精确匹配：<code class="inline">//li[@class="item-0"]</code></td></tr>
+        <tr><td><code class="inline">[n]</code> / <code class="inline">[last()]</code></td><td>第 n 个 / 最后一个（<b>位置从 1 数起</b>！）：<code class="inline">//li[1]</code>、<code class="inline">//li[last()]</code></td></tr>
+        <tr><td><code class="inline">[position()&lt;=3]</code></td><td>前三个：<code class="inline">//li[position()&lt;=3]</code></td></tr>
+        <tr><td rowspan="2">通配与属性</td><td><code class="inline">*</code></td><td>任意元素：<code class="inline">//div/*</code>（div 的所有直接子元素）</td></tr>
+        <tr><td><code class="inline">@href</code></td><td>取属性值：<code class="inline">//a/@href</code>、<code class="inline">//img/@src</code></td></tr>
+        <tr><td rowspan="3">文本</td><td><code class="inline">text()</code></td><td>取节点的<b>直属</b>文本子节点，返回<b>列表</b>：<code class="inline">//a/text()</code></td></tr>
+        <tr><td><code class="inline">string()</code></td><td>把节点及其<b>后代</b>全部文本拼成<b>一个字符串</b>：<code class="inline">string(//div)</code></td></tr>
+        <tr><td>谓词内用文本</td><td><code class="inline">//a[text()="第一篇"]</code> —— 按文字找节点，XPath 独有绝活</td></tr>
+        <tr><td rowspan="2">常用函数</td><td><code class="inline">contains()</code></td><td>包含匹配：<code class="inline">//li[contains(@class,"item")]</code>（防 class="item hot" 断配）</td></tr>
+        <tr><td>轴</td><td><code class="inline">ancestor:: / descendant:: / following-sibling:: / preceding-sibling::</code> —— 沿亲戚关系游走</td></tr>
+        <tr><td>并集</td><td><code class="inline">|</code></td><td>两条路径合并：<code class="inline">//a | //p</code></td></tr>
+      </table></div>
+
+      <h3>text() 与 string() 的区别（高频混淆点）</h3>
+      <p>对 <code class="inline">&lt;p&gt;你好&lt;b&gt;世界&lt;/b&gt;再见&lt;/p&gt;</code>：<code class="inline">//p/text()</code> 只取 p 的<b>直属</b>文本，得到 <code class="inline">['你好', '再见']</code>（b 里的"世界"不在此列，它属于 b 节点）；<code class="inline">string(//p)</code> 则递归收集 p 及其全部后代的文字，得到单个字符串 <code class="inline">'你好世界再见'</code>。经验法则：<b>字段干净用 text()（返回列表），混着子标签用 string()（返回单值）。</b></p>
+
+      <h3>解析与提取：两段代码跑通</h3>
+      <div class="code-title">xpath_demo.py</div>
+<pre class="code"><span class="kw">from</span> lxml <span class="kw">import</span> etree
+
+html = <span class="st">"""
+&lt;div class="box"&gt;
+  &lt;ul id="list"&gt;
+    &lt;li class="item-0"&gt;&lt;a href="/p/1.html"&gt;第一篇&lt;/a&gt;&lt;/li&gt;
+    &lt;li class="item-1"&gt;&lt;a href="/p/2.html"&gt;第二篇&lt;/a&gt;&lt;/li&gt;
+    &lt;li class="item-2"&gt;&lt;a href="/p/3.html"&gt;第三篇&lt;/a&gt;&lt;/li&gt;
+  &lt;/ul&gt;
+&lt;/div&gt;
+"""</span>
+
+tree = etree.HTML(html)                                <span class="cm"># 字符串 → 节点树（自动补全 html/body）</span>
+<span class="fn">print</span>(tree.xpath(<span class="st">'//li/a/text()'</span>))
+<span class="cm"># ['第一篇', '第二篇', '第三篇'] —— text() 返回列表</span>
+
+<span class="fn">print</span>(tree.xpath(<span class="st">'//li[@class="item-1"]/a/@href'</span>))
+<span class="cm"># ['/p/2.html'] —— 属性也是节点，@href 直接取值</span>
+
+<span class="fn">print</span>(tree.xpath(<span class="st">'//li[position()&lt;=3]/@class'</span>))
+<span class="cm"># ['item-0', 'item-1', 'item-2'] —— 谓词取前三个</span>
+
+<span class="fn">print</span>(tree.xpath(<span class="st">'string(//li[@class="item-0"])'</span>))
+<span class="cm"># 第一篇 —— string() 把该节点所有文字拼成一个字符串</span></pre>
+
+      <p>第二段展示爬虫最常用的套路：<b>从列表页提取 URL，跟进到下一层继续解析</b>——树套树，两层 XPath：</p>
+      <div class="code-title">xpath_follow.py</div>
+<pre class="code"><span class="kw">import</span> requests
+<span class="kw">from</span> lxml <span class="kw">import</span> etree
+
+HEADERS = {<span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"</span>}
+
+<span class="cm"># 第一层：列表页的树</span>
+resp = requests.get(<span class="st">"https://quotes.toscrape.com/"</span>, headers=HEADERS, timeout=<span class="fn">10</span>)
+tree = etree.HTML(resp.text)
+
+links = tree.xpath(<span class="st">'//div[@class="quote"]//span[2]/a/@href'</span>)   <span class="cm"># 每条名言的作者页（相对路径）</span>
+<span class="kw">for</span> link <span class="kw">in</span> links[:<span class="fn">3</span>]:
+    detail_url = <span class="st">"https://quotes.toscrape.com"</span> + link          <span class="cm"># 相对路径补全为绝对地址</span>
+    d = requests.get(detail_url, headers=HEADERS, timeout=<span class="fn">10</span>)
+    dt = etree.HTML(d.text)                                    <span class="cm"># 第二层：详情页再建一棵树</span>
+    name = dt.xpath(<span class="st">'//h3[@class="author-title"]/text()'</span>)[<span class="fn">0</span>].strip()
+    born = dt.xpath(<span class="st">'//p[@class="author-born-date"]/text()'</span>)[<span class="fn">0</span>].strip()
+    <span class="fn">print</span>(name, <span class="st">"|"</span>, born)
+
+<span class="cm"># 输出示例：</span>
+<span class="cm"># Albert Einstein | March 14, 1879</span>
+<span class="cm"># J.K. Rowling | July 31, 1965</span>
+<span class="cm"># Albert Einstein | March 14, 1879</span></pre>
+      <p>这个"列表页 → 详情页"的两层结构就是后续所有整站爬虫的骨架：第 02 章的正则负责一页内的硬捞，XPath 负责页面间的<b>导航</b>。</p>
+
+      <!-- ============ 选择器游乐场（自 stage2 原样移植） ============ -->
+      <section class="section">
+        <h2>互动 1 · 选择器游乐场（CSS / XPath 双模式） <span class="chip tlab">互动</span></h2>
+        <p class="muted small">下面是一个迷你网页，<b>它就是你以后要爬的所有网页的缩影</b>。输入选择器点「运行」，命中的节点会亮起来——CSS 与 XPath 两种模式都能练，练到闭眼能写，本章就赢一半。</p>
+        <div class="tabs" role="tablist" aria-label="选择器模式">
+          <button class="tab active" id="mode-css" type="button">CSS 选择器</button>
+          <button class="tab" id="mode-xp" type="button">XPath</button>
+        </div>
+        <div class="sel-input">
+          <input id="sel-q" spellcheck="false" value=".item .title" aria-label="选择器表达式">
+          <button class="btn primary" id="sel-run" type="button">运行</button>
+        </div>
+        <p class="muted" style="margin:4px 0 12px">快捷试一试：
+          <button class="btn sm ex" type="button" data-q=".item .title">.item .title</button>
+          <button class="btn sm ex" type="button" data-q="#books .score">#books .score</button>
+          <button class="btn sm ex" type="button" data-q=".item:nth-child(2) .title">.item:nth-child(2) .title</button>
+          <button class="btn sm ex" type="button" data-q="//h3[@class='title']">//h3[@class='title']</button>
+          <button class="btn sm ex" type="button" data-q="//article[@data-score&gt;'9.4']/h3">//article[@data-score&gt;'9.4']/h3</button>
+          <button class="btn sm ex" type="button" data-q="//p[contains(text(),'刘慈欣')]">//p[contains(text(),'刘慈欣')]</button>
+        </p>
+        <div class="lab-grid">
+          <div class="mbr sel-view" id="sel-view" aria-label="示例网页">
+            <div class="site-head">
+              <b>书影快报</b>
+              <nav><a>图书</a><a>影视</a><a>榜单</a></nav>
+            </div>
+            <section class="list" id="books">
+              <article class="item" data-score="9.3"><h3 class="title">三体</h3><span class="score">9.3</span><p class="meta">科幻 · 刘慈欣</p></article>
+              <article class="item" data-score="9.4"><h3 class="title">活着</h3><span class="score">9.4</span><p class="meta">文学 · 余华</p></article>
+              <article class="item" data-score="9.1"><h3 class="title">白夜行</h3><span class="score">9.1</span><p class="meta">推理 · 东野圭吾</p></article>
+            </section>
+            <section class="list" id="movies">
+              <article class="item" data-score="9.7"><h3 class="title">肖申克的救赎</h3><span class="score">9.7</span><p class="meta">犯罪 · 1994</p></article>
+              <article class="item" data-score="9.6"><h3 class="title">霸王别姬</h3><span class="score">9.6</span><p class="meta">剧情 · 1993</p></article>
+            </section>
+            <footer><p class="meta">© 书影快报 · 本页仅供选择器练习</p></footer>
+          </div>
+          <div class="card">
+            <h3>命中结果</h3>
+            <p id="sel-count" aria-live="polite" style="font-weight:700">—</p>
+            <div id="sel-results" style="font-size:13.5px"></div>
+            <div class="callout info"><b>怎么写才稳？</b>优先用「语义类名 + 层级」，如 <code class="inline">.item .title</code>；少用绝对路径 <code class="inline">/html/body/div[2]/…</code>——页面一改版就全断。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 3.2 ============ -->
+      <h2>3.2 BeautifulSoup <span class="chip tbook">对齐教材 4.2</span></h2>
+      <p>安装：<code class="inline">pip install beautifulsoup4 lxml</code>。BeautifulSoup（简称 BS4）的 API 最符合人类直觉——"找标签、找属性、取文字"三个动作一目了然，代价是纯 Python 实现、大文件比 lxml 慢。它是个"外壳"，真正干活的是底下的解析器：</p>
+
+      <h3>四种解析器对比</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>解析器</th><th>传入写法</th><th>速度</th><th>容错</th><th>备注</th></tr>
+        <tr><td>html.parser</td><td><code class="inline">"html.parser"</code></td><td>慢</td><td>一般</td><td>Python 内置，零依赖兜底</td></tr>
+        <tr><td>lxml（HTML）</td><td><code class="inline">"lxml"</code></td><td><b>最快</b></td><td>好</td><td>需 pip 安装 lxml，<b>日常首选</b></td></tr>
+        <tr><td>lxml（XML）</td><td><code class="inline">"xml"</code></td><td>快</td><td>严格</td><td>只解析合规 XML / RSS，解 HTML 会报错</td></tr>
+        <tr><td>html5lib</td><td><code class="inline">"html5lib"</code></td><td>最慢</td><td><b>最好</b></td><td>以浏览器方式容错建树，页面烂到家时用</td></tr>
+      </table></div>
+
+      <h3>遍历：children / descendants / parent / sibling</h3>
+      <div class="code-title">bs4_demo.py</div>
+<pre class="code"><span class="kw">from</span> bs4 <span class="kw">import</span> BeautifulSoup
+
+html = <span class="st">"""
+&lt;ul id="list"&gt;
+  &lt;li class="item-0"&gt;&lt;a href="/p/1.html"&gt;第一篇&lt;/a&gt;&lt;/li&gt;
+  &lt;li class="item-1"&gt;&lt;a href="/p/2.html"&gt;第二篇&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+"""</span>
+soup = BeautifulSoup(html, <span class="st">"lxml"</span>)                 <span class="cm"># 第二个参数永远显式指定解析器</span>
+ul = soup.find(<span class="st">"ul"</span>, id=<span class="st">"list"</span>)
+
+<span class="cm"># children：直接子节点 —— 注意换行符也是节点，要过滤！</span>
+<span class="kw">for</span> child <span class="kw">in</span> ul.children:
+    <span class="kw">if</span> getattr(child, <span class="st">"name"</span>, <span class="kw">None</span>) == <span class="st">"li"</span>:
+        <span class="fn">print</span>(child.a[<span class="st">"href"</span>], child.a.get_text(strip=True))
+<span class="cm"># /p/1.html 第一篇  /p/2.html 第二篇</span>
+
+<span class="cm"># descendants：所有后代（递归）；parent：父节点；siblings：兄弟</span>
+<span class="fn">print</span>(<span class="fn">len</span>(<span class="fn">list</span>(ul.descendants)))              <span class="cm"># 树上所有节点，含文本</span>
+first_li = ul.find(<span class="st">"li"</span>)
+<span class="fn">print</span>(first_li.parent.name)                    <span class="cm"># ul</span>
+<span class="fn">print</span>(first_li.find_next_sibling(<span class="st">"li"</span>).a[<span class="st">"href"</span>])   <span class="cm"># /p/2.html —— 直接找下一个 li，避开换行节点</span></pre>
+
+      <h3>搜索：find / find_all 与 CSS 选择器 select</h3>
+      <div class="code-title">bs4_search.py</div>
+<pre class="code"><span class="cm"># find_all(name, attrs, string, limit)：返回列表；find 返回第一个</span>
+soup.find_all(<span class="st">"li"</span>, class_=<span class="st">"item-1"</span>)       <span class="cm"># 按标签 + class（class_ 带下划线，避开关键字）</span>
+soup.find_all(<span class="st">"a"</span>, href=<span class="kw">True</span>, limit=<span class="fn">2</span>)     <span class="cm"># 有 href 属性的前 2 个</span>
+soup.find(<span class="st">"li"</span>, attrs={<span class="st">"class"</span>: <span class="st">"item-0"</span>}) <span class="cm"># attrs 字典写法，属性名带连字符时必用</span>
+soup.find_all(string=<span class="st">"第二篇"</span>)              <span class="cm"># 按文本内容找</span>
+
+<span class="cm"># select：CSS 选择器（和游乐场的 CSS 模式同一套语法）</span>
+soup.select(<span class="st">"ul#list &gt; li.item-0 a"</span>)       <span class="cm"># 返回列表</span>
+a = soup.select_one(<span class="st">".item-1 a"</span>)            <span class="cm"># 返回第一个</span>
+
+<span class="fn">print</span>(a[<span class="st">"href"</span>])                    <span class="cm"># /p/2.html —— 取属性</span>
+<span class="fn">print</span>(a.get_text(strip=<span class="kw">True</span>))       <span class="cm"># 第二篇 —— 取文本并去首尾空白，最常用</span></pre>
+      <div class="callout ok"><b>BS4 使用心法：</b>定位用 <code class="inline">select/select_one</code>（CSS 语法最顺手），批量提取用 <code class="inline">find_all</code>，取文本一律 <code class="inline">get_text(strip=True)</code>，取属性用 <code class="inline">tag["attr"]</code>。复杂条件（按文本找、按位置找）做不了时，就是该换 XPath 的信号。</div>
+
+      <!-- ============ 3.3 ============ -->
+      <h2>3.3 pyquery <span class="chip tbook">对齐教材 4.3</span></h2>
+      <p>安装：<code class="inline">pip install pyquery</code>。如果你写过 jQuery 或前端，pyquery 会让你瞬间上手：CSS 选择器 + 链式调用，<code class="inline">$</code> 换成 <code class="inline">pq</code>：</p>
+      <div class="code-title">pyquery_demo.py</div>
+<pre class="code"><span class="kw">from</span> pyquery <span class="kw">import</span> PyQuery <span class="kw">as</span> pq
+
+doc = pq(resp.text)                          <span class="cm"># 也可以 pq(url) 直接请求、pq(filename=...) 读文件</span>
+
+<span class="fn">print</span>(doc(<span class="st">"ul#list .item-0 a"</span>).text())      <span class="cm"># 第一篇</span>
+
+<span class="kw">for</span> item <span class="kw">in</span> doc(<span class="st">"li"</span>).items():              <span class="cm"># items() 把每个元素包成小 PyQuery，可继续链式</span>
+    <span class="fn">print</span>(item.attr(<span class="st">"class"</span>), item(<span class="st">"a"</span>).attr(<span class="st">"href"</span>), item.text())
+<span class="cm"># item-0 /p/1.html 第一篇 …</span>
+
+<span class="cm"># 链式过滤：先取 li，再筛 class，再下钻</span>
+href = doc(<span class="st">"li"</span>).filter(<span class="st">".item-1"</span>).find(<span class="st">"a"</span>).attr(<span class="st">"href"</span>)
+<span class="fn">print</span>(href)                                  <span class="cm"># /p/2.html</span></pre>
+      <p><b>什么时候顺手：</b>有 jQuery 肌肉记忆、想做"先圈大范围再层层过滤"的链式操作时。注意它的底层也是 lxml，但 XPath 的复杂谓词、轴、按文本定位它表达不了——那些场景老老实实回 3.1。</p>
+
+      <!-- ============ 3.4 ============ -->
+      <h2>3.4 parsel：Scrapy 同源的工程首选 <span class="chip tnew">拓展</span></h2>
+      <p>安装：<code class="inline">pip install parsel</code>。parsel 是 Scrapy 框架内置的提取库（第 10 章你会再遇到它），最大特点是 <b>xpath 与 css 一体两面</b>——同一棵树上两种语法随意接力，返回的选择器对象是惰性的，链到最后才真正取值：</p>
+      <div class="code-title">parsel_demo.py</div>
+<pre class="code"><span class="kw">import</span> parsel
+
+sel = parsel.Selector(resp.text)
+
+<span class="fn">print</span>(sel.xpath(<span class="st">'//ul[@id="list"]/li/a/text()'</span>).getall())
+<span class="cm"># ['第一篇', '第二篇', '第三篇'] —— getall()：所有结果列表</span>
+
+<span class="fn">print</span>(sel.css(<span class="st">"ul#list li.item-1 a::attr(href)"</span>).get())
+<span class="cm"># /p/2.html —— get()：第一个结果（没有就返回 None，不会 IndexError）</span>
+
+<span class="cm"># 两种语法在同一棵树上接力：XPath 圈范围，CSS 取属性</span>
+<span class="fn">print</span>(sel.xpath(<span class="st">'//li[contains(@class,"item")]'</span>).css(<span class="st">"a::text"</span>).getall())
+
+<span class="kw">for</span> li <span class="kw">in</span> sel.xpath(<span class="st">'//li'</span>):                <span class="cm"># 单节点也是 Selector，可继续 xpath/css</span>
+    <span class="fn">print</span>(li.xpath(<span class="st">'./a/@href'</span>).get(), li.xpath(<span class="st">'string(.)'</span>).get())</pre>
+      <p>新 API 记住两个词就够：<b>get() 取一个、getall() 取全部</b>（旧的 extract_first() / extract() 仍兼容但已过时）。它最大的优势是"跟 Scrapy 同源"——现在用 requests + parsel 写的解析函数，第 10 章可以原样搬进 Scrapy 的 Spider。</p>
+
+      <!-- ============ 3.5 ============ -->
+      <h2>3.5 JSON 数据解析 <span class="chip tnew">拓展</span></h2>
+      <p>接口返回的数据大多是 JSON（第 05 章会大量遇到），Python 标准库 <code class="inline">json</code> 就够用。两个高频参数：<code class="inline">ensure_ascii=False</code> 让中文原样输出（默认会把中文转义成 <code class="inline">\u4f60</code>），<code class="inline">indent</code> 美化缩进（文件会变大，落库时不加）：</p>
+      <div class="code-title">json_demo.py</div>
+<pre class="code"><span class="kw">import</span> json
+
+item = {<span class="st">"title"</span>: <span class="st">"三体"</span>, <span class="st">"score"</span>: <span class="fn">9.3</span>, <span class="st">"tags"</span>: [<span class="st">"科幻"</span>, <span class="st">"小说"</span>]}
+
+text = json.dumps(item, ensure_ascii=<span class="kw">False</span>, indent=<span class="fn">2</span>)   <span class="cm"># dict → str（序列化）</span>
+<span class="fn">print</span>(text)
+<span class="cm"># {</span>
+<span class="cm">#   "title": "三体",</span>
+<span class="cm">#   "score": 9.3,</span>
+<span class="cm">#   "tags": ["科幻", "小说"]</span>
+<span class="cm"># }</span>
+
+data = json.loads(text)                                   <span class="cm"># str → dict（反序列化）</span>
+<span class="fn">print</span>(data[<span class="st">"tags"</span>][<span class="fn">0</span>])                                    <span class="cm"># 科幻</span></pre>
+
+      <p>爬虫存 JSON 的最佳姿势是 <b>JSON Lines</b>：每行一个独立 JSON 对象，<b>追加写不断不裂</b>——断点续爬时直接续着写，读取时逐行流式解析，某一行坏了也不影响其余数据：</p>
+      <div class="code-title">jsonl_demo.py</div>
+<pre class="code"><span class="kw">import</span> json
+
+<span class="cm"># 写：a 追加模式，每条一行以 \n 结尾</span>
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"items.jsonl"</span>, <span class="st">"a"</span>, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
+    <span class="kw">for</span> item <span class="kw">in</span> [{<span class="st">"title"</span>: <span class="st">"三体"</span>, <span class="st">"score"</span>: <span class="fn">9.3</span>}, {<span class="st">"title"</span>: <span class="st">"活着"</span>, <span class="st">"score"</span>: <span class="fn">9.4</span>}]:
+        f.write(json.dumps(item, ensure_ascii=<span class="kw">False</span>) + <span class="st">"\n"</span>)
+
+<span class="cm"># 读：逐行流式，坏一行跳一行</span>
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"items.jsonl"</span>, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
+    <span class="kw">for</span> line <span class="kw">in</span> f:
+        <span class="kw">if</span> line.strip():
+            <span class="kw">try</span>:
+                <span class="fn">print</span>(json.loads(line)[<span class="st">"title"</span>])
+            <span class="kw">except</span> json.JSONDecodeError:
+                <span class="kw">continue</span>
+<span class="cm"># 三体  活着</span></pre>
+
+      <div class="pitfall"><b>本章避坑清单：</b>① XPath 位置从 <b>1</b> 数起：<code class="inline">//li[1]</code> 是第一个元素，不是第二个——和 Python 下标 [0] 相反，翻页/取第 N 条时最容易栽；② <code class="inline">text()</code> 返回列表，直接 <code class="inline">[0]</code> 会在结构变动时 IndexError——先判空，或用 parsel 的 <code class="inline">.get()</code>（无结果返回 None）；③ BS4 的 <code class="inline">children/next_sibling</code> 会把换行符当文本节点混进来——用 <code class="inline">find_next_sibling("li")</code> 按标签找，或 <code class="inline">getattr(x, "name", None)</code> 过滤；④ <code class="inline">BeautifulSoup(html, "lxml")</code> 没装 lxml 会抛 FeatureNotFound，用 "xml" 解析 HTML 也会莫名报错——解析器参数永远显式写对；⑤ requests 拿到的永远是<b>原始 HTML</b>：Elements 面板里 JS 塞的内容不在里面（呼应 1.2），解析不到先想"数据在不在源代码里"，别怀疑选择器写错。</div>
+
+      <!-- ============ 动画课堂（自 stage2 原样移植） ============ -->
+      <h2 id="lesson">🎬 动画课堂 · 《解析器的艺术》 <span class="chip tanim">第 2 集</span></h2>
+      <p class="muted small">本集逻辑主线：HTML 文本 → DOM 树 → 选择器坐标（CSS / XPath）→ 提取循环 → 正则兜底 → 数据落库，对应上方 3.1~3.5 全部知识点。▶ 播放 / 空格暂停 / 进度条可拖 / ⏮⏭ 跳场景 / 可调速。</p>
+      <div class="lesson" id="lesson2">
+        <div class="screen"><div class="theater" id="th2">
+          <div class="row">
+            <div class="panel col" id="k2-raw"><h4>📄 响应 HTML（原始文本）</h4><pre class="th-code" data-dyn id="k2-code"></pre></div>
+            <div class="panel col" id="k2-tree"><h4>🌳 DOM 树（解析器搭好的"地址系统"）</h4>
+              <span class="tnode" id="k2-n1">html</span>
+              <span class="tnode" style="margin-left:18px" id="k2-n2">body</span>
+              <span class="tnode" style="margin-left:36px" id="k2-n3">section.list</span>
+              <span class="tnode" style="margin-left:54px" id="k2-n4">article.item</span>
+              <span class="tnode" style="margin-left:72px" id="k2-n5">h3.title</span>
+              <span class="tnode" style="margin-left:72px" id="k2-n6">span.score</span>
+            </div>
+          </div>
+          <div class="panel" id="k2-out" style="margin-top:12px"><h4>🧺 提取结果</h4>
+            <div class="th-tr"><span data-dyn id="k2-r1a"></span><span data-dyn id="k2-r1b"></span></div>
+            <div class="th-tr"><span data-dyn id="k2-r2a"></span><span data-dyn id="k2-r2b"></span></div>
+            <div class="th-tr"><span data-dyn id="k2-r3a"></span><span data-dyn id="k2-r3b"></span></div>
+            <div class="th-tr"><span data-dyn id="k2-r4a"></span><span data-dyn id="k2-r4b"></span></div>
+            <div class="th-tr"><span data-dyn id="k2-r5a"></span><span data-dyn id="k2-r5b"></span></div>
+          </div>
+          <div class="center-x" style="margin-top:12px">
+            <span class="pill" id="k2-css">CSS 选择器</span>
+            <span class="pill" id="k2-xp">XPath</span>
+            <span class="pill" id="k2-regex">正则</span>
+            <span class="pill" id="k2-csv">csv</span>
+            <span class="pill" id="k2-json">json</span>
+            <span class="pill" id="k2-db">sqlite</span>
+          </div>
+          <div class="note" data-dyn id="k2-note"></div>
+        </div></div>
+      </div>
+
+      <!-- ============ 打卡 ============ -->
+      <h2>✅ 本章打卡清单</h2>
+      <div class="checklist-card check">
+        <label><input type="checkbox" id="c03-1" data-persist><span>XPath 大表掌握：/ 与 //、谓词、@属性、通配，说得清 text() 与 string() 的区别（3.1）</span></label>
+        <label><input type="checkbox" id="c03-2" data-persist><span>lxml 两段代码跑通：etree.HTML 解析提取 + 提取 URL 跟进下一层（3.1）</span></label>
+        <label><input type="checkbox" id="c03-3" data-persist><span>BS4：四种解析器选得对，children/find_all/select/get_text(strip=True) 用得熟（3.2）</span></label>
+        <label><input type="checkbox" id="c03-4" data-persist><span>pyquery 与 parsel 都能定位同一页面，知道 parsel 是 Scrapy 同源、get()/getall() 新 API（3.3/3.4）</span></label>
+        <label><input type="checkbox" id="c03-5" data-persist><span>json.dumps(ensure_ascii=False) 与 JSON Lines 追加写/逐行读会写（3.5）</span></label>
+        <label><input type="checkbox" id="c03-6" data-persist><span>游乐场 CSS/XPath 双模式快捷预设全通关 + 看完动画《解析器的艺术》</span></label>
+      </div>
+
+      <!-- ============ 练习 ============ -->
+      <h2>📝 本章练习</h2>
+      <p class="muted small">先自己想，再展开参考解析。做完到<a href="practice.html">练习场</a>刷综合题。</p>
+
+      <details class="qa"><summary><span class="qno">Q1</span>写出 XPath：从下面的嵌套结构中提取"所有在售图书的书名 + 价格 + data-id"，以及第一本书的书名。<span class="lv badge b-red">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>3.1 谓词、属性提取、嵌套结构下钻。</p>
+<pre class="code">&lt;div class="shop"&gt;
+  &lt;h2&gt;老王书店&lt;/h2&gt;
+  &lt;ul&gt;
+    &lt;li class="book" data-id="1"&gt;&lt;b&gt;三体&lt;/b&gt;&lt;span class="price"&gt;45.0&lt;/span&gt;&lt;/li&gt;
+    &lt;li class="book" data-id="2"&gt;&lt;b&gt;活着&lt;/b&gt;&lt;span class="price"&gt;28.0&lt;/span&gt;&lt;/li&gt;
+    &lt;li class="soldout"&gt;&lt;b&gt;绝版书&lt;/b&gt;&lt;/li&gt;
+  &lt;/ul&gt;
+&lt;/div&gt;</pre>
+          <div class="ans"><b>参考解析：</b>关键是用属性谓词把 soldout 排除掉，然后在 li 范围内下钻取子节点：
+<pre class="code"><span class="kw">from</span> lxml <span class="kw">import</span> etree
+
+tree = etree.HTML(html)
+<span class="cm"># 在售书名：排除 soldout —— 谓词筛 li，再下钻取 b 的直属文本</span>
+<span class="fn">print</span>(tree.xpath(<span class="st">'//li[@class="book"]/b/text()'</span>))          <span class="cm"># ['三体', '活着']</span>
+<span class="fn">print</span>(tree.xpath(<span class="st">'//li[@class="book"]/span[@class="price"]/text()'</span>))   <span class="cm"># ['45.0', '28.0']</span>
+<span class="fn">print</span>(tree.xpath(<span class="st">'//li[@class="book"]/@data-id'</span>))          <span class="cm"># ['1', '2']</span>
+<span class="fn">print</span>(tree.xpath(<span class="st">'//li[@class="book"][1]/b/text()'</span>))       <span class="cm"># ['三体'] —— 位置谓词从 1 数起</span>
+
+<span class="cm"># 工程更稳的写法：contains 防 class 变成 "book hot"，并成对提取</span>
+<span class="kw">for</span> li <span class="kw">in</span> tree.xpath(<span class="st">'//li[contains(@class,"book")]'</span>):
+    <span class="fn">print</span>(li.xpath(<span class="st">'@data-id'</span>)[<span class="fn">0</span>],
+          li.xpath(<span class="st">'./b/text()'</span>)[<span class="fn">0</span>],
+          li.xpath(<span class="st">'./span[@class="price"]/text()'</span>)[<span class="fn">0</span>])
+<span class="cm"># 1 三体 45.0   2 活着 28.0</span></pre>
+          注意别写 <code class="inline">//li/b/text()</code>——绝版书会被混进来；也不要写死绝对路径 <code class="inline">/html/body/div/ul/li[1]/b</code>，改版即断。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q2</span>text() 与 string() 的区别是什么？对 &lt;p&gt;你好&lt;b&gt;世界&lt;/b&gt;再见&lt;/p&gt; 分别会得到什么？各自适用什么场景？<span class="lv badge b-green">概念</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>3.1 高频混淆点，直接决定提取结果的完整性。</p>
+          <div class="ans"><b>参考解析：</b><code class="inline">text()</code> 只选取该节点<b>直属的文本子节点</b>（不含子标签内部的文字），返回<b>列表</b>：<code class="inline">//p/text()</code> → <code class="inline">['你好', '再见']</code>，"世界"属于 b 节点、被漏掉。 <code class="inline">string()</code> 递归收集该节点及其<b>全部后代</b>的文字，拼接成<b>单个字符串</b>：<code class="inline">string(//p)</code> → <code class="inline">'你好世界再见'</code>。选型经验：字段文本干净、要逐个处理时用 text()（配 findall/getall 循环）；节点里混着子标签、要整段文字时用 string()——比如取"包含 &lt;b&gt; 加粗价格的商品描述"。BS4 里对应的是 <code class="inline">get_text()</code>（等价 string 的语义），这也是两套库互相迁移时的关键对照。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q3</span>BeautifulSoup 和 XPath（lxml/parsel）各有什么优劣？给出你的选型标准，并说明什么信号出现时应该换工具。<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>3.1~3.4 的横向对比与工程判断力。</p>
+          <div class="ans"><b>参考解析：</b>BS4 优势：API 最友好、find_all/select 语义直白、容错好（html5lib 兜底），适合小脚本和临时提取。XPath 优势：功能强（按文本定位、位置谓词、轴、并集）、速度快（lxml C 实现）、parsel 还能 get()/getall() 防空、与 Scrapy 同源，适合结构复杂、批量、要长期维护的工程。选型标准一句话：<b>简单页面/一次性任务用 BS4，复杂结构/正式项目用 XPath（parsel）</b>，两者也可以在同一项目混用。换工具的信号：① 需要"按文本找节点"或"取前 N 个兄弟"这类 BS4 表达不了的条件；② 发现自己在写三层 for 循环人工过滤——XPath 谓词一行搞定；③ 大文件解析明显变慢；④ 准备迁移到 Scrapy。反之，如果 XPath 表达式已经长得像天书而需求只是"取一个标题"，BS4 一行 select_one 更清爽。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q4</span>动手：为爬虫设计一对 JSON Lines 存取函数 save_jsonl / load_jsonl，并说明为什么比"把整个列表一次 json.dump"更适合爬虫场景。<span class="lv badge b-orange">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>3.5 的工程化应用，衔接第 04 章存储选型。</p>
+          <div class="ans"><b>参考解析：</b></div>
+<pre class="code"><span class="kw">import</span> json
+
+<span class="kw">def</span> <span class="fn">save_jsonl</span>(path, item):
+    <span class="st">"""追加一条：断点续爬随时可停，重启接着写"""</span>
+    <span class="kw">with</span> <span class="fn">open</span>(path, <span class="st">"a"</span>, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
+        f.write(json.dumps(item, ensure_ascii=<span class="kw">False</span>) + <span class="st">"\n"</span>)
+
+<span class="kw">def</span> <span class="fn">load_jsonl</span>(path):
+    <span class="st">"""逐行流式读取：坏一行跳一行，不毁整个文件"""</span>
+    items = []
+    <span class="kw">with</span> <span class="fn">open</span>(path, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
+        <span class="kw">for</span> line <span class="kw">in</span> f:
+            <span class="kw">if</span> line.strip():
+                <span class="kw">try</span>:
+                    items.append(json.loads(line))
+                <span class="kw">except</span> json.JSONDecodeError:
+                    <span class="kw">continue</span>
+    <span class="kw">return</span> items
+
+save_jsonl(<span class="st">"items.jsonl"</span>, {<span class="st">"title"</span>: <span class="st">"三体"</span>, <span class="st">"score"</span>: <span class="fn">9.3</span>})
+<span class="fn">print</span>(load_jsonl(<span class="st">"items.jsonl"</span>))    <span class="cm"># [{'title': '三体', 'score': 9.3}]</span></pre>
+          <p>相比"攒一个大列表再 json.dump"：① <b>追加安全</b>——a 模式每行独立，爬到 8 万条时崩溃也不丢前 79999 条；② <b>断点续爬</b>——重启直接续写，无需读出旧数据再合并；③ <b>流式解析</b>——内存里永远只有一行，适合大数据量；④ <b>容错</b>——某行被写坏只损失一条，整文件 dump 则一坏全坏。这正是第 04 章"文件存储选型"里 JSON Lines 的核心价值。</p>
+        </div>
+      </details>
+
+      <div class="book-box">
+        <div class="bx-title">📚 对齐与拓展</div>
+        <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 4 章 解析库的使用</b>（4.1 XPath 语言 / 4.2 BeautifulSoup 的使用 / 4.3 pyquery 的使用）；parsel 与 JSON 为第 10 章 Scrapy 与接口爬取的先修拓展；<br>
+           · 拓展阅读：<a href="https://lxml.de/" target="_blank" rel="noopener">lxml 官方文档</a>、<a href="https://parsel.readthedocs.io/" target="_blank" rel="noopener">parsel 官方文档</a>、<a href="https://www.crummy.com/software/BeautifulSoup/bs4/doc.zh/" target="_blank" rel="noopener">BeautifulSoup 中文文档</a>；<br>
+           · 练习站点：<a href="https://quotes.toscrape.com" target="_blank" rel="noopener">quotes.toscrape.com</a> 与 <a href="https://books.toscrape.com" target="_blank" rel="noopener">books.toscrape.com</a>（专为练解析而生，拿本章四大库各爬一遍）。</p>
+      </div>
+
+            <div class="book-box">
+        <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
+        <p>
+         · <a href="https://www.crummy.com/software/BeautifulSoup/bs4/doc.zh/" target="_blank" rel="noopener">BeautifulSoup 中文文档</a> / <a href="https://lxml.de/" target="_blank" rel="noopener">lxml 官方文档</a>——两大解析库权威手册;
+         · <a href="https://www.kgtools.cn" target="_blank" rel="noopener">KGtools XPath/正则测试器</a>——表达式先在线验证再写进代码;
+         · <a href="https://www.ituring.com.cn/book/1980" target="_blank" rel="noopener">《Python网络爬虫权威指南》</a>第 2 章——BS4 高级解析的另一种讲法。</p>
+      </div>
+
+      <div class="pager">
+        <a class="btn" href="ch02.html">← 上一章：请求的艺术</a>
+        <a class="btn primary" href="ch04.html">下一章：数据存储 →</a>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 第 03 章 · 解析库全解</p>
+    <p class="muted">对齐《Python3网络爬虫开发实战（第二版）》第 4 章 · 进度自动保存</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script src="assets/lesson-player.js"></script>
+<script>
+/* ============ 1. 选择器游乐场 ============ */
+(function () {
+  var view = document.getElementById('sel-view');
+  var input = document.getElementById('sel-q');
+  var isXp = false;
+
+  function setMode(xp) {
+    isXp = xp;
+    document.getElementById('mode-css').classList.toggle('active', !xp);
+    document.getElementById('mode-xp').classList.toggle('active', xp);
+    if (!xp) input.value = '.item .title';
+    else input.value = "//h3[@class='title']";
+    run();
+  }
+  function clearHits() {
+    view.querySelectorAll('.hit').forEach(function (n) { n.classList.remove('hit'); });
+  }
+  function run() {
+    clearHits();
+    var q = input.value.trim();
+    var countEl = document.getElementById('sel-count');
+    var resEl = document.getElementById('sel-results');
+    if (!q) { countEl.textContent = '请输入选择器'; resEl.innerHTML = ''; return; }
+    var nodes = [];
+    try {
+      if (!isXp) {
+        nodes = Array.prototype.slice.call(view.querySelectorAll(q));
+      } else {
+        var snap = document.evaluate(q, view, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        for (var i = 0; i < snap.snapshotLength; i++) nodes.push(snap.snapshotItem(i));
+      }
+    } catch (e) {
+      countEl.textContent = '❌ 表达式错误';
+      resEl.innerHTML = '<div class="explain bad">' + e.message.replace(/</g, '&lt;') + '</div>';
+      return;
+    }
+    var list = [];
+    nodes.forEach(function (n) {
+      if (n.nodeType === 1) {
+        n.classList.add('hit');
+        var cls = (n.getAttribute('class') || '').trim();
+        var txt = (n.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 44);
+        list.push('&lt;' + n.nodeName.toLowerCase() + (cls ? ' class="' + cls + '"' : '') + '&gt; ' + (txt ? '→ ' + txt : ''));
+      }
+    });
+    countEl.textContent = '✅ 命中 ' + nodes.length + ' 个元素';
+    resEl.innerHTML = list.length
+      ? list.slice(0, 8).map(function (s) { return '<div style="padding:3px 0;border-bottom:1px dashed var(--line)">' + s + '</div>'; }).join('') + (list.length > 8 ? '<div class="muted">… 其余 ' + (list.length - 8) + ' 条略</div>' : '')
+      : '<div class="muted">没有命中任何元素——检查类名、层级或属性拼写。</div>';
+  }
+  document.getElementById('mode-css').addEventListener('click', function () { setMode(false); });
+  document.getElementById('mode-xp').addEventListener('click', function () { setMode(true); });
+  document.getElementById('sel-run').addEventListener('click', run);
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+  document.querySelectorAll('.ex').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var q = b.dataset.q;
+      var xp = q.trim()[0] === '/';
+      if (xp !== isXp) setMode(xp);
+      input.value = q;
+      run();
+    });
+  });
+  run();
+})();
+
+/* ============ 2. 动画课堂：解析器的艺术 ============ */
+(function () {
+  function g(r, id) { return r.querySelector('#' + id); }
+  function T(r, id, s) { g(r, id).textContent = s; }
+  function onE(r, id, c) { g(r, id).classList.add(c || 'on'); }
+  var S = [
+    { d: 10, cap: '上一集你把 HTML 拿到了手。这一集：解析器怎么从一长串文本里，精准掏出你要的数据。', set: { 'k2-note': '输入是一串文本，输出是一张数据表。' }, cls: { 'k2-raw': 'on' } },
+    { d: 12, cap: '在解析器眼里，HTML 只是一串字符：尖括号、标签名、属性、文本。没有魔法。', set: { 'k2-code': '<article class="item">\n  <h3 class="title">三体</h3>\n  <span class="score">9.3</span>\n</article>\n<!-- …… × 5 -->', 'k2-note': 'HTML 的本质：带尖括号的纯文本。' } },
+    { d: 16, cap: '解析器按嵌套层级把它组装成 DOM 树：html → body → section → article → h3。树一长出来，"位置"就有了意义。', set: { 'k2-note': '树状结构 = 每个元素都有了唯一"地址"。' }, cls: { 'k2-tree': 'on', 'k2-n1': ['grow', 'on'], 'k2-n2': ['grow', 'on'], 'k2-n3': ['grow', 'on'], 'k2-n4': ['grow', 'on'], 'k2-n5': ['grow', 'on'], 'k2-n6': ['grow', 'on'] } },
+    { d: 14, cap: 'CSS 选择器就是树的坐标：.item .title 意思是"所有 class 含 item 的节点下，class 为 title 的孩子"。一发命中。', set: { 'k2-note': '坐标语言 1 号：CSS 选择器，最常用。' }, cls: { 'k2-css': 'on', 'k2-n5': 'good' } },
+    { d: 13, cap: 'XPath 是另一种坐标语言：//article[@class="item"]/h3 —— 双斜杠任意层找，方括号筛属性。同一件事的另一种说法。', set: { 'k2-note': '坐标语言 2 号：XPath，能按文本找，功能更狠。' }, cls: { 'k2-xp': 'on', 'k2-n4': 'good' } },
+    { d: 18, cap: '提取循环：选择器命中 5 个节点 → 逐个取文本 → 写进数据表。所有爬虫的主体，就是这么朴实的循环。', set: { 'k2-r1a': '三体', 'k2-r2a': '活着', 'k2-r3a': '白夜行', 'k2-r4a': '肖申克的救赎', 'k2-r5a': '霸王别姬', 'k2-note': '命中 5 次 → 循环 5 次 → 五行数据。' }, cls: { 'k2-out': 'on' } },
+    { d: 12, cap: '评分也是同样套路：.score 命中 5 次，顺手 float() 转成数字。两列齐了。', set: { 'k2-r1b': '9.3', 'k2-r2b': '9.4', 'k2-r3b': '9.1', 'k2-r4b': '9.7', 'k2-r5b': '9.6', 'k2-note': '评分列完成。' } },
+    { d: 13, cap: '如果页面被压成一行、class 名乱七八糟？正则出场：用字符模式硬捞数据——最后的安全网。', set: { 'k2-code': '<article class="item"><h3 class="title">三体</h3><span class="score">9.3</span></article>…（被压成一行）', 'k2-note': '结构烂了正则还活着，但可读性差，能不用就不用。' }, cls: { 'k2-regex': 'warn' } },
+    { d: 13, cap: '数据到手要落库：csv 给 Excel 人看，json 给程序读，sqlite / MySQL 给规模用。三种兵器各有战场。', set: { 'k2-note': '落库三兄弟，按需选择。' }, cls: { 'k2-out': 'good', 'k2-csv': 'good', 'k2-json': 'good', 'k2-db': 'good' } },
+    { d: 16, cap: '整站爬取 = 这个循环套上翻页：page=1、2、3……每页重复「请求 → 解析 → 入库」，直到返回空列表才停。', set: { 'k2-note': '循环 × 翻页 = 整站。你的第一个整站爬虫就是这个形状。' } },
+    { d: 12, cap: '轮到你了：去下面的游乐场，亲手敲选择器，看着节点一个个亮起来——练到闭眼能写，本阶段就赢了一半。', set: { 'k2-note': '▼ 游乐场在下面等你' }, cls: { 'k2-css': 'good', 'k2-xp': 'good', 'k2-csv': 'good', 'k2-json': 'good', 'k2-db': 'good' } }
+  ];
+  new LessonPlayer({ root: '#lesson2', title: '解析器的艺术', scenes: S });
+})();
+</script>
+</body>
+</html>

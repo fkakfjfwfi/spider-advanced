@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 · 爬虫基础与抓包分析 — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.anat-box .k { color: #7dd3fc; }
+</style>
+</head>
+<body data-page="c01">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+      <a href="ch02.html" data-nav="c02">下一章 →</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app" style="padding-top:20px;padding-bottom:48px">
+  <div class="crumb"><a href="index.html">首页</a> / 基础篇 / <b>01 · 爬虫基础与抓包分析</b></div>
+  <div class="layout">
+
+    <aside class="chapnav">
+      <div class="cap">课程目录</div>
+      <div class="grp">🧱 基础篇</div>
+      <a href="ch01.html" data-nav="c01" class="active"><span class="no">01</span>基础与抓包 <span class="pg" data-chapter-progress="c01">0/6</span></a>
+      <a href="ch02.html" data-nav="c02"><span class="no">02</span>请求与正则 <span class="pg" data-chapter-progress="c02">0/6</span></a>
+      <a href="ch03.html" data-nav="c03"><span class="no">03</span>解析库全解 <span class="pg" data-chapter-progress="c03">0/6</span></a>
+      <a href="ch04.html" data-nav="c04"><span class="no">04</span>数据存储 <span class="pg" data-chapter-progress="c04">0/6</span></a>
+      <div class="grp">⚔️ 进阶篇</div>
+      <a href="ch05.html" data-nav="c05"><span class="no">05</span>Ajax与动态渲染 <span class="pg" data-chapter-progress="c05">0/6</span></a>
+      <a href="ch06.html" data-nav="c06"><span class="no">06</span>验证码与登录 <span class="pg" data-chapter-progress="c06">0/6</span></a>
+      <a href="ch07.html" data-nav="c07"><span class="no">07</span>代理与反反爬 <span class="pg" data-chapter-progress="c07">0/6</span></a>
+      <div class="grp">🔍 逆向篇</div>
+      <a href="ch08.html" data-nav="c08"><span class="no">08</span>JS 逆向专题 <span class="pg" data-chapter-progress="c08">0/6</span></a>
+      <a href="ch09.html" data-nav="c09"><span class="no">09</span>App 爬取 <span class="pg" data-chapter-progress="c09">0/6</span></a>
+      <div class="grp">🏭 框架篇</div>
+      <a href="ch10.html" data-nav="c10"><span class="no">10</span>Scrapy与分布式 <span class="pg" data-chapter-progress="c10">0/6</span></a>
+      <div class="grp">🛠 实战</div>
+      <a href="practice.html" data-nav="practice"><span class="no">📝</span>练习场</a>
+      <a href="library.html" data-nav="library"><span class="no">📚</span>多源图书馆</a>
+    </aside>
+
+    <div class="appmain doc">
+
+      <section class="hero compact">
+        <span class="tag">基础篇 · 对齐教材 2.1 ~ 2.5</span>
+        <h1>01 · 爬虫基础与抓包分析</h1>
+        <p class="sub">爬虫的全部秘密都在 HTTP 里。这一章把"请求—响应"这条主线彻底吃透：报文结构、Cookie 会话、代理原理、F12 抓包——后面所有章节都建立在这一章之上。</p>
+        <div class="pwrap">
+          <div class="progress"><div class="fill" data-progress-bar="c01"></div></div>
+          <span class="plabel" data-progress-label="c01"></span>
+        </div>
+      </section>
+
+      <div class="connect-box">
+        <div class="bx-title">🔗 连接你已有的知识（考研 408 · 计算机网络）</div>
+        <p>· HTTP 是 408 计网<b>应用层</b>的核心协议——你学过的"请求/响应模式、无状态、持久连接（HTTP/1.1 keep-alive）"在这里全部用上；<br>
+           · DNS 解析 = 计网的应用层服务；TCP 三次握手 = 运输层知识，requests 建立连接时真实发生；<br>
+           · Cookie/Session 解决的正是"HTTP <b>无状态</b>"问题——这是 408 的经典考点，也是爬虫登录态的全部秘密；<br>
+           · 你会发现在 Python 里发一个请求 = 用套接字 API 之上封装好的库帮你拼报文。四十8的底子在这一章是降维打击。</p>
+      </div>
+
+      <!-- ============ 1.1 ============ -->
+      <h2>1.1 HTTP 深入 <span class="chip tbook">对齐教材 2.1</span></h2>
+      <p>HTTP（HyperText Transfer Protocol，超文本传输协议）是一个基于 <b>TCP</b> 的应用层协议，采用<b>请求—响应</b>模型：客户端发一个 Request，服务器回一个 Response，一次交互结束。爬虫的全部工作，就是<b>用代码精确复刻一条"服务器愿意理睬"的请求</b>，然后把响应里的数据抠出来。</p>
+
+      <h3>一条原始的 HTTP 请求长什么样</h3>
+      <div class="code-title">Request</div>
+<pre class="code">GET /hot?page=1 HTTP/1.1          <span class="cm">← 请求行：方法 + 路径 + 版本</span>
+Host: demo-movies.site            <span class="cm">← 以下都是请求头（Headers）</span>
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)
+Referer: https://demo-movies.site/
+Cookie: sessionid=8f3ka9; tz=Asia/Shanghai
+Accept: text/html,application/xhtml+xml
+                                  <span class="cm">← 空行（CRLF），标志头部结束</span>
+page=1&amp;size=20                    <span class="cm">← 请求体（GET 一般为空，POST 在这里放数据）</span></pre>
+
+      <div class="code-title">Response</div>
+<pre class="code">HTTP/1.1 200 OK                   <span class="cm">← 状态行：版本 + 状态码 + 短语</span>
+Content-Type: application/json; charset=utf-8
+Set-Cookie: sessionid=8f3ka9; Path=/; HttpOnly
+Server: nginx
+                                  <span class="cm">← 空行</span>
+{"code":0,"data":[…]}             <span class="cm">← 响应体：真正的数据</span></pre>
+
+      <div class="lab-card">
+        <h3>🧪 实验室 · HTTP 请求解剖台 <span class="chip tlab">互动</span></h3>
+        <p class="muted small">点击报文中的任意一行，右侧解释它的作用与对爬虫的意义。这个模型会在后面每一章反复出现。</p>
+        <div class="tabs" role="tablist" aria-label="报文方向">
+          <button class="tab active" id="tb-req" type="button">请求报文（浏览器 → 服务器）</button>
+          <button class="tab" id="tb-resp" type="button">响应报文（服务器 → 浏览器）</button>
+        </div>
+        <div class="lab-grid">
+          <div class="anat-box" id="anat-src"></div>
+          <div class="card">
+            <h3 id="anat-title" style="color:var(--primary)">👆 点左边任意一行</h3>
+            <p id="anat-desc">每一行都有名字，也都有存在的理由。</p>
+            <div class="callout info" id="anat-tip" hidden></div>
+          </div>
+        </div>
+      </div>
+
+      <h3>常见请求方法</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>方法</th><th>语义</th><th>爬虫场景</th></tr>
+        <tr><td><code class="inline">GET</code></td><td>获取资源，参数在 URL 里</td><td>抓页面、抓接口，占爬虫请求的绝大多数</td></tr>
+        <tr><td><code class="inline">POST</code></td><td>提交数据，参数在请求体里</td><td>登录、搜索、翻页接口（很多站翻页也用 POST）</td></tr>
+        <tr><td><code class="inline">HEAD</code></td><td>只要响应头不要体</td><td>探测 URL 是否有效、拿文件大小</td></tr>
+        <tr><td><code class="inline">PUT / DELETE</code></td><td>替换 / 删除资源（RESTful）</td><td>调用开放 API 时会遇到</td></tr>
+      </table></div>
+
+      <h3>状态码：服务器的"表情包"</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>状态码</th><th>含义</th><th>爬虫遇到时怎么办</th></tr>
+        <tr><td><b class="b-green badge">200</b></td><td>成功</td><td>照单全收，直接解析</td></tr>
+        <tr><td><b class="b-blue badge">301/302</b></td><td>重定向</td><td>requests 默认自动跟随；注意登录跳转常伴随新 Cookie</td></tr>
+        <tr><td><b class="b-amber badge">403</b></td><td>Forbidden，拒绝执行</td><td>请求头不全 / IP 被封 / 签名错误——第 07、08 章专门解决</td></tr>
+        <tr><td><b class="b-gray badge">404</b></td><td>资源不存在</td><td>检查 URL 与参数边界（翻页翻过头常见）</td></tr>
+        <tr><td><b class="b-orange badge">429</b></td><td>请求过于频繁</td><td>限流警告：加随机延时、降并发、上代理（第 07 章）</td></tr>
+        <tr><td><b class="b-red badge">5xx</b></td><td>服务器错误</td><td>可能真故障，也可能是 JS 挑战（如 CF 503），配合重试与第 08 章手段</td></tr>
+      </table></div>
+
+      <div class="lab-card">
+        <h3>🧪 实验室 · 状态码速查 <span class="chip tlab">互动</span></h3>
+        <p class="muted small">爬虫的一生就是和各种状态码打交道。点击状态码，看它意味着什么、该怎么办。</p>
+        <div class="opts" id="sc-opts"></div>
+        <div class="card" id="sc-panel">
+          <div id="sc-title" class="status-big s2" style="font-size:20px">200</div>
+          <p id="sc-desc">正常返回，数据就在响应里，直接解析即可。</p>
+          <div class="callout ok" id="sc-act">爬虫动作：照单全收，解析提取。</div>
+        </div>
+      </div>
+
+      <h3>爬虫最该吃透的六个请求头</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>请求头</th><th>作用</th><th>爬虫意义</th></tr>
+        <tr><td><code class="inline">User-Agent</code></td><td>自报浏览器/系统身份</td><td>第一层人机识别；requests 默认 UA 一秒暴露（第 07 章化解）</td></tr>
+        <tr><td><code class="inline">Referer</code></td><td>请求来源页面</td><td>防盗链就查它——直连接口被拒先补它</td></tr>
+        <tr><td><code class="inline">Cookie</code></td><td>携带身份凭证</td><td>登录态 = 一枚有效 session Cookie（见 1.4）</td></tr>
+        <tr><td><code class="inline">Content-Type</code></td><td>请求体/响应体格式</td><td><code class="inline">application/json</code> 接口最爱；<code class="inline">x-www-form-urlencoded</code> 是表单</td></tr>
+        <tr><td><code class="inline">Accept</code></td><td>能接收的格式/语言</td><td>严格风控会校验这组头是否像真浏览器</td></tr>
+        <tr><td><code class="inline">Authorization</code></td><td>认证令牌（Bearer/JWT）</td><td>现代站点登录态越来越多放在这里而非 Cookie</td></tr>
+      </table></div>
+
+      <div class="callout info"><b>HTTPS 与 TLS（连接 408）：</b>HTTPS = HTTP over TLS。握手阶段用<b>非对称加密</b>协商出对称会话密钥，之后全程对称加密——所以抓包工具（如 Fiddler/Charles）要做<b>中间人</b>：装自己的根证书替两边加解密（第 09 章 App 抓包会实际操作）。</div>
+
+      <!-- ============ 1.2 ============ -->
+      <h2>1.2 Web 网页基础 <span class="chip tbook">对齐教材 2.2</span></h2>
+      <p>网页由三种技术构成，爬虫视角下各有含义：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>技术</th><th>角色</th><th>爬虫视角</th></tr>
+        <tr><td>HTML</td><td>骨架（结构 + 内容）</td><td>静态数据的载体，第 03 章解析它的主战场</td></tr>
+        <tr><td>CSS</td><td>皮肉（样式）</td><td>选择器语法顺带是解析定位利器；字体反爬也藏在 CSS 里（第 07 章）</td></tr>
+        <tr><td>JavaScript</td><td>灵魂（行为 + 动态数据）</td><td>Ajax 拉数据、加密参数都在 JS 里——第 05 章分析它、第 08 章逆向它</td></tr>
+      </table></div>
+      <p><b>页面渲染流水线</b>（连接 408"从 URL 到页面"）：解析 HTML 构建 <b>DOM 树</b> → 解析 CSS 构建 <b>CSSOM</b> → 合成<b>渲染树</b> → 布局 → 绘制。JS 可以随时修改 DOM——这就是"数据是事后塞进去的"（动态页面）的根源，也是第 05 章要解决的问题。</p>
+      <p><b>F12 开发者工具五大面板</b>，爬虫工程师的军火库：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>面板</th><th>干什么用</th><th>主要用在哪章</th></tr>
+        <tr><td>Elements</td><td>看渲染后的 DOM（≠源代码！）</td><td>03</td></tr>
+        <tr><td><b>Network</b></td><td>所有请求的时空明细：筛选 XHR、看负载、复制 cURL</td><td><b>每章都用，本课核心</b></td></tr>
+        <tr><td>Sources</td><td>断点调试 JS、看调用栈</td><td>08（逆向主战场）</td></tr>
+        <tr><td>Application</td><td>Cookie / localStorage / Session Storage</td><td>06、09</td></tr>
+        <tr><td>Console</td><td>现场执行 JS 验证猜想</td><td>08</td></tr>
+      </table></div>
+      <div class="callout warn"><b>关键区分：</b>右键"查看网页源代码"给你的是<b>原始 HTML</b>；Elements 面板显示的是 <b>JS 改过之后的实时 DOM</b>。源代码里找不到的数据，可能 Elements 里有（JS 塞的），但真正要找的是那条 XHR 请求。</div>
+
+      <!-- ============ 1.3 ============ -->
+      <h2>1.3 爬虫的基本原理 <span class="chip tbook">对齐教材 2.3</span></h2>
+      <p>所有爬虫，无论多复杂，都是这个循环：</p>
+      <div class="flow">
+        <span class="fnode"><b>① 获取</b>下载页面/接口</span><span class="farrow">→</span>
+        <span class="fnode"><b>② 解析</b>提取目标数据</span><span class="farrow">→</span>
+        <span class="fnode"><b>③ 存储</b>落库落盘</span><span class="farrow">→</span>
+        <span class="fnode"><b>④ 调度</b>更多 URL？回①</span>
+      </div>
+      <p>数据藏在三个地方，找数据的本质就是判断它在哪：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>位置</th><th>特征</th><th>对策</th></tr>
+        <tr><td>初始 HTML 里</td><td>右键源代码能搜到</td><td>requests + 解析库（02/03 章）</td></tr>
+        <tr><td>XHR/Fetch 接口里</td><td>源代码没有，Network 有</td><td>接口直连（05 章）</td></tr>
+        <tr><td>JS 变量/加密参数里</td><td>接口都要带 token/sign</td><td>JS 逆向（08 章）或浏览器自动化（05 章）</td></tr>
+      </table></div>
+      <p>用 requests 复刻浏览器行为的的最小闭环长这样（02 章展开讲透）：</p>
+      <div class="code-title">first_spider.py</div>
+<pre class="code"><span class="kw">import</span> requests
+
+url = <span class="st">"https://httpbin.org/get"</span>
+headers = {<span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"</span>}
+resp = requests.get(url, headers=headers, timeout=<span class="fn">10</span>)
+resp.raise_for_status()          <span class="cm"># 状态码不是 2xx 就抛异常，好习惯</span>
+<span class="fn">print</span>(resp.status_code)          <span class="cm"># 200</span>
+<span class="fn">print</span>(resp.headers[<span class="st">"Content-Type"</span>])
+<span class="fn">print</span>(resp.text[:<span class="fn">200</span>])           <span class="cm"># 文本内容；二进制用 resp.content</span></pre>
+
+      <!-- ============ 1.4 ============ -->
+      <h2>1.4 会话和 Cookies <span class="chip tbook">对齐教材 2.4</span></h2>
+      <p>HTTP 本身<b>无状态</b>：服务器记不住"你是刚才那个人"。Cookie + Session 是补丁：服务器发给你一枚凭证（Cookie），你之后每次请求都带上，服务器就知道 continuity。</p>
+      <h3>Cookie 的关键属性</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>属性</th><th>作用</th><th>爬虫注意</th></tr>
+        <tr><td>Domain / Path</td><td>生效范围</td><td>跨域请求不会自动带，抓包时注意哪个 Cookie 是关键</td></tr>
+        <tr><td>Expires / Max-Age</td><td>有效期</td><td>过期即失效——爬虫挂掉先查 Cookie 是不是过期了</td></tr>
+        <tr><td><b>HttpOnly</b></td><td>禁止 JS 读取</td><td>JS 摸不到但 HTTP 照带；用抓包工具/requests 照样拿</td></tr>
+        <tr><td>Secure</td><td>仅 HTTPS 发送</td><td>http 测试地址带不上，别奇怪</td></tr>
+        <tr><td>SameSite</td><td>跨站限制（CSRF 防护）</td><td>自动化跨站跳转时可能丢 Cookie</td></tr>
+      </table></div>
+      <p><b>Session 的原理</b>： sensitive 数据不放在 Cookie 里，服务器只发一个 <code class="inline">sessionid</code>，状态存在服务器端。所以"保持登录态"的本质 = <b>持有并续用有效 sessionid</b>。requests 用 <code class="inline">Session</code> 对象自动完成"收 Cookie → 存 → 回带"：</p>
+      <div class="code-title">session_demo.py</div>
+<pre class="code"><span class="kw">import</span> requests
+
+s = requests.Session()
+s.headers.update({<span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0"</span>})
+
+s.get(<span class="st">"https://httpbin.org/cookies/set/token/abc123"</span>)  <span class="cm"># 服务器发 Cookie，自动收下</span>
+r = s.get(<span class="st">"https://httpbin.org/cookies"</span>)                <span class="cm"># 后续请求自动带上</span>
+<span class="fn">print</span>(r.json())   <span class="cm"># {'cookies': {'token': 'abc123'}}</span>
+
+<span class="cm"># 也可以手动注入已有登录态（浏览器 F12 → Application → Cookies 抄过来）</span>
+s2 = requests.Session()
+s2.cookies.update({<span class="st">"sessionid"</span>: <span class="st">"从浏览器抄来的值"</span>})</pre>
+      <div class="callout ok"><b>最实用的保命技：</b>遇到难啃的登录（验证码/扫码/风控），人肉在浏览器登录一次 → F12 抄全部 Cookie 给 <code class="inline">Session</code> → 代码直接带着登录态跑。Cookie 失效了再抄一次，成本几乎为零（第 06 章系统化讲登录）。</div>
+
+      <!-- ============ 1.5 ============ -->
+      <h2>1.5 代理基本原理 <span class="chip tbook">对齐教材 2.5</span></h2>
+      <p>代理 = 你和目标服务器之间的"中转站"：请求先发给代理，由代理代你去访问目标，目标看到的是<b>代理的 IP</b>。它解决两个问题：<b>隐藏真实 IP</b> 与 <b>突破频率/IP 封锁</b>（第 07 章实战代理池）。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>维度</th><th>分类</th><th>说明</th></tr>
+        <tr><td rowspan="2">方向</td><td>正向代理</td><td>替"客户端"出面（爬虫用的就是它）</td></tr>
+        <tr><td>反向代理</td><td>替"服务器"出面（Nginx/CDN，目标站的前排盾牌）</td></tr>
+        <tr><td rowspan="3">匿名度</td><td>透明代理</td><td>目标能 Via/X-Forwarded-For 看到你真实 IP——白用</td></tr>
+        <tr><td>匿名代理</td><td>知道你是代理，但不知道你是谁</td></tr>
+        <tr><td>高匿代理</td><td>看起来就是个普通用户——爬虫标配</td></tr>
+        <tr><td>协议</td><td>HTTP / HTTPS / SOCKS5</td><td>SOCKS5 更底层、通吃流量；requests 需装 <code class="inline">requests[socks]</code></td></tr>
+      </table></div>
+      <div class="code-title">proxy_demo.py</div>
+<pre class="code">proxies = {
+    <span class="st">"http"</span>:  <span class="st">"http://127.0.0.1:7890"</span>,
+    <span class="st">"https"</span>: <span class="st">"http://127.0.0.1:7890"</span>,   <span class="cm"># https 走的隧道也用 http 代理承载</span>
+}
+requests.get(<span class="st">"https://httpbin.org/ip"</span>, proxies=proxies, timeout=<span class="fn">10</span>)</pre>
+
+      <div class="pitfall"><b>新手五大坑：</b>① 只看 Elements 不看 Network，对着实时 DOM 白费劲；② 用 GET 请求带请求体、POST 参数塞 URL；③ 忘了 <code class="inline">timeout</code>，爬虫挂死一整夜；④ 429/403 一直无脑重试，把封禁升级成永久；⑤ 把 HttpOnly 当成"拿不到"——JS 拿不到不等于 HTTP 层拿不到。</div>
+
+      <!-- ============ 动画课堂 ============ -->
+      <h2 id="lesson">🎬 动画课堂 · 《一次 HTTP 请求的一生》 <span class="chip tanim">第 1 集 · 2 分 37 秒</span></h2>
+      <p class="muted small">本集逻辑主线：DNS → TCP 握手 → 请求 → 响应 → 二次请求（XHR）→ 渲染，对应上方 1.1~1.4 全部知识点。▶ 播放 / 空格暂停 / 进度条可拖 / ⏮⏭ 跳场景 / 可调速。</p>
+      <div class="lesson" id="lesson1">
+        <div class="screen"><div class="theater" id="th1">
+          <div class="row">
+            <div class="panel col" id="k1-pc"><h4>🖥 你的浏览器</h4>
+              <div class="addrbox" data-dyn id="k1-addr"></div>
+              <div class="th-screen" data-dyn id="k1-page"></div>
+            </div>
+            <div class="col" style="flex:0 0 190px;max-width:190px">
+              <div class="th-pipe">
+                <div class="env" id="k1-env" data-fx>📦 HTTP</div>
+              </div>
+              <div class="note" data-dyn id="k1-pipe"></div>
+            </div>
+            <div class="panel col" id="k1-srv"><h4>🗄 远方服务器</h4><div class="th-mono" data-dyn id="k1-srvb"></div></div>
+          </div>
+          <div class="center-x" style="margin-top:14px">
+            <span class="pill" id="k1-dns">DNS 解析</span>
+            <span class="pill" id="k1-tcp">TCP 握手</span>
+            <span class="pill" id="k1-req">HTTP 请求</span>
+            <span class="pill" id="k1-res">HTTP 响应</span>
+            <span class="pill" id="k1-xhr">XHR 数据</span>
+            <span class="pill" id="k1-render">渲染</span>
+          </div>
+          <div class="note" data-dyn id="k1-note"></div>
+        </div></div>
+      </div>
+
+      <!-- ============ 打卡 ============ -->
+      <h2>✅ 本章打卡清单</h2>
+      <div class="checklist-card check">
+        <label><input type="checkbox" id="c01-1" data-persist><span>能默写 HTTP 请求/响应的四段结构，并说出每个关键请求头的作用（1.1）</span></label>
+        <label><input type="checkbox" id="c01-2" data-persist><span>状态码 200/301/403/404/429/503 遇到时知道各自对策（1.1）</span></label>
+        <label><input type="checkbox" id="c01-3" data-persist><span>分得清"源代码 vs 实时 DOM vs XHR 接口"，会判断数据在哪一层（1.2/1.3）</span></label>
+        <label><input type="checkbox" id="c01-4" data-persist><span>理解 Cookie/Session 如何弥补 HTTP 无状态，会用 requests.Session（1.4）</span></label>
+        <label><input type="checkbox" id="c01-5" data-persist><span>能解释正向/反向代理、匿名度分级，会配 proxies 参数（1.5）</span></label>
+        <label><input type="checkbox" id="c01-6" data-persist><span>看完动画《一次 HTTP 请求的一生》，并做完全部练习（1.6）</span></label>
+      </div>
+
+      <!-- ============ 练习 ============ -->
+      <h2>📝 本章练习</h2>
+      <p class="muted small">先自己想，再展开参考解析。做完到<a href="practice.html">练习场</a>刷综合题。</p>
+
+      <details class="qa"><summary><span class="qno">Q1</span>为什么说"HTTP 是无状态协议"？Session 和 Cookie 分别解决了什么？<span class="lv badge b-green">概念</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>对齐教材 2.4，408 计网经典考点。</p>
+          <p>HTTP 每次 请求-响应 相互独立，服务器不保留上下文，这叫无状态。Cookie 是<b>客户端</b>存储、随请求回传的凭证；Session 是<b>服务器端</b>的状态存储，只把 sessionid 通过 Cookie 发给你。</p>
+          <div class="ans"><b>参考解析：</b>无状态简化了服务器设计（连接即用即弃），但业务需要"记住登录者"。方案：服务器登录后生成 session，把 sessionid 放进 Set-Cookie；客户端后续每个请求自动带 Cookie: sessionid=…，服务器据此查到会话。爬虫视角：保持登录态 = 持有并续用有效 sessionid（requests.Session 自动化这件事）。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q2</span>一个列表页的数据，右键"查看源代码"里搜不到，但页面上明明有。数据可能在哪里？如何确认？<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>1.3 的"数据三藏处"判断力。</p>
+          <div class="ans"><b>参考解析：</b>三个候选：① JS 动态塞进 DOM 的（源代码没有、Elements 有）；② XHR/Fetch 接口返回的 JSON；③ 内嵌在 <code class="inline">&lt;script&gt;</code> 的 JS 变量里。确认方法：F12 → Network → 筛选 XHR/Fetch → 刷新页面 → 逐条看 Response：找到含目标数据的 JSON 即接口直连目标；若 XHR 都没有而 Elements 有，则是前端渲染，走第 05 章两条路。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q3</span>transparent（透明）代理为什么对爬虫毫无意义？高匿代理"高匿"在哪？<span class="lv badge b-green">概念</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>对齐教材 2.5，代理匿名度分级。</p>
+          <div class="ans"><b>参考解析：</b>透明代理转发请求时会带上 <code class="inline">X-Forwarded-For</code>/<code class="inline">Via</code> 头暴露你的真实 IP——目标站既知道你用了代理、又知道你是谁，封你等于封真身。高匿代理两者都不带：目标看到的请求与普通用户无差别，无法从报文层面识别代理存在。"匿名度"衡量的是<b>目标服务器能否看穿代理链</b>。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q4</span>动手：打开任意一个你常用的网站，F12 找到"列表数据来自哪个请求"，把该请求 Copy as cURL，指出其中 User-Agent、Referer、Cookie 三个头的值，并判断数据在 HTML 还是 XHR 里。<span class="lv badge b-red">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>本章终极目标——"看得懂请求"。</p>
+          <div class="ans"><b>操作路径：</b>F12 → Network → 勾选 Preserve log → 刷新 → 找列表出现时刻新增的请求（优先筛选 XHR/Fetch）→ 点开看 Response 是否含目标数据 → 右键该请求 Copy → Copy as cURL (bash) → 观察 -H 'User-Agent: …'、-H 'Referer: …'、-H 'Cookie: …'。若在 document 类型请求的 Response 里能直接搜到数据 → 静态；在 xhr 请求里 → 接口。把 cURL 留存，第 02 章会把它转成 requests 代码。</div>
+        </div>
+      </details>
+
+      <div class="book-box">
+        <div class="bx-title">📚 对齐与拓展</div>
+        <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 2 章 爬虫基础</b>（2.1 HTTP 基本原理 / 2.2 Web 网页基础 / 2.3 爬虫基本原理 / 2.4 会话和 Cookies / 2.5 代理基本原理）；<br>
+           · 拓展阅读：<a href="https://developer.mozilla.org/zh-CN/docs/Web/HTTP" target="_blank" rel="noopener">MDN HTTP 文档</a>（当手册查）；<br>
+           · 配套视频：B站 搜索"麦叔 HTTP 协议入门"（1 小时速通）。</p>
+      </div>
+
+      <div class="book-box">
+        <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
+        <p>· 📚 <a href="https://book.douban.com/subject_search?search_text=HTTP权威指南" target="_blank" rel="noopener">《HTTP权威指南》</a>——把 HTTP 读厚的字典，重点前 5 章与 Cookie/连接管理章节；<br>
+           · 📚 <a href="https://www.ituring.com.cn/book/1980" target="_blank" rel="noopener">《Python网络爬虫权威指南》</a>（Ryan Mitchell）第 1~3 章——国际视角看"第一个爬虫"与抓取礼仪；<br>
+           · 📄 <a href="https://developer.mozilla.org/zh-CN/docs/Web/HTTP" target="_blank" rel="noopener">MDN HTTP</a>——每个头、每个状态码的权威定义，当字典查。</p>
+      </div>
+
+      <div class="pager">
+        <a class="btn" href="index.html">← 返回课程总览</a>
+        <a class="btn primary" href="ch02.html">下一章：请求的艺术 →</a>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 第 01 章 · 爬虫基础与抓包分析</p>
+    <p class="muted">对齐《Python3网络爬虫开发实战（第二版）》第 2 章 · 进度自动保存</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script src="assets/lesson-player.js"></script>
+<script>
+/* ===== 请求解剖台 ===== */
+(function () {
+  var REQ = [
+    { t: 'GET /hot?page=1 HTTP/1.1', title: '请求行（方法 + 路径 + 协议版本）', desc: 'GET 表示"我要获取资源"；路径 /hot 是资源位置；?page=1 是查询参数。爬虫视角：URL + 方法决定了"去哪拿、怎么拿"，翻页、搜索全是参数在变。', tip: 'requests.get(url, params={"page": 1}) 里的 params 就是拼在这个位置。' },
+    { t: 'Host: demo-movies.site', title: 'Host 头', desc: '告诉服务器访问的是哪个站点（一台服务器可能挂多个网站）。一般 requests 会根据 URL 自动带上，不用手写。' },
+    { t: 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) …', title: 'User-Agent（UA）', desc: '自报身份：什么浏览器、什么系统。服务器靠它做第一层"人机识别"——requests 默认的 UA 是 python-requests/x.x，一眼假。', tip: '爬虫第一步伪装：headers={"User-Agent": "Mozilla/5.0 …"}，直接从浏览器 F12 抄一份。' },
+    { t: 'Referer: https://demo-movies.site/', title: 'Referer（来源页）', desc: '表示"我是从哪个页面点过来的"。图片防盗链、部分接口校验就看它——不是从自家页面发起的请求直接 403。', tip: '直接请求接口被拒时，补 Referer 为该网页地址，成功率很高。' },
+    { t: 'Cookie: sessionid=8f3ka9; tz=Asia/Shanghai', title: 'Cookie（身份凭证）', desc: '服务器之前发给你的"通行证"，每次请求都要带上。登录态 = 一枚有效的 session Cookie；很多反爬也会先发 Cookie 考验你。', tip: '用 requests.Session() 可自动保存和回传 Cookie，不用手动管理。' },
+    { t: 'Accept: text/html,application/xhtml+xml', title: 'Accept / Accept-Language 等协商头', desc: '告诉服务器"我能接收什么格式、什么语言"。反爬严格时会校验这组头是否像真浏览器，缺了同样会被扣分。' }
+  ];
+  var RESP = [
+    { t: 'HTTP/1.1 200 OK', title: '状态行（版本 + 状态码 + 短语）', desc: '200 表示成功。整个反爬攻防的本质：服务器用 403/429/5xx 告诉你"我认出你了"，你则要想办法让每次都是 200。' },
+    { t: 'Content-Type: application/json; charset=utf-8', title: 'Content-Type（内容类型）', desc: '响应体的格式说明书。text/html 是网页，application/json 是数据接口。看到 json 就该高兴——这是最适合爬虫的数据。', tip: 'resp.json() 能否直接用，就取决于它是不是 application/json。' },
+    { t: 'Set-Cookie: sessionid=8f3ka9; Path=/; HttpOnly', title: 'Set-Cookie（发通行证）', desc: '服务器在这条响应里给你发了 Cookie。HttpOnly 表示 JS 读不到它，但 HTTP 请求照样要带——这正是很多"加密参数"之外的另一层考验。', tip: 'Session 对象会自动接住 Set-Cookie 并在后续请求回传。' },
+    { t: 'Server: nginx', title: 'Server 等指纹头', desc: '服务器的自报家门。有时也用来做风控指纹一致性校验（比如你声称是 Chrome，却带了个奇怪的指纹组合）。' },
+    { t: '{"code":0,"data":[…]}', title: '响应体（真正的数据）', desc: 'HTML、JSON 或二进制都走这里。爬虫 90% 的时间在解析它、10% 的时间在想"为什么它不给我"。', tip: '先 resp.raise_for_status() 再解析，是好习惯。' }
+  ];
+  var src = document.getElementById('anat-src');
+  var title = document.getElementById('anat-title');
+  var desc = document.getElementById('anat-desc');
+  var tip = document.getElementById('anat-tip');
+  var parts = REQ;
+  function renderBox() {
+    src.innerHTML = parts.map(function (p, i) {
+      return '<span class="anat" data-i="' + i + '">' + p.t.replace(/</g, '&lt;') + '</span>';
+    }).join('\n');
+  }
+  function select(i) {
+    src.querySelectorAll('.anat').forEach(function (s) { s.classList.toggle('on', +s.dataset.i === i); });
+    title.textContent = parts[i].title;
+    desc.textContent = parts[i].desc;
+    if (parts[i].tip) { tip.hidden = false; tip.innerHTML = '<b>爬虫提示：</b>' + parts[i].tip; }
+    else tip.hidden = true;
+  }
+  src.addEventListener('click', function (e) {
+    var s = e.target.closest('.anat');
+    if (s) select(+s.dataset.i);
+  });
+  document.getElementById('tb-req').addEventListener('click', function () {
+    parts = REQ; renderBox(); select(0);
+    this.classList.add('active'); document.getElementById('tb-resp').classList.remove('active');
+  });
+  document.getElementById('tb-resp').addEventListener('click', function () {
+    parts = RESP; renderBox(); select(0);
+    this.classList.add('active'); document.getElementById('tb-req').classList.remove('active');
+  });
+  renderBox(); select(0);
+})();
+
+/* ===== 状态码速查 ===== */
+(function () {
+  var DATA = [
+    { c: '200', cls: 's2', d: '正常返回，数据就在响应里。', a: '照单全收，直接解析。' },
+    { c: '301/302', cls: 's2', d: '重定向：资源搬家了，新地址在 Location 头里。登录成功后的跳转常伴随新 Cookie。', a: 'requests 默认自动跟随；需要留心的是跳转前后 Cookie/参数的变化。' },
+    { c: '403', cls: 's4', d: 'Forbidden——服务器认出"你不是正常人"：请求头不全、IP 被封、签名不对、Cookie 过期都可能。', a: '第一反应补 headers（UA/Referer），第二反应检查 Cookie，第三反应看是不是 IP 问题。' },
+    { c: '404', cls: 's4', d: 'Not Found——URL 写错，或参数过期（比如翻页翻过头、商品下架）。', a: '检查 URL 拼接和参数边界，别死磕重试。' },
+    { c: '429', cls: 's4', d: 'Too Many Requests——请求太快触发限流，这是最温和的反爬。', a: '加随机延时 time.sleep(random.uniform(1, 3))、降低并发、必要时上代理池轮换。' },
+    { c: '503', cls: 's5', d: 'Service Unavailable——服务器压力或主动拦截。反爬狠的站会在返回 503 的同时塞一段 JS 挑战（如 Cloudflare）。', a: '先重试等待；仍不行说明遇到了 JS 挑战，去第 08 章学逆向或用浏览器自动化。' }
+  ];
+  var opts = document.getElementById('sc-opts');
+  if (!opts) return;
+  opts.innerHTML = DATA.map(function (d, i) {
+    return '<button class="opt sc-chip" type="button" data-i="' + i + '">' + d.c + '</button>';
+  }).join('');
+  function select(i) {
+    opts.querySelectorAll('.opt').forEach(function (b) { b.classList.toggle('correct', +b.dataset.i === i); });
+    var d = DATA[i];
+    var t = document.getElementById('sc-title');
+    t.textContent = d.c;
+    t.className = 'status-big ' + d.cls;
+    t.style.fontSize = '20px';
+    document.getElementById('sc-desc').textContent = d.d;
+    document.getElementById('sc-act').innerHTML = '<b>爬虫动作：</b>' + d.a;
+  }
+  opts.addEventListener('click', function (e) {
+    var b = e.target.closest('.opt');
+    if (b) select(+b.dataset.i);
+  });
+  select(0);
+})();
+
+/* ===== 动画课堂 ===== */
+(function () {
+  var S = [
+    { d: 10, cap: '你每天打开网页，背后都是一场精密的接力。这一集，我们跟踪一次 HTTP 请求走完全程。', set: { 'k1-addr': 'about:blank', 'k1-page': '（空白）', 'k1-srvb': '待机中…', 'k1-note': '第 0 秒：你打开了浏览器……' } },
+    { d: 12, cap: '第一步：在地址栏输入 demo-movies.site/hot 并回车。请求还没发出，浏览器先要弄清"服务器住在哪"。', set: { 'k1-addr': 'demo-movies.site/hot', 'k1-note': '🔍 域名只是给人看的名字，机器只认 IP 地址。' }, cls: { 'k1-pc': 'on' } },
+    { d: 13, cap: 'DNS 解析：查互联网的通讯录，把域名翻译成 IP 地址 104.18.32.7。全世界几万台 DNS 服务器接力帮你查，通常毫秒级完成。', set: { 'k1-addr': 'demo-movies.site → 104.18.32.7', 'k1-pipe': 'DNS 解析完成 ✓', 'k1-note': 'DNS：把域名翻译成 IP 地址。' }, cls: { 'k1-dns': 'good' } },
+    { d: 14, cap: 'TCP 三次握手：你好 → 你好你好 → 那我说正事了！三次招呼之后，一条可靠通道建成。HTTPS 还会再加一次密钥协商。', set: { 'k1-pipe': 'TCP 通道已建立 ✓', 'k1-note': '为什么三次？双方都要确认"我发的你能收到"。' }, cls: { 'k1-tcp': 'good' }, a: function (r) { r.querySelector('#k1-env').style.left = '46%'; } },
+    { d: 15, cap: '浏览器写出请求报文：请求行 + 请求头（UA 自报身份、带上之前的 Cookie）+ 请求体。一个 HTTP 信封，封好了。', set: { 'k1-note': '对照上方解剖台：这就是你点开看过的每一行。' }, cls: { 'k1-req': 'on' }, a: function (r) { r.querySelector('#k1-env').style.left = '20%'; } },
+    { d: 13, cap: '信封穿过互联网到达服务器。服务器收到：GET /hot?page=1，来自 Chrome，Cookie 有效——门卫式检查开始。', set: { 'k1-srvb': '收到：GET /hot?page=1\nUA: Chrome ✓\nCookie: 有效 ✓', 'k1-pipe': '请求到达服务器', 'k1-note': '门卫式检查：身份对不对、凭证全不全。' }, cls: { 'k1-srv': 'on' }, a: function (r) { r.querySelector('#k1-env').style.left = '86%'; } },
+    { d: 14, cap: '服务器查数据、拼页面，写下响应：状态行 200 OK、Content-Type、Set-Cookie，正文是完整 HTML。', set: { 'k1-srvb': '查数据库、拼页面…\n写响应：200 OK\nSet-Cookie: sessionid=…', 'k1-pipe': '响应返程中', 'k1-note': '状态行 + 响应头 + 正文（HTML）。' }, a: function (r) { r.querySelector('#k1-env').style.left = '48%'; } },
+    { d: 13, cap: '响应回到浏览器：第一个 HTML 到手！但仔细看——它往往只是骨架，重头戏还在后面。', set: { 'k1-page': '📄 骨架 HTML\n（注意：列表是空的）', 'k1-note': '第一个响应到手！但列表是空的。' }, cls: { 'k1-res': 'good' }, a: function (r) { r.querySelector('#k1-env').style.left = '6%'; } },
+    { d: 13, cap: '浏览器解析 HTML：遇见 <link> 再要 CSS，遇见 <script> 再要 JS。又有几个信封飞出去了。', set: { 'k1-page': '📄 + 🎨 + ⚙️ 拉取中…', 'k1-pipe': '并发拉取 CSS / JS', 'k1-note': '骨架之外，还有一波资源请求。' }, a: function (r) { r.querySelector('#k1-env').style.left = '58%'; } },
+    { d: 15, cap: 'JS 启动，发现列表是空的——于是向 /api/movies 发起 XHR。又一个信封飞出去，装回来的是 JSON 数据。', set: { 'k1-srvb': 'API 返回 JSON：\n10 部电影', 'k1-pipe': 'XHR 请求 /api/movies', 'k1-note': '关键一幕：数据不在 HTML 里，在接口里！' }, cls: { 'k1-xhr': 'good' }, a: function (r) { r.querySelector('#k1-env').style.left = '86%'; } },
+    { d: 13, cap: 'JS 把 JSON 渲染进页面，榜单出现。你现在明白：看到的每一行数据，都是某个请求带回来的。', set: { 'k1-page': '🎬 电影热榜\n1. 肖申克的救赎 9.7\n2. 霸王别姬 9.6', 'k1-note': '看到的每个数字，都是某个请求带回来的。' }, cls: { 'k1-render': 'good' }, a: function (r) { r.querySelector('#k1-env').style.left = '6%'; } },
+    { d: 12, cap: '整场接力完成：DNS → 握手 → 请求 → 响应 → 二次请求 → 渲染。现在轮到你：下方实验室，亲手拆一次请求。', set: { 'k1-note': '✅ 本集完：回顾上方 1.1~1.4 的知识点，然后做本章练习。' }, cls: { 'k1-dns': 'good', 'k1-tcp': 'good', 'k1-req': 'good', 'k1-res': 'good', 'k1-xhr': 'good', 'k1-render': 'good' } }
+  ];
+  new LessonPlayer({ root: '#lesson1', title: '一次 HTTP 请求的一生', scenes: S });
+})();
+</script>
+</body>
+</html>

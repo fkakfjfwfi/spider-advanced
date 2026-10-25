@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多源图书馆 · 全网优质爬虫知识地图 — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="library">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="library.html" data-nav="library" class="active">图书馆</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app doc" style="padding-top:24px;padding-bottom:48px">
+
+  <section class="hero compact">
+    <span class="tag">🌐 多源对齐 · 不只一本书</span>
+    <h1>多源图书馆</h1>
+    <p class="sub">本站知识体系以崔庆才《Python3网络爬虫开发实战（第二版）》为主线，但一个好的爬虫工程师不该只读一本书。这里汇总了全网经得起检验的书籍、网课、博客、开源仓库与工具，按知识域组织，每条都给出"为什么值得 + 怎么读"。每章末尾的"多源精读"框会把你带到本页对应条目。</p>
+  </section>
+
+  <!-- ============ 阅读路径 ============ -->
+  <section class="section">
+    <h2>三条混合阅读路径（选一条主线，其余当字典）</h2>
+    <div class="grid-2">
+      <div class="card">
+        <h3>📗 路径一 · 书本主线（最扎实）</h3>
+        <p><b>崔庆才二版</b>逐章推进 + 本站每章打卡 → 反爬专题切<b>韦世东《反爬虫原理与绕过实战》</b> → 框架深入读<b>《精通Scrapy网络爬虫》</b> → 视野扩展翻<b>Ryan Mitchell《Python网络爬虫权威指南》</b>（英文版已出第3版）。</p>
+      </div>
+      <div class="card">
+        <h3>📺 路径二 · 视频主线（最省心）</h3>
+        <p><a href="https://www.bilibili.com/video/BV1Db4y1m7Ho" target="_blank" rel="noopener">尚硅谷爬虫速通</a>打基础 → <a href="https://www.bilibili.com/video/BV1jx411b7E3" target="_blank" rel="noopener">黑马 Scrapy</a> 过框架 → <a href="https://www.bilibili.com/video/BV1TC1jYmEve" target="_blank" rel="noopener">JS逆向 21h</a> 攻逆向 → 本站当讲义与练习场。</p>
+      </div>
+      <div class="card">
+        <h3>🔬 路径三 · 实战研究线（最接近高手）</h3>
+        <p>书当字典，主力啃<b>案例</b>：<a href="https://juejin.cn/column/6993510687448252424" target="_blank" rel="noopener">K哥《JS逆向百例》</a>+ <a href="https://nightteam.github.io/" target="_blank" rel="noopener">夜幕团队系列</a> 精读 → <a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学</a>逐题实战 → 卡点回本站对应章节补理论。</p>
+      </div>
+      <div class="card">
+        <h3>⚙️ 用法提醒</h3>
+        <p>多源的价值是<b>互补视角</b>：崔书体系全、韦书攻防深、Mitchell 书伦理与清洗、K哥/夜幕案例新。同一知识点读两个来源仍糊涂，说明缺的是动手——回练习场。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 基础 ============ -->
+  <section class="section">
+    <h2>🧱 网络基础与抓包（ch01）</h2>
+    <div class="card">
+      <p>📚 <a href="https://book.douban.com/subject_search?search_text=HTTP权威指南" target="_blank" rel="noopener">《HTTP权威指南》</a>（David Gourley 等）—— 把 HTTP 读厚的字典；爬虫人重点读前 5 章 + Cookie/连接管理章节。 <span class="chip">ch01</span></p>
+      <p>📚 <a href="https://www.ituring.com.cn/book/1980" target="_blank" rel="noopener">《Python网络爬虫权威指南（第2版）》</a>（Ryan Mitchell，O'Reilly；英文版已出第3版）—— 第 1~3 章"你的第一个爬虫/高级HTML解析"，国际视角 + 抓取礼仪。 <span class="chip">ch01~03</span></p>
+      <p>📄 <a href="https://developer.mozilla.org/zh-CN/docs/Web/HTTP" target="_blank" rel="noopener">MDN HTTP 文档</a>—— 报文/方法/CORS/Cookie 的权威手册，遇到不确定的头就查它。 <span class="chip">ch01</span></p>
+    </div>
+  </section>
+
+  <!-- ============ 请求与解析 ============ -->
+  <section class="section">
+    <h2>📨 请求 / 解析 / 存储（ch02~04）</h2>
+    <div class="card">
+      <p>📄 <a href="https://requests.readthedocs.io/projects/cn/zh-cn/latest/" target="_blank" rel="noopener">requests 中文官方文档</a>—— 快速上手+高级用法两篇读完，requests 就算毕业。 <span class="chip">ch02</span></p>
+      <p>🛠 <a href="https://regex101.com" target="_blank" rel="noopener">regex101.com</a>—— 正则在线调试器，实时解释每个符号；练正则别在爬虫里试错，在这里练熟再上。 <span class="chip">ch02</span></p>
+      <p>📄 <a href="https://lxml.de/" target="_blank" rel="noopener">lxml 官方文档</a> / <a href="https://www.crummy.com/software/BeautifulSoup/bs4/doc.zh/" target="_blank" rel="noopener">BeautifulSoup 中文文档</a>—— 两大解析库权威手册。 <span class="chip">ch03</span></p>
+      <p>🛠 <a href="https://www.kgtools.cn" target="_blank" rel="noopener">KGtools 在线工具箱</a>（K哥出品）—— cURL 转代码、JSON 格式化、正则/XPath 在线测试，25 个爬虫常用工具合一。 <span class="chip">ch02~03·08</span></p>
+      <p>📚 《Python网络爬虫权威指南》第 5 章"数据库"—— 存储选型的另一个视角。 <span class="chip">ch04</span></p>
+    </div>
+  </section>
+
+  <!-- ============ 动态与对抗 ============ -->
+  <section class="section">
+    <h2>⚔️ 动态渲染 / 验证码 / 反反爬（ch05~07）</h2>
+    <div class="card">
+      <p>📄 <a href="https://playwright.dev/python/" target="_blank" rel="noopener">Playwright 官方文档</a>—— 自动等待与网络拦截是现代自动化的事实标准，教程+API 通读。 <span class="chip">ch05</span></p>
+      <p>📚 <a href="https://book.douban.com/subject_search?search_text=Python3反爬虫原理与绕过实战" target="_blank" rel="noopener">《Python3反爬虫原理与绕过实战》</a>（韦世东 等，崔庆才作序推荐）—— 反爬知识体系最系统的中文书：字体反爬/CSS偏移/指纹/JS混淆全覆盖，第 07 章的天然续篇。 <span class="chip">ch06~07</span></p>
+      <p>📦 <a href="https://github.com/Kr1s77/awesome-python-login-model" target="_blank" rel="noopener">Kr1s77/awesome-python-login-model</a>—— 数十个网站模拟登录源码合集，登录方法论的最佳实操场。 <span class="chip">ch06</span></p>
+      <p>📦 <a href="https://github.com/sml2h3/ddddocr" target="_blank" rel="noopener">sml2h3/ddddocr</a>—— 验证码 OCR 库官方仓库，README 就是完整教程。 <span class="chip">ch06</span></p>
+      <p>📦 <a href="https://github.com/jhao104/proxy_pool" target="_blank" rel="noopener">jhao104/proxy_pool</a>—— 高星开源代理池，架构与第 07 章"四模块"完全对应，读源码学工程。 <span class="chip">ch07</span></p>
+    </div>
+  </section>
+
+  <!-- ============ 逆向 ============ -->
+  <section class="section">
+    <h2>🔍 JS 逆向 / App（ch08~09）</h2>
+    <div class="card">
+      <p>📝 <a href="https://juejin.cn/column/6993510687448252424" target="_blank" rel="noopener">K哥《JS逆向百例》专栏（掘金）</a>—— 一百个真实案例按套路分类，逆向人的案例字典；配套博客园 <a href="https://www.cnblogs.com/ikdl" target="_blank" rel="noopener">K哥爬虫</a> 与工具箱 <a href="https://www.kgtools.cn" target="_blank" rel="noopener">KGtools</a>。 <span class="chip">ch08</span></p>
+      <p>📝 <a href="https://nightteam.github.io/" target="_blank" rel="noopener">夜幕团队 NightTeam</a>（<a href="https://www.cnblogs.com/nightteam" target="_blank" rel="noopener">博客园</a> · <a href="https://github.com/nightteam" target="_blank" rel="noopener">GitHub</a>）—— 崔庆才也是成员；爬虫/反爬/JS 逆向深度系列，B站有《JS逆向高阶课》。 <span class="chip">ch08</span></p>
+      <p>📦 <a href="https://github.com/JSREI" target="_blank" rel="noopener">GitHub · JSREI 组织</a>—— JS 逆向研究与工具仓库集合（脚本、案例、课程资料）。 <span class="chip">ch08</span></p>
+      <p>📺 <a href="https://www.bilibili.com/video/BV1yuK86gEea" target="_blank" rel="noopener">编程奇遇 · JS逆向进阶全套</a> / B站搜"宇哥 JS逆向"—— 案例跟练向网课，与本站 ch08 讲义互补。 <span class="chip">ch08</span></p>
+      <p>📄 <a href="https://docs.mitmproxy.org/stable/" target="_blank" rel="noopener">mitmproxy 官方文档</a> / <a href="https://frida.re/docs/home/" target="_blank" rel="noopener">Frida 官方文档</a>—— App 抓包与 Hook 的权威手册（Frida 文档建议直接啃英文，短）。 <span class="chip">ch09</span></p>
+    </div>
+  </section>
+
+  <!-- ============ 框架 ============ -->
+  <section class="section">
+    <h2>🏭 框架与工程化（ch10）</h2>
+    <div class="card">
+      <p>📚 <a href="https://book.douban.com/subject_search?search_text=精通Scrapy网络爬虫" target="_blank" rel="noopener">《精通Scrapy网络爬虫》</a>—— 把 Scrapy 从"会用"讲到"懂原理"（调度器/去重/中间件源码级）。 <span class="chip">ch10</span></p>
+      <p>📄 <a href="https://scrapy.org" target="_blank" rel="noopener">Scrapy 官方文档</a>—— Deployment / Jobs / AutosThrottle 三节是工程化精髓。 <span class="chip">ch10</span></p>
+      <p>📦 <a href="https://github.com/crawlab-team/crawlab" target="_blank" rel="noopener">crawlab-team/crawlab</a>（夜幕系开源）—— 分布式爬虫管理平台，比教材里的 Gerapy 更活跃，部署章节的现代替代。 <span class="chip">ch10</span></p>
+      <p>📦 <a href="https://github.com/wistbean/learn_python3_spider" target="_blank" rel="noopener">wistbean/learn_python3_spider</a>（22k★）/ <a href="https://github.com/facert/awesome-spider" target="_blank" rel="noopener">facert/awesome-spider</a>—— 教程仓库与实战案例索引，找"某类网站怎么爬"先翻这里。 <span class="chip">全站</span></p>
+    </div>
+  </section>
+
+  <div class="callout info"><b>本页维护说明：</b>资源经调研筛选（搜索引擎 + GitHub/B站数据佐证），标注的难度与读法是编辑观点。发现失效链接或更好的来源，直接告诉 AI 助教更新。</div>
+
+  <div class="pager">
+    <a class="btn" href="index.html">← 返回课程总览</a>
+    <a class="btn primary" href="practice.html">去练习场 →</a>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 多源图书馆</p>
+    <p class="muted">多源互补：体系读崔庆才，攻防读韦世东，案例读K哥/夜幕，视野读Mitchell</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

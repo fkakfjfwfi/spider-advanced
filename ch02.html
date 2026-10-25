@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 · 请求的艺术：urllib / requests / 正则 — 爬虫进阶</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="c02">
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="index.html" class="logo">🕷 爬虫<b>进阶</b></a>
+    <nav class="nav">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="practice.html" data-nav="practice">练习场</a>
+      <a href="ch03.html" data-nav="c03">下一章 →</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container app" style="padding-top:20px;padding-bottom:48px">
+  <div class="crumb"><a href="index.html">首页</a> / 基础篇 / <b>02 · 请求的艺术：urllib / requests / 正则</b></div>
+  <div class="layout">
+
+    <aside class="chapnav">
+      <div class="cap">课程目录</div>
+      <div class="grp">🧱 基础篇</div>
+      <a href="ch01.html" data-nav="c01"><span class="no">01</span>基础与抓包 <span class="pg" data-chapter-progress="c01">0/6</span></a>
+      <a href="ch02.html" data-nav="c02" class="active"><span class="no">02</span>请求与正则 <span class="pg" data-chapter-progress="c02">0/6</span></a>
+      <a href="ch03.html" data-nav="c03"><span class="no">03</span>解析库全解 <span class="pg" data-chapter-progress="c03">0/6</span></a>
+      <a href="ch04.html" data-nav="c04"><span class="no">04</span>数据存储 <span class="pg" data-chapter-progress="c04">0/6</span></a>
+      <div class="grp">⚔️ 进阶篇</div>
+      <a href="ch05.html" data-nav="c05"><span class="no">05</span>Ajax与动态渲染 <span class="pg" data-chapter-progress="c05">0/6</span></a>
+      <a href="ch06.html" data-nav="c06"><span class="no">06</span>验证码与登录 <span class="pg" data-chapter-progress="c06">0/6</span></a>
+      <a href="ch07.html" data-nav="c07"><span class="no">07</span>代理与反反爬 <span class="pg" data-chapter-progress="c07">0/6</span></a>
+      <div class="grp">🔍 逆向篇</div>
+      <a href="ch08.html" data-nav="c08"><span class="no">08</span>JS 逆向专题 <span class="pg" data-chapter-progress="c08">0/6</span></a>
+      <a href="ch09.html" data-nav="c09"><span class="no">09</span>App 爬取 <span class="pg" data-chapter-progress="c09">0/6</span></a>
+      <div class="grp">🏭 框架篇</div>
+      <a href="ch10.html" data-nav="c10"><span class="no">10</span>Scrapy与分布式 <span class="pg" data-chapter-progress="c10">0/6</span></a>
+      <div class="grp">🛠 实战</div>
+      <a href="practice.html" data-nav="practice"><span class="no">📝</span>练习场</a>
+      <a href="library.html" data-nav="library"><span class="no">📚</span>多源图书馆</a>
+    </aside>
+
+    <div class="appmain doc">
+
+      <section class="hero compact">
+        <span class="tag">基础篇 · 对齐教材 3.1 ~ 3.4</span>
+        <h1>02 · 请求的艺术：urllib / requests / 正则</h1>
+        <p class="sub">第 01 章你学会了"看懂请求"，这一章学会"发出请求"：从标准库 urllib 走到事实标准 requests，把 GET/POST、响应处理、Session、超时重试、SSL、上传下载、代理九大件全部打通；再用正则把响应文本里的数据抠出来，最后用一套完整的猫眼 TOP100 实战收尾——抓下来、解析好、存成 CSV。</p>
+        <div class="pwrap">
+          <div class="progress"><div class="fill" data-progress-bar="c02"></div></div>
+          <span class="plabel" data-progress-label="c02"></span>
+        </div>
+      </section>
+
+      <div class="connect-box">
+        <div class="bx-title">🔗 连接你已有的知识（考研 408 · 计算机网络 × 离散数学）</div>
+        <p>· requests 并没有发明新东西：它是对<b>套接字 API（socket）之上的 HTTP 报文封装</b>——408 网络编程里你手写过的"连接 → 发报文 → 收报文"，requests 帮你拼报文、管连接池、解 Cookie，本质没变；<br>
+           · URL 编码（<code class="inline">%E4%BD%A0</code>）就是计网"统一资源定位符 + 百分号编码"考点，params 参数自动替你做了这件事；<br>
+           · 正则表达式是<b>形式语言与自动机</b>思想的实用化：每条正则等价于一台有限状态自动机（NFA/DFA），<code class="inline">.*?</code> 的非贪婪回溯正是状态机的转移过程——408 里考过的"字符串模式匹配"在这里天天用；<br>
+           · 学完这章你会发现：库是外壳，<b>HTTP 语义才是内核</b>——这正是上一章的回报。</p>
+      </div>
+
+      <!-- ============ 2.1 ============ -->
+      <h2>2.1 urllib 与历史演进 <span class="chip tbook">对齐教材 3.1</span></h2>
+      <p><code class="inline">urllib</code> 是 Python 的<b>标准库</b>HTTP 工具集（urllib.request 发请求、urllib.parse 拼 URL、urllib.error 收异常），不需要 pip 安装。在 requests 诞生之前，它是唯一的正牌选择。先看用它发一个带请求头的请求有多"虔诚"：</p>
+
+      <div class="code-title">urllib_demo.py</div>
+<pre class="code"><span class="kw">from</span> urllib <span class="kw">import</span> request, error
+<span class="kw">import</span> socket
+
+url = <span class="st">"https://httpbin.org/get"</span>
+headers = {<span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"</span>}
+
+req = request.Request(url, headers=headers)   <span class="cm"># 必须"先造一个 Request 对象"才能带头</span>
+<span class="kw">try</span>:
+    <span class="kw">with</span> request.urlopen(req, timeout=<span class="fn">10</span>) <span class="kw">as</span> resp:
+        <span class="fn">print</span>(resp.status)                    <span class="cm"># 200</span>
+        <span class="fn">print</span>(resp.read()[:<span class="fn">120</span>])              <span class="cm"># 注意：拿到的是 bytes，要自己 decode</span>
+<span class="kw">except</span> error.HTTPError <span class="kw">as</span> e:                 <span class="cm"># 服务器有响应但状态码是 4xx/5xx（子类，放前面接）</span>
+    <span class="fn">print</span>(<span class="st">"HTTP 错误:"</span>, e.code, e.reason)
+<span class="kw">except</span> error.URLError <span class="kw">as</span> e:                  <span class="cm"># 连不上/域名解析失败/被拒（父类，放后面接）</span>
+    <span class="fn">print</span>(<span class="st">"URL 错误:"</span>, e.reason)
+<span class="kw">except</span> socket.timeout:
+    <span class="fn">print</span>(<span class="st">"请求超时"</span>)</pre>
+
+      <p>能感受到它的繁琐：<b>读出来是 bytes 要手动解码</b>、Cookie 要自己用 http.cookiejar 管、没有会话概念、异常体系要背"HTTPError 是 URLError 的子类、先接子类"。所以整个社区转向了 requests——它的口号是 <b>"HTTP for Humans"</b>：同样的请求三行搞定，响应自动解码，Cookie 自动管理，异常统一成一个 <code class="inline">requests.RequestException</code> 基类。</p>
+      <div class="callout info"><b>urllib 的今天定位：</b>不是"学了没用"，而是①它是 requests 底层栈（requests → urllib3 → socket）的一环，读懂它有助于诊断底层问题；②<code class="inline">urllib.parse</code>（quote / urlencode / urlparse）至今仍是拼 URL 的标准工具，2.2 节马上用；③受限环境（不能装第三方包的服务器）里它是兜底。定位一句话：<b>了解即可，parse 必会，异常模型要懂。</b></div>
+
+      <!-- ============ 2.2 ============ -->
+      <h2>2.2 requests 全面精讲 <span class="chip tbook">对齐教材 3.2</span> <span class="chip tlab">本章重点</span></h2>
+      <p>安装：<code class="inline">pip install requests</code>。下面按"九大件"把它讲透——这九件覆盖了静态爬虫 95% 的场景，每一件都配可运行代码。</p>
+
+      <h3>① GET 与 params：让库替你编码</h3>
+      <p>GET 的参数拼在 URL 查询串里。自己手拼有两个坑：中文/空格没编码直接 400；参数值里带 <code class="inline">&amp;</code> 会被当成下一个参数的起点。requests 的 <code class="inline">params</code> 参数自动完成百分号编码：</p>
+      <div class="code-title">get_params.py</div>
+<pre class="code"><span class="kw">import</span> requests
+
+resp = requests.get(
+    <span class="st">"https://httpbin.org/get"</span>,
+    params={<span class="st">"kw"</span>: <span class="st">"你好 世界"</span>, <span class="st">"page"</span>: <span class="fn">1</span>, <span class="st">"tag"</span>: <span class="st">"科幻&amp;悬疑"</span>},
+    timeout=<span class="fn">10</span>,
+)
+<span class="fn">print</span>(resp.url)
+<span class="cm"># https://httpbin.org/get?kw=%E4%BD%A0%E5%A5%BD+%E4%B8%96%E7%95%8C&amp;page=1&amp;tag=%E7%A7%91%E5%B9%BB%26%E6%82%AC%E7%96%91</span>
+<span class="cm">#   中文 → 百分号编码，空格 → +，&amp; → %26：参数值不再被截断</span></pre>
+      <p>如果坚持手拼 URL，必须用 <code class="inline">urllib.parse</code> 先编码，别裸拼：</p>
+<pre class="code"><span class="kw">from</span> urllib.parse <span class="kw">import</span> quote, urlencode
+
+kw = <span class="st">"你好 世界"</span>
+bad  = <span class="st">f"https://httpbin.org/get?kw={kw}"</span>                  <span class="cm"># ❌ 中文空格裸奔，部分服务器直接 400</span>
+ok1  = <span class="st">"https://httpbin.org/get?"</span> + urlencode({<span class="st">"kw"</span>: kw})   <span class="cm"># ✅ 多参数用 urlencode</span>
+ok2  = <span class="st">f"https://httpbin.org/get?kw={quote(kw)}"</span>           <span class="cm"># ✅ 单参数用 quote（空格变 %20）</span></pre>
+
+      <h3>② POST：data 表单 vs json 参数</h3>
+      <p>POST 的参数在请求体里，格式由你选的参数决定——这是新手最常见的 400 根源：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>写法</th><th>请求体格式</th><th>自动携带的 Content-Type</th><th>典型场景</th></tr>
+        <tr><td><code class="inline">data={"k": "v"}</code></td><td>k=v&amp;k2=v2</td><td><code class="inline">application/x-www-form-urlencoded</code></td><td>传统表单、登录、老接口</td></tr>
+        <tr><td><code class="inline">json={"k": "v"}</code></td><td>{"k":"v"}（自动序列化）</td><td><code class="inline">application/json</code></td><td>现代 API、Ajax 接口（第 05 章主战场）</td></tr>
+        <tr><td><code class="inline">data=json.dumps(d)</code> + 手写头</td><td>自定义</td><td>需手动声明</td><td>要精细控制请求体时</td></tr>
+      </table></div>
+      <div class="code-title">post_demo.py</div>
+<pre class="code"><span class="kw">import</span> requests, json
+
+<span class="cm"># 表单方式：服务器收到 user=bob&amp;pwd=123</span>
+requests.post(<span class="st">"https://httpbin.org/post"</span>, data={<span class="st">"user"</span>: <span class="st">"bob"</span>, <span class="st">"pwd"</span>: <span class="st">"123"</span>}, timeout=<span class="fn">10</span>)
+
+<span class="cm"># JSON 方式：服务器收到 {"user": "bob", "pwd": "123"}，头部自动是 application/json</span>
+requests.post(<span class="st">"https://httpbin.org/post"</span>, json={<span class="st">"user"</span>: <span class="st">"bob"</span>, <span class="st">"pwd"</span>: <span class="st">"123"</span>}, timeout=<span class="fn">10</span>)
+
+<span class="cm"># 等价于 json= 的手写版——理解"格式由 Content-Type 声明"这件事</span>
+requests.post(<span class="st">"https://httpbin.org/post"</span>,
+              data=json.dumps({<span class="st">"user"</span>: <span class="st">"bob"</span>}),
+              headers={<span class="st">"Content-Type"</span>: <span class="st">"application/json"</span>}, timeout=<span class="fn">10</span>)</pre>
+      <div class="callout warn"><b>接口返回 400 先查这里：</b>接口要 JSON 你却用 <code class="inline">data=</code> 发了表单（或反过来）。排查神器：<code class="inline">print(resp.request.headers)</code> 和 <code class="inline">print(resp.request.body)</code>——PreparedRequest 会告诉你实际发出去的头和体。</div>
+
+      <h3>③ 响应对象：text / content / json() / encoding</h3>
+      <p>拿到 <code class="inline">resp</code> 之后，这几个属性就是你的全部世界：</p>
+      <div class="code-title">resp_demo.py</div>
+<pre class="code">resp = requests.get(<span class="st">"https://httpbin.org/json"</span>, timeout=<span class="fn">10</span>)
+
+resp.status_code        <span class="cm"># 200</span>
+resp.reason             <span class="cm"># 'OK'</span>
+resp.headers[<span class="st">"content-type"</span>]   <span class="cm"># 响应头字典，键大小写不敏感</span>
+resp.text               <span class="cm"># str —— 按 resp.encoding 解码后的文本（网页用它）</span>
+resp.content            <span class="cm"># bytes —— 原始字节（图片、文件用它）</span>
+resp.json()             <span class="cm"># 直接反序列化（本质 = json.loads(resp.text)）</span>
+resp.url                <span class="cm"># 最终 URL（跟随重定向之后）</span>
+resp.history            <span class="cm"># 重定向轨迹，登录跳转分析有用</span>
+resp.cookies            <span class="cm"># 服务器种下的 Cookie</span></pre>
+      <p><b>乱码修正</b>是 <code class="inline">text</code> 的高频翻车点。requests 猜编码的顺序是：响应头里的 <code class="inline">charset</code> → 没有就回退 <code class="inline">ISO-8859-1</code>（这是 HTTP 规范对纯文本的默认值，但现实网站常常不守规矩）。修正方法：</p>
+      <div class="code-title">fix_encoding.py</div>
+<pre class="code">resp = requests.get(<span class="st">"https://example.com/old-page"</span>, timeout=<span class="fn">10</span>)
+<span class="fn">print</span>(resp.encoding)             <span class="cm"># ISO-8859-1 ← 头里没写 charset 时的回退值，中文全乱</span>
+resp.encoding = resp.apparent_encoding   <span class="cm"># chardet 根据字节特征猜出的真实编码（utf-8/gbk…）</span>
+<span class="fn">print</span>(resp.text[:<span class="fn">100</span>])           <span class="cm"># 正常中文</span>
+
+<span class="cm"># 注意：text 是"首次访问才解码并缓存"的——所以改 encoding 必须发生在第一次用 text 之前</span>
+<span class="cm"># 或者绕过 text，直接对字节解码：html = resp.content.decode("utf-8")</span></pre>
+
+      <h3>④ 自定义 headers：全套抄写法</h3>
+      <p>第 01 章讲过：requests 默认 UA 是 <code class="inline">python-requests/x.x</code>，一眼假。标准做法是打开 F12 → Network → 选中目标请求 → 右键 <b>Copy → Copy request headers</b>（或 Copy as cURL 再转换），把关键头部抄进字典。引擎级的四件套是 UA、Referer、Cookie、Accept：</p>
+      <div class="code-title">headers_demo.py</div>
+<pre class="code">headers = {
+    <span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "</span>
+                  <span class="st">"(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"</span>,
+    <span class="st">"Referer"</span>: <span class="st">"https://example.com/"</span>,          <span class="cm"># 防盗链就查它，直连接口被拒先补它</span>
+    <span class="st">"Accept"</span>: <span class="st">"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"</span>,
+    <span class="st">"Accept-Language"</span>: <span class="st">"zh-CN,zh;q=0.9"</span>,
+    <span class="st">"Cookie"</span>: <span class="st">"sessionid=从F12抄来的值; tz=Asia/Shanghai"</span>,  <span class="cm"># 登录态直接注入</span>
+}
+resp = requests.get(<span class="st">"https://example.com/"</span>, headers=headers, timeout=<span class="fn">10</span>)
+<span class="cm"># 头部键名大小写不敏感；值里的引号、分号原样传输，照抄即可</span></pre>
+
+      <h3>⑤ Session 会话：一次创建全程复用</h3>
+      <p>呼应 1.4：HTTP 无状态，登录态靠 Cookie 续命。<code class="inline">requests.Session()</code> 把"收 Cookie → 存 → 回带"自动化，还顺带复用底层 TCP 连接（keep-alive），又对又快。工程习惯是<b>每个爬虫脚本都建一个 Session</b>，把公共 headers、代理、重试策略都挂在它身上：</p>
+      <div class="code-title">session_demo.py</div>
+<pre class="code"><span class="kw">import</span> requests
+
+s = requests.Session()
+s.headers.update({<span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"</span>})  <span class="cm"># 会话级默认头</span>
+
+s.get(<span class="st">"https://httpbin.org/cookies/set/token/abc123"</span>, timeout=<span class="fn">10</span>)  <span class="cm"># Set-Cookie 自动收下</span>
+<span class="fn">print</span>(s.get(<span class="st">"https://httpbin.org/cookies"</span>, timeout=<span class="fn">10</span>).json())
+<span class="cm"># {'cookies': {'token': 'abc123'}} —— 后续请求自动携带，无需手动管理</span>
+
+<span class="cm"># 也可以从浏览器抄登录态直接注入（F12 → Application → Cookies）</span>
+s.cookies.update({<span class="st">"sessionid"</span>: <span class="st">"从浏览器抄来的值"</span>})</pre>
+
+      <h3>⑥ 超时与重试：爬虫的保命符</h3>
+      <p><b>timeout 必须显式给</b>（不给 = 永久等待，爬虫挂死一整夜的经典事故）。它可以是元组 <code class="inline">(连接超时, 读取超时)</code>：连接超时管 TCP 握手（对应 408 的三次握手耗时），读取超时管"连上了但服务器迟迟不回数据"。<b>重试</b>要讲究章法：网络抖动和 5xx 值得重试，4xx 是"业务拒绝"，重试只会让封禁升级。</p>
+      <div class="code-title">retry_manual.py</div>
+<pre class="code"><span class="kw">import</span> time, random, requests
+
+<span class="kw">def</span> <span class="fn">get_with_retry</span>(url, retries=<span class="fn">3</span>, **kwargs):
+    <span class="st">"""手动重试：只重试网络异常与 5xx；4xx 直接返回交给上层判断"""</span>
+    kwargs.setdefault(<span class="st">"timeout"</span>, (<span class="fn">3</span>, <span class="fn">10</span>))          <span class="cm"># (连接超时, 读取超时)</span>
+    last_exc = <span class="kw">None</span>
+    <span class="kw">for</span> attempt <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">1</span>, retries + <span class="fn">1</span>):
+        <span class="kw">try</span>:
+            resp = requests.get(url, **kwargs)
+            <span class="kw">if</span> resp.status_code &lt; <span class="fn">500</span>:
+                <span class="kw">return</span> resp                      <span class="cm"># 2xx 成功；4xx 重试也不会好</span>
+            last_exc = requests.HTTPError(<span class="st">f"HTTP {resp.status_code}"</span>)
+        <span class="kw">except</span> requests.RequestException <span class="kw">as</span> e:   <span class="cm"># 连接/超时/代理异常的公共基类</span>
+            last_exc = e
+        wait = <span class="fn">2</span> ** attempt + random.random()    <span class="cm"># 指数退避 + 随机抖动：2s、4s、8s…</span>
+        <span class="fn">print</span>(<span class="st">f"第 {attempt} 次失败：{last_exc}，{wait:.1f}s 后重试"</span>)
+        time.sleep(wait)
+    <span class="kw">raise</span> last_exc
+
+<span class="cm"># 输出示例：</span>
+<span class="cm"># 第 1 次失败：HTTP 502 Server Error，2.3s 后重试</span>
+<span class="cm"># 第 2 次失败：HTTP 502 Server Error，4.7s 后重试</span>
+<span class="cm"># （第 3 次成功则返回 resp）</span></pre>
+      <p>不想自己写循环？把重试策略挂到 Session 的适配器上，交给 urllib3 自动执行：</p>
+      <div class="code-title">retry_urllib3.py</div>
+<pre class="code"><span class="kw">from</span> requests <span class="kw">import</span> Session
+<span class="kw">from</span> requests.adapters <span class="kw">import</span> HTTPAdapter
+<span class="kw">from</span> urllib3.util.retry <span class="kw">import</span> Retry
+
+retry = Retry(
+    total=<span class="fn">3</span>,                                <span class="cm"># 总重试次数</span>
+    backoff_factor=<span class="fn">0.5</span>,                     <span class="cm"># 退避间隔：0.5s、1s、2s…</span>
+    status_forcelist=[<span class="fn">500</span>, <span class="fn">502</span>, <span class="fn">503</span>, <span class="fn">504</span>],  <span class="cm"># 只有这些状态码才触发重试</span>
+    allowed_methods=<span class="kw">frozenset</span>({<span class="st">"GET"</span>, <span class="st">"POST"</span>}),  <span class="cm"># 允许重试的方法（旧版 urllib3 叫 method_whitelist）</span>
+)
+adapter = HTTPAdapter(max_retries=retry)
+s = Session()
+s.mount(<span class="st">"https://"</span>, adapter)                <span class="cm"># 挂到对应协议前缀上，全局生效</span>
+s.mount(<span class="st">"http://"</span>, adapter)</pre>
+
+      <h3>⑦ SSL：verify=False 的坑与警告抑制</h3>
+      <p>requests 默认<b>校验服务器证书</b>（验签 + 验域名）。爬自签名证书的内网测试站、或证书配置有误的老站，会直接抛 <code class="inline">SSLError</code>。临时跳过用 <code class="inline">verify=False</code>：</p>
+      <div class="code-title">ssl_demo.py</div>
+<pre class="code"><span class="kw">import</span> requests, urllib3
+
+resp = requests.get(<span class="st">"https://self-signed.example.com"</span>, verify=<span class="kw">False</span>, timeout=<span class="fn">10</span>)
+<span class="cm"># 每次都会刷警告 InsecureRequestWarning，测试期可以关掉：</span>
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+<span class="cm"># 正确姿势：带上自己的 CA 证书包做校验（而不是关掉校验）</span>
+<span class="cm"># requests.get(url, verify="/path/to/certfile.pem")</span></pre>
+      <div class="callout warn"><b>verify=False 关掉的是"验证"，不是"加密"：</b>数据仍然加密传输，但你无法确认对面是不是真服务器——中间人（408 安全考点）可以截获并篡改内容。仅限测试环境使用；代码合入前全局搜索 <code class="inline">verify=False</code>，一个都不许留在生产里。</div>
+
+      <h3>⑧ 文件上传与二进制下载</h3>
+      <p>上传用 <code class="inline">files=</code>（三元组：字段名、文件名、文件对象/MIME）；下载小文件直接 <code class="inline">content</code>，大文件用 <code class="inline">stream=True + iter_content</code> 分块写盘，内存占用恒定：</p>
+      <div class="code-title">upload_download.py</div>
+<pre class="code"><span class="kw">import</span> requests
+
+<span class="cm"># ① 文件上传</span>
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"avatar.png"</span>, <span class="st">"rb"</span>) <span class="kw">as</span> f:
+    requests.post(<span class="st">"https://httpbin.org/post"</span>,
+                  files={<span class="st">"file"</span>: (<span class="st">"avatar.png"</span>, f, <span class="st">"image/png"</span>)}, timeout=<span class="fn">10</span>)
+
+<span class="cm"># ② 小图直接拿字节</span>
+img = requests.get(<span class="st">"https://httpbin.org/image/jpeg"</span>, timeout=<span class="fn">10</span>)
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"cover.jpg"</span>, <span class="st">"wb"</span>) <span class="kw">as</span> f:      <span class="cm"># 注意 "wb" 二进制写</span>
+    f.write(img.content)
+
+<span class="cm"># ③ 大文件流式下载：内存里永远只有 8KB</span>
+resp = requests.get(<span class="st">"https://example.com/big-video.mp4"</span>, stream=<span class="kw">True</span>, timeout=(<span class="fn">3</span>, <span class="fn">30</span>))
+<span class="kw">with</span> <span class="fn">open</span>(<span class="st">"big-video.mp4"</span>, <span class="st">"wb"</span>) <span class="kw">as</span> f:
+    <span class="kw">for</span> chunk <span class="kw">in</span> resp.iter_content(chunk_size=<span class="fn">8192</span>):
+        f.write(chunk)</pre>
+
+      <h3>⑨ 代理 proxies</h3>
+      <p>呼应 1.5：代理让目标站看到的是代理的 IP。requests 里就是传一个字典，http/https 各配一条；带认证的代理把账号密码写进 URL：</p>
+      <div class="code-title">proxy_demo.py</div>
+<pre class="code">proxies = {
+    <span class="st">"http"</span>:  <span class="st">"http://127.0.0.1:7890"</span>,
+    <span class="st">"https"</span>: <span class="st">"http://127.0.0.1:7890"</span>,   <span class="cm"># https 流量走的隧道同样由 http 代理承载</span>
+}
+<span class="cm"># 带认证：proxies = {"http": "http://user:pass@1.2.3.4:8080", "https": "http://user:pass@1.2.3.4:8080"}</span>
+<span class="fn">print</span>(requests.get(<span class="st">"https://httpbin.org/ip"</span>, proxies=proxies, timeout=<span class="fn">10</span>).text)
+<span class="cm"># {"origin": "代理服务器的 IP"}</span></pre>
+      <div class="callout ok"><b>九大件串成一句话：</b><code class="inline">Session</code>（⑤）挂好 <code class="inline">headers</code>（④）与 <code class="inline">Retry</code>（⑥），GET 带 <code class="inline">params</code>（①）、POST 分清 <code class="inline">data/json</code>（②），响应用 <code class="inline">text/content/json()</code>（③）解析，上传下载走 <code class="inline">files/iter_content</code>（⑧），过墙走 <code class="inline">proxies</code>（⑨），SSL 别乱关（⑦）。第 07 章的代理池、第 05 章的接口直连，全是这九件的排列组合。</div>
+
+      <!-- ============ 2.3 ============ -->
+      <h2>2.3 正则表达式系统精讲 <span class="chip tbook">对齐教材 3.3</span></h2>
+      <p>解析库（下一章）负责"按结构定位"，正则负责"按字符模式硬捞"——它是最后的安全网：HTML 被压成一行、数据藏在 JS 变量里、接口返回奇形怪状的文本，正则都还能用。<code class="inline">import re</code> 之后，先背元字符速查表：</p>
+
+      <h3>元字符速查表</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>元字符</th><th>含义</th><th>示例</th></tr>
+        <tr><td><code class="inline">.</code></td><td>任意字符（换行符除外，配 <code class="inline">re.S</code> 可含）</td><td><code class="inline">a.c</code> → abc / a1c</td></tr>
+        <tr><td><code class="inline">^</code> / <code class="inline">$</code></td><td>字符串开头 / 结尾</td><td><code class="inline">^\d+$</code> → 整行是数字</td></tr>
+        <tr><td><code class="inline">*</code></td><td>前一项重复 0 次或多次</td><td><code class="inline">ab*</code> → a / ab / abbb</td></tr>
+        <tr><td><code class="inline">+</code></td><td>前一项重复 1 次或多次</td><td><code class="inline">ab+</code> → ab / abbb</td></tr>
+        <tr><td><code class="inline">?</code></td><td>前一项出现 0 或 1 次；跟在量词后变<b>非贪婪</b></td><td><code class="inline">colou?r</code> → color / colour</td></tr>
+        <tr><td><code class="inline">{n,m}</code></td><td>重复 n 到 m 次</td><td><code class="inline">\d{4}-\d{2}</code> → 2026-10</td></tr>
+        <tr><td><code class="inline">[abc]</code> / <code class="inline">[^abc]</code></td><td>字符集 / 反集（任选其一 / 除它们之外）</td><td><code class="inline">[0-9a-f]</code> → 十六进制位</td></tr>
+        <tr><td><code class="inline">|</code></td><td>或</td><td><code class="inline">cat|dog</code> → cat 或 dog</td></tr>
+        <tr><td><code class="inline">()</code></td><td>分组（findall 只返回组；配 <code class="inline">?P&lt;名字&gt;</code> 成命名分组）</td><td><code class="inline">(\d+)-(\d+)</code></td></tr>
+        <tr><td><code class="inline">\d \w \s</code></td><td>数字 / 字母数字下划线 / 空白（大写 <code class="inline">\D \W \S</code> 取反）</td><td><code class="inline">\w+</code> → 单词</td></tr>
+      </table></div>
+
+      <h3>五大函数：match / search / findall / finditer / sub</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>函数</th><th>行为</th><th>返回值</th><th>爬虫用途</th></tr>
+        <tr><td><code class="inline">re.match(p, s)</code></td><td>从<b>字符串开头</b>匹配</td><td>Match 对象或 None</td><td>校验整串格式</td></tr>
+        <tr><td><code class="inline">re.search(p, s)</code></td><td>扫描全文找<b>第一个</b>匹配</td><td>Match 对象或 None</td><td>取单个值（标题、token）</td></tr>
+        <tr><td><code class="inline">re.findall(p, s)</code></td><td>找<b>全部</b>匹配</td><td>字符串列表；<b>有分组时返回分组的元组列表</b></td><td>批量提取列表数据（最常用）</td></tr>
+        <tr><td><code class="inline">re.finditer(p, s)</code></td><td>findall 的迭代器版</td><td>逐个 yield Match 对象</td><td>大文本省内存、需要位置信息</td></tr>
+        <tr><td><code class="inline">re.sub(p, repl, s)</code></td><td>替换所有匹配</td><td>替换后的字符串</td><td>清洗数据：去标签、去空白</td></tr>
+      </table></div>
+      <p>常用旗标： <code class="inline">re.S</code> 让 <code class="inline">.</code> 匹配换行（跨行 HTML 必备）、<code class="inline">re.I</code> 忽略大小写、<code class="inline">re.M</code> 多行模式。</p>
+
+      <h3>贪婪与非贪婪：爬虫第一正则考点</h3>
+      <p>量词默认<b>贪婪</b>：尽可能多吃。配合 HTML 提取时几乎永远要加 <code class="inline">?</code> 变非贪婪：</p>
+      <div class="code-title">greedy.py</div>
+<pre class="code"><span class="kw">import</span> re
+
+html = <span class="st">'&lt;h3 class="title"&gt;三体&lt;/h3&gt;&lt;h3 class="title"&gt;活着&lt;/h3&gt;'</span>
+
+<span class="fn">print</span>(re.findall(<span class="st">r'class="title"&gt;(.*)&lt;/h3&gt;'</span>, html))
+<span class="cm"># ['三体&lt;/h3&gt;&lt;h3 class="title"&gt;活着']  ← 贪婪：.* 一路吃到最后一个 &lt;/h3&gt;</span>
+
+<span class="fn">print</span>(re.findall(<span class="st">r'class="title"&gt;(.*?)&lt;/h3&gt;'</span>, html))
+<span class="cm"># ['三体', '活着']                     ← 非贪婪：吃到第一个满足处就停</span></pre>
+      <p>记忆模型：<code class="inline">.*?</code> 的策略是"先一口不吃，看后面能不能配上；配不上才吐出一个字符再试"——这正是自动机的回溯。</p>
+
+      <h3>分组、命名分组与 compile</h3>
+      <div class="code-title">groups.py</div>
+<pre class="code"><span class="kw">import</span> re
+
+<span class="cm"># 普通分组：findall 返回元组列表，按位置取</span>
+pairs = re.findall(<span class="st">r'(\d{4})-(\d{2})-(\d{2})'</span>, <span class="st">"发布于 2026-10-25，截止 2026-11-01"</span>)
+<span class="fn">print</span>(pairs)                      <span class="cm"># [('2026', '10', '25'), ('2026', '11', '01')]</span>
+
+<span class="cm"># 命名分组：?P&lt;名字&gt; —— 字段多时按名字取，可读性高</span>
+m = re.search(<span class="st">r'(?P&lt;year&gt;\d{4})-(?P&lt;month&gt;\d{2})-(?P&lt;day&gt;\d{2})'</span>, <span class="st">"发布于 2026-10-25"</span>)
+<span class="fn">print</span>(m.group(<span class="st">"year"</span>), m.group(<span class="st">"month"</span>), m.group(<span class="st">"day"</span>))   <span class="cm"># 2026 10 25</span>
+
+<span class="cm"># compile 预编译：同一条正则反复用（翻页循环里）时更快、更好维护</span>
+DATE_RE = re.compile(<span class="st">r'\d{4}-\d{2}-\d{2}'</span>)
+<span class="fn">print</span>(DATE_RE.findall(<span class="st">"2026-10-25 和 2026-11-01"</span>))        <span class="cm"># ['2026-10-25', '2026-11-01']</span></pre>
+
+      <h3>三个常备实例：URL、邮箱、中文</h3>
+      <div class="code-title">recipes.py</div>
+<pre class="code"><span class="kw">import</span> re
+
+text = <span class="st">"文档在 https://docs.python.org/zh-cn/3/library/re.html，邮箱 fhusy@example.com，"</span> \
+       <span class="st">"中文示例：肖申克的救赎。"</span>
+
+<span class="fn">print</span>(re.findall(<span class="st">r'https?://[\w.-]+(?:/\S*)?'</span>, text))
+<span class="cm"># ['https://docs.python.org/zh-cn/3/library/re.html']</span>
+<span class="fn">print</span>(re.findall(<span class="st">r'[\w.+-]+@[\w-]+\.[\w.]+'</span>, text))
+<span class="cm"># ['fhusy@example.com']</span>
+<span class="fn">print</span>(re.findall(<span class="st">r'[\u4e00-\u9fa5]{2,}'</span>, text))
+<span class="cm"># ['文档在', '邮箱', '中文示例', '肖申克的救赎'] —— \u4e00-\u9fa5 是常用汉字区</span>
+
+<span class="cm"># sub 清洗：把 HTML 片段里的标签剥掉</span>
+dirty = <span class="st">'&lt;p class="star"&gt;主演：蒂莫西·柴勒梅德&lt;/p&gt;'</span>
+<span class="fn">print</span>(re.sub(<span class="st">r'&lt;[^&gt;]+&gt;'</span>, <span class="st">''</span>, dirty))   <span class="cm"># 主演：蒂莫西·柴勒梅德</span></pre>
+
+      <!-- ============ 2.4 ============ -->
+      <h2>2.4 实战：爬取猫眼电影 TOP100 <span class="chip tbook">对齐教材 3.4</span></h2>
+      <p>把本章所学串成一条完整流水线：<b>找规律 → 写正则 → 翻页循环 → 存 CSV</b>。</p>
+
+      <h3>第一步：分析 URL 规律</h3>
+      <p>榜单第一页是 <code class="inline">https://www.maoyan.com/board/4?offset=0</code>，点第二页变成 <code class="inline">offset=10</code>，第三页 <code class="inline">offset=20</code>……每页固定 10 条，于是得到翻页公式：<b>offset = (page − 1) × 10，page 从 1 到 10，共 100 条</b>。这正是第 01 章"翻页全是参数在变"的实战版。</p>
+      <h3>第二步：看懂页面结构</h3>
+      <p>每部电影对应一个 <code class="inline">&lt;dd&gt;</code> 节点（简化后）：</p>
+<pre class="code">&lt;dl class="board-wrapper"&gt;
+  &lt;dd&gt;
+    &lt;i class="board-index board-index-1"&gt;1&lt;/i&gt;
+    &lt;p class="name"&gt;&lt;a href="/films/1200486" title="肖申克的救赎"&gt;肖申克的救赎&lt;/a&gt;&lt;/p&gt;
+    &lt;p class="star"&gt;主演：蒂莫西·柴勒梅德,丽贝卡·弗格森&lt;/p&gt;
+    &lt;p class="releasetime"&gt;上映时间：1994-09-10(加拿大)&lt;/p&gt;
+    &lt;p class="score"&gt;&lt;i class="integer"&gt;9.&lt;/i&gt;&lt;i class="fraction"&gt;7&lt;/i&gt;&lt;/p&gt;
+  &lt;/dd&gt;
+  &lt;!-- …… 每页共 10 个 dd --&gt;
+&lt;/dl&gt;</pre>
+      <h3>第三步：完整代码（教材版：requests + 正则）</h3>
+      <div class="code-title">maoyan_top100.py</div>
+<pre class="code"><span class="kw">import</span> csv
+<span class="kw">import</span> re
+<span class="kw">import</span> time
+<span class="kw">import</span> random
+<span class="kw">import</span> requests
+
+HEADERS = {
+    <span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "</span>
+                  <span class="st">"(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"</span>,
+}
+
+<span class="cm"># 一条正则吃掉一个 &lt;dd&gt;：每组对应一个字段，re.S 让 . 能跨行</span>
+PATTERN = re.compile(
+    <span class="st">r'&lt;dd&gt;.*?board-index.*?&gt;(\d+)&lt;/i&gt;'</span>      <span class="cm"># ① 排名</span>
+    <span class="st">r'.*?title="(.*?)"'</span>                     <span class="cm"># ② 片名（第一个 title 属性）</span>
+    <span class="st">r'.*?star"&gt;\s*(.*?)\s*&lt;/p&gt;'</span>             <span class="cm"># ③ 主演</span>
+    <span class="st">r'.*?releasetime"&gt;(.*?)&lt;/p&gt;'</span>            <span class="cm"># ④ 上映时间</span>
+    <span class="st">r'.*?integer"&gt;(.*?)&lt;/i&gt;'</span>                <span class="cm"># ⑤ 评分整数部分</span>
+    <span class="st">r'.*?fraction"&gt;(.*?)&lt;/i&gt;'</span>               <span class="cm"># ⑥ 评分小数部分</span>
+    <span class="st">r'.*?&lt;/dd&gt;'</span>, re.S)
+
+<span class="kw">def</span> <span class="fn">parse_page</span>(html):
+    <span class="st">"""把一页 HTML 解析成字典列表"""</span>
+    rows = []
+    <span class="kw">for</span> m <span class="kw">in</span> PATTERN.finditer(html):
+        rank, title, stars, release, int_part, frac_part = m.groups()
+        rows.append({
+            <span class="st">"排名"</span>: rank,
+            <span class="st">"片名"</span>: title,
+            <span class="st">"主演"</span>: stars.replace(<span class="st">"主演："</span>, <span class="st">""</span>).strip(),
+            <span class="st">"上映时间"</span>: release.replace(<span class="st">"上映时间："</span>, <span class="st">""</span>),
+            <span class="st">"评分"</span>: int_part + frac_part,     <span class="cm"># '9.' + '7' → '9.7'</span>
+        })
+    <span class="kw">return</span> rows
+
+<span class="kw">def</span> <span class="fn">main</span>():
+    <span class="kw">with</span> <span class="fn">open</span>(<span class="st">"maoyan_top100.csv"</span>, <span class="st">"w"</span>, newline=<span class="st">""</span>, encoding=<span class="st">"utf-8-sig"</span>) <span class="kw">as</span> f:
+        writer = csv.DictWriter(f, fieldnames=[<span class="st">"排名"</span>, <span class="st">"片名"</span>, <span class="st">"主演"</span>, <span class="st">"上映时间"</span>, <span class="st">"评分"</span>])
+        writer.writeheader()
+        total = <span class="fn">0</span>
+        <span class="kw">for</span> page <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">1</span>, <span class="fn">11</span>):                 <span class="cm"># 翻页公式：offset = (page-1)*10</span>
+            url = <span class="st">f"https://www.maoyan.com/board/4?offset={(page - 1) * 10}"</span>
+            resp = requests.get(url, headers=HEADERS, timeout=<span class="fn">10</span>)
+            resp.raise_for_status()               <span class="cm"># 非 2xx 直接抛异常，防脏数据</span>
+            rows = parse_page(resp.text)
+            writer.writerows(rows)
+            total += <span class="fn">len</span>(rows)
+            <span class="fn">print</span>(<span class="st">f"第 {page} 页：抓到 {len(rows)} 条"</span>)
+            time.sleep(random.uniform(<span class="fn">1</span>, <span class="fn">2</span>))     <span class="cm"># 礼貌延时：别把人家打挂</span>
+        <span class="fn">print</span>(<span class="st">f"✅ 已保存 {total} 条到 maoyan_top100.csv"</span>)
+
+<span class="kw">if</span> __name__ == <span class="st">"__main__"</span>:
+    main()</pre>
+      <p>预期输出：</p>
+<pre class="code">第 1 页：抓到 10 条
+第 2 页：抓到 10 条
+…
+第 10 页：抓到 10 条
+✅ 已保存 100 条到 maoyan_top100.csv</pre>
+      <p>生成的 <code class="inline">maoyan_top100.csv</code>（含逗号的字段 csv 模块会自动加引号转义）：</p>
+<pre class="code">排名,片名,主演,上映时间,评分
+1,肖申克的救赎,"蒂莫西·柴勒梅德,丽贝卡·弗格森",1994-09-10(加拿大),9.7
+2,霸王别姬,"张国荣,张丰毅,巩俐",1994-01-01(中国香港),9.6</pre>
+      <div class="callout info"><b>真站提醒：</b>如今真实猫眼风控较强，直接请求可能收到验证码页或 403——这是第 01 章"403 三连排查"的实战预告：先浏览器访问拿正常 Cookie，补进 headers 再跑；或到<a href="practice.html">练习场</a>用同构镜像站练习。代码的<b>结构完全不变</b>，变的只是 URL 与 Cookie。</div>
+
+      <h3>第四步：现代版对照（requests + parsel）</h3>
+      <p>同一页面用下一章的解析库写，表达式和页面结构一一对应（<code class="inline">pip install parsel</code>，parse 函数替换如下）：</p>
+      <div class="code-title">maoyan_top100_parsel.py（核心差异）</div>
+<pre class="code"><span class="kw">import</span> parsel
+
+<span class="kw">def</span> <span class="fn">parse_page</span>(html):
+    sel = parsel.Selector(html)
+    rows = []
+    <span class="kw">for</span> dd <span class="kw">in</span> sel.xpath(<span class="st">'//dl/dd'</span>):
+        rows.append({
+            <span class="st">"排名"</span>: dd.xpath(<span class="st">'./i/text()'</span>).get(),
+            <span class="st">"片名"</span>: dd.xpath(<span class="st">'.//p[@class="name"]/a/@title'</span>).get(),
+            <span class="st">"主演"</span>: (dd.xpath(<span class="st">'.//p[@class="star"]/text()'</span>).get(<span class="st">""</span>) <span class="kw">or</span> <span class="st">""</span>).replace(<span class="st">"主演："</span>, <span class="st">""</span>).strip(),
+            <span class="st">"上映时间"</span>: (dd.xpath(<span class="st">'.//p[@class="releasetime"]/text()'</span>).get(<span class="st">""</span>) <span class="kw">or</span> <span class="st">""</span>).replace(<span class="st">"上映时间："</span>, <span class="st">""</span>),
+            <span class="st">"评分"</span>: <span class="st">""</span>.join(dd.xpath(<span class="st">'.//p[@class="score"]/i/text()'</span>).getall()),
+        })
+    <span class="kw">return</span> rows</pre>
+
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>维度</th><th>教材版（正则）</th><th>现代版（parsel/XPath）</th></tr>
+        <tr><td>抗破坏性</td><td><b>强</b>——页面压成一行、class 乱掉也照样捞</td><td>依赖结构合法性，结构烂了直接空列表</td></tr>
+        <tr><td>可读性 / 维护</td><td>表达式与视觉结构脱节，改版要"重新找规律"</td><td><b>表达式即结构</b>，改版时对着新 DOM 改路径即可</td></tr>
+        <tr><td>学习价值</td><td>训练"从原始文本找规律"的眼力，是逆向（第 08 章）的基本功</td><td>Scrapy（第 10 章）原生语法，工程必经之路</td></tr>
+        <tr><td>工程建议</td><td colspan="2"><b>解析库为主，正则为兜底</b>：结构化提取交给 XPath；只有 JS 变量、压缩成一行的字符串才动用正则</td></tr>
+      </table></div>
+
+      <div class="pitfall"><b>本章避坑清单：</b>① <code class="inline">verify=False</code> 只许在测试环境用，且关闭告警（<code class="inline">disable_warnings</code>）之后连"你正在裸奔"的提示都没了——合入前全局搜一遍；② <code class="inline">resp.text</code> 乱码先查 <code class="inline">resp.encoding</code>（头里没写 charset 就回退 ISO-8859-1），改编码要赶在<b>第一次访问 text 之前</b>，或干脆 <code class="inline">resp.content.decode("utf-8")</code>；③ <code class="inline">resp.json()</code> 只对 application/json 响应有效，text 是 str、content 是 bytes，别混用（bytes 没有切片后 decode 再 json 的连环坑）；④ params 与手拼 URL 混用会<b>双重编码</b>——已编码的 <code class="inline">%E4</code> 会被再编码成 <code class="inline">%25E4</code>，编码只做一次，params 和手拼二选一；⑤ 忘了 timeout 或只给一个数：连接卡死和读取卡死是两种病，用元组 <code class="inline">(3, 10)</code> 分别设限。</div>
+
+      <!-- ============ 打卡 ============ -->
+      <h2>✅ 本章打卡清单</h2>
+      <div class="checklist-card check">
+        <label><input type="checkbox" id="c02-1" data-persist><span>能说出 urllib 的定位（标准库、requests 的底层一环、parse 必会），会写 urlopen/Request 与 HTTPError/URLError 异常处理（2.1）</span></label>
+        <label><input type="checkbox" id="c02-2" data-persist><span>requests 九大件全用过：params、data vs json、text/content/json()、headers、Session、verify、files/流式下载、proxies（2.2）</span></label>
+        <label><input type="checkbox" id="c02-3" data-persist><span>会配 timeout 元组与手动重试/urllib3 Retry，说得清"4xx 为什么不该盲目重试"（2.2⑥）</span></label>
+        <label><input type="checkbox" id="c02-4" data-persist><span>分得清 match/search/findall/finditer/sub，会写非贪婪 (.*?) 与命名分组，懂 re.S（2.3）</span></label>
+        <label><input type="checkbox" id="c02-5" data-persist><span>猫眼 TOP100 实战跑通：offset=(page-1)*10 翻页、正则提取五字段（2.4）</span></label>
+        <label><input type="checkbox" id="c02-6" data-persist><span>maoyan_top100.csv 用 Excel 打开无乱码，说得清为什么用 utf-8-sig 和 newline=""（2.4，第 04 章展开）</span></label>
+      </div>
+
+      <!-- ============ 练习 ============ -->
+      <h2>📝 本章练习</h2>
+      <p class="muted small">先自己想，再展开参考解析。做完到<a href="practice.html">练习场</a>刷综合题。</p>
+
+      <details class="qa"><summary><span class="qno">Q1</span>requests 已经一统天下，urllib 还有必要学吗？它的今天定位是什么？<span class="lv badge b-green">概念</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>对齐教材 3.1，对工具生态的分层理解。</p>
+          <p>先想清楚调用栈：requests → urllib3 → 标准库 socket。urllib 是标准库层的 HTTP 封装，requests 是它之上的人性化外壳。</p>
+          <div class="ans"><b>参考解析：</b>仍有必要，但定位是"了解即可、parse 必会、异常模型要懂"：① 理解分层——requests 底层就是 urllib3，很多报错（ConnectionError、ReadTimeout）顺着栈能追到 urllib/urllib3 的异常体系；② <code class="inline">urllib.parse</code>（quote/urlencode/urlparse）不依赖任何第三方包，是拼 URL、解析回调地址的通用工具；③ 受限环境（不给装第三方库的服务器、面试手写）里 urllib 是兜底；④ 维护老项目会直接遇到。它被取代的是"日常写爬虫"这个位置，不是知识本身。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q2</span>同一个接口，用 data= 发就 400，用 json= 发就 200。为什么？如何自查"我实际发出去了什么"？<span class="lv badge b-amber">分析</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>2.2② 的 data/json 之辨 + PreparedRequest 排查法。</p>
+          <div class="ans"><b>参考解析：</b>根因是<b>请求体格式与 Content-Type 和服务器期望不符</b>：data= 发的是 k=v&amp;k2=v2 且头是 x-www-form-urlencoded；json= 发的是 JSON 字符串且头是 application/json。现代接口大多按 Content-Type: application/json 路由解析，收到表单体解析失败返回 400。自查三板斧：<code class="inline">print(resp.request.headers)</code>、<code class="inline">print(resp.request.body)</code> 看实际发出的头和体；或把请求打到 <code class="inline">https://httpbin.org/post</code>，响应会原样回显你发出的 json/data 与头部，一对比就现形。修复：按接口文档改用 json=（或手写 data=json.dumps(...) + Content-Type 头）。</div>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q3</span>动手：从文本 "联系人: zhangsan@example.com，发布于 2026-10-25，浏览量 1024 次" 中提取邮箱、日期（年/月/日用命名分组）和所有数字。<span class="lv badge b-orange">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>2.3 的 findall/search/命名分组/字符集综合运用。</p>
+          <div class="ans"><b>参考解析：</b></div>
+<pre class="code"><span class="kw">import</span> re
+
+text = <span class="st">"联系人: zhangsan@example.com，发布于 2026-10-25，浏览量 1024 次"</span>
+
+<span class="cm"># ① 邮箱：字符集 + @ + 域名</span>
+<span class="fn">print</span>(re.findall(<span class="st">r'[\w.+-]+@[\w-]+\.[\w.]+'</span>, text))
+<span class="cm"># ['zhangsan@example.com']</span>
+
+<span class="cm"># ② 日期：命名分组，按名字取</span>
+m = re.search(<span class="st">r'(?P&lt;year&gt;\d{4})-(?P&lt;month&gt;\d{2})-(?P&lt;day&gt;\d{2})'</span>, text)
+<span class="fn">print</span>(m.group(<span class="st">"year"</span>), m.group(<span class="st">"month"</span>), m.group(<span class="st">"day"</span>))
+<span class="cm"># 2026 10 25</span>
+
+<span class="cm"># ③ 所有数字串</span>
+<span class="fn">print</span>(re.findall(<span class="st">r'\d+'</span>, text))
+<span class="cm"># ['2026', '10', '25', '1024']</span></pre>
+          <p>注意 ③ 会把日期里的数字也拆出来——若只要"独立数字"，用 <code class="inline">r'(?&lt;!\S)\d+(?!\S)'</code> 之类边界断言或先剔除日期，这提示了正则的局限：结构化数据更适合解析器（下一章）。</p>
+        </div>
+      </details>
+
+      <details class="qa"><summary><span class="qno">Q4</span>动手：设计实验复现"双重编码"——把已经编码过的 URL 再交给 params 会发生什么？给出修复原则。<span class="lv badge b-red">动手</span></summary>
+        <div class="qa-body">
+          <p><b>考点：</b>2.2① 与避坑④：编码责任归属。</p>
+          <div class="ans"><b>参考解析：</b>requests 对 params 的每个值都会做一次百分号编码，而 <code class="inline">%</code> 本身是要被编码的字符，于是已编码串里的 <code class="inline">%E4</code> 变成 <code class="inline">%25E4</code>：</div>
+<pre class="code"><span class="kw">import</span> requests
+
+already = <span class="st">"%E4%BD%A0%E5%A5%BD"</span>     <span class="cm"># "你好" 的正确编码</span>
+resp = requests.get(<span class="st">"https://httpbin.org/get"</span>, params={<span class="st">"kw"</span>: already}, timeout=<span class="fn">10</span>)
+<span class="fn">print</span>(resp.url)
+<span class="cm"># https://httpbin.org/get?kw=%25E4%25BD%25A0%E5%25A5%25BD</span>
+<span class="cm"># 服务器解码一次得到字面量 "%E4%BD%A0%E5%A5%BD"，而不是 "你好" —— 搜索/查询直接失败</span></pre>
+          <p><b>修复原则：编码只做一次，责任只归一方。</b>要么把原始中文交给 params（推荐，requests 负责编码）；要么全程手拼并自己 <code class="inline">quote()</code>。从 F12 复制的现成 URL 里如果已经带编码参数，就直接放进 URL 字符串，不要再拆给 params。</p></div>
+      </details>
+
+      <div class="book-box">
+        <div class="bx-title">📚 对齐与拓展</div>
+        <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 3 章 基本库的使用</b>（3.1 urllib / 3.2 requests / 3.3 正则表达式 / 3.4 爬取猫眼电影 TOP100）；<br>
+           · 拓展阅读：<a href="https://requests.readthedocs.io/" target="_blank" rel="noopener">requests 官方文档</a>（快速上手 + 高级用法当手册查）、<a href="https://docs.python.org/zh-cn/3/library/re.html" target="_blank" rel="noopener">Python re 模块官方文档</a>、<a href="https://regex101.com/" target="_blank" rel="noopener">regex101</a>（在线调试正则，右侧实时解释每个 token）；<br>
+           · 练习站点：<a href="https://httpbin.org" target="_blank" rel="noopener">httpbin.org</a>（请求回显，验证 headers/params/POST 的神器）。</p>
+      </div>
+
+            <div class="book-box">
+        <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
+        <p>
+         · <a href="https://requests.readthedocs.io/projects/cn/zh-cn/latest/" target="_blank" rel="noopener">requests 中文官方文档</a>——"快速上手+高级用法"两篇读完，requests 即毕业;
+         · <a href="https://regex101.com" target="_blank" rel="noopener">regex101.com</a>——正则在线调试器，实时解释每个符号，先在这练熟再上爬虫;
+         · <a href="https://www.kgtools.cn" target="_blank" rel="noopener">KGtools</a>——cURL 一键转 requests 代码，与本章"从 cURL 到代码"工作流配合。</p>
+      </div>
+
+      <div class="pager">
+        <a class="btn" href="ch01.html">← 上一章：爬虫基础与抓包分析</a>
+        <a class="btn primary" href="ch03.html">下一章：解析库全解 →</a>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p>🕷 爬虫进阶 · 第 02 章 · 请求的艺术</p>
+    <p class="muted">对齐《Python3网络爬虫开发实战（第二版）》第 3 章 · 进度自动保存</p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
