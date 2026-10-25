@@ -112,6 +112,41 @@ rows = [
         <tr><td>CSV</td><td>Excel 直开、通用交换格式</td><td>表达不了嵌套、类型全退化成字符串</td><td>表格型数据、交付给业务方</td></tr>
       </table></div>
 
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · Mitchell《Python网络爬虫权威指南》：数据清洗管线</div>
+        <p>Mitchell 在书里把"清洗脏数据"当作采集的最后一道工序（书中还演示了用 OpenRefine 这类工具做交互式清洗的思路），核心观点一句话：<b>存储的是垃圾，分析出来的就是垃圾</b>——爬虫的产出不是"抓到了"，而是"干净、一致、可直接分析"。程序员版本的做法，是把清洗动作固化为<b>入库前的管线</b>，每个字段必做五件事：<b>去空白与不可见字符</b>、<b>全半角统一</b>、<b>类型转换</b>（价格 <code class="inline">"￥1,234"</code> → <code class="inline">1234.0</code>）、<b>空值策略</b>（统一 None 还是统一空串，全库只许一种）、<b>日期归一化</b>（各种写法收敛成一种格式）。</p>
+        <div class="code-title">clean_item.py —— 入库前的通用清洗函数</div>
+<pre class="code"><span class="kw">import</span> re, unicodedata
+<span class="kw">from</span> datetime <span class="kw">import</span> datetime
+
+<span class="kw">def</span> <span class="fn">clean_item</span>(item):
+    <span class="st">"""入库前的统一清洗管线：字段不洗，分析必炸"""</span>
+    cleaned = {}
+    <span class="kw">for</span> k, v <span class="kw">in</span> item.items():
+        <span class="kw">if</span> isinstance(v, str):
+            v = v.replace(<span class="st">"\u200b"</span>, <span class="st">""</span>).replace(<span class="st">"\xa0"</span>, <span class="st">" "</span>)   <span class="cm"># ① 去不可见字符</span>
+            v = unicodedata.normalize(<span class="st">"NFKC"</span>, v)                  <span class="cm"># ② 全半角统一</span>
+            v = re.sub(<span class="st">r"\s+"</span>, <span class="st">" "</span>, v).strip()                    <span class="cm"># ③ 空白规范化</span>
+        cleaned[k] = v
+
+    <span class="cm"># ④ 类型转换：'￥1,234' → 1234.0（货币符号、千分位全部剥掉）</span>
+    m = re.search(<span class="st">r"\d[\d,]*\.?\d*"</span>, <span class="fn">str</span>(cleaned.get(<span class="st">"price"</span>, <span class="st">""</span>)))
+    cleaned[<span class="st">"price"</span>] = <span class="fn">float</span>(m.group().replace(<span class="st">","</span>, <span class="st">""</span>)) <span class="kw">if</span> m <span class="kw">else</span> <span class="kw">None</span>
+
+    <span class="cm"># ⑤ 日期归一化：'1994-09-10(加拿大)' / '1994年9月10日' → 统一 date 对象</span>
+    m = re.search(<span class="st">r"(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})"</span>, <span class="fn">str</span>(cleaned.get(<span class="st">"release_time"</span>, <span class="st">""</span>)))
+    <span class="kw">if</span> m:
+        y, mo, d = m.groups()
+        cleaned[<span class="st">"release_time"</span>] = datetime(<span class="fn">int</span>(y), <span class="fn">int</span>(mo), <span class="fn">int</span>(d)).date()
+
+    <span class="cm"># ⑥ 空值策略：统一 None（入库变 NULL），空串与 None 混存是查询噩梦</span>
+    <span class="kw">return</span> {k: (v <span class="kw">if</span> v != <span class="st">""</span> <span class="kw">else</span> <span class="kw">None</span>) <span class="kw">for</span> k, v <span class="kw">in</span> cleaned.items()}
+
+item = {<span class="st">"title"</span>: <span class="st">"肖申克的救赎\u200b"</span>, <span class="st">"price"</span>: <span class="st">"￥1,234"</span>, <span class="st">"release_time"</span>: <span class="st">"1994年9月10日"</span>}
+<span class="fn">print</span>(<span class="fn">clean_item</span>(item))
+<span class="cm"># {'title': '肖申克的救赎', 'price': 1234.0, 'release_time': datetime.date(1994, 9, 10)}</span></pre>
+      </div>
+
       <!-- ============ 4.2 ============ -->
       <h2>4.2 关系型存储 <span class="chip tbook">对齐教材 5.2</span></h2>
       <p>数据要<b>查询、去重、增量更新</b>时，文件就不够了——该上数据库。关系型的两条路：SQLite（单机文件库）与 MySQL（服务端库）。</p>
@@ -181,6 +216,43 @@ sql = <span class="st">"INSERT INTO movie (rank, title, score) VALUES (%s, %s, %
     conn.close()</pre>
       <div class="callout warn"><b>SQL 注入：一条警告 Worth 一整节。</b>把用户数据 f-string 进 SQL：<code class="inline">f"SELECT * FROM users WHERE name = '{name}'"</code>，当 name 是 <code class="inline">' OR '1'='1</code> 时，引号闭合、条件恒真，语句被<b>改写</b>——别人的输入变成了你的 SQL 语法。参数化的原理：SQL 模板先预编译成语法树，参数<b>只作为数据</b>绑定进去，永远没有机会被当成语法执行。SQLite 用 ?、PyMySQL 用 %s，本质相同。铁律：<b>任何来自外部（网页、接口、你爬来的数据）的值，只许走占位符。</b></div>
 
+      <h3>③ 工程要点：索引、批量、事务（SQLite / MySQL 通吃）</h3>
+      <p>demo 能跑和工程能用之间差三件事：<br>
+         · <b>唯一索引 = 数据库级去重 + 查询加速，一石二鸟</b>：给 <code class="inline">url_hash</code>（URL 的 sha1）建 UNIQUE 约束，重复数据在存储层直接被挡——比代码里"先查再插"可靠（并发下不会竞态出重复），按 hash 查重还能吃到索引加速。<br>
+         · <b>批量插入快一个量级</b>：逐条 <code class="inline">execute</code> 每条都有一次语句分发开销（MySQL 还要多一次网络往返）；<code class="inline">executemany</code> 复用预编译语句，PyMySQL 更会自动把多值 INSERT 改写成单条多行语句。<br>
+         · <b>事务包裹 = 不留半批脏数据</b>：爬到第 600 条时程序崩了？只要没 commit，回滚即可——库里要么全有、要么全无，正是 408 讲的 ACID 原子性第一次帮你写对代码。</p>
+      <div class="code-title">bulk_insert.py</div>
+<pre class="code"><span class="kw">import</span> sqlite3, hashlib
+
+conn = sqlite3.connect(<span class="st">"movies.db"</span>)
+cur = conn.cursor()
+
+cur.execute(<span class="st">"""
+CREATE TABLE IF NOT EXISTS movie (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    url_hash TEXT UNIQUE,          -- 唯一索引：数据库级去重 + 查询加速
+    title    TEXT NOT NULL,
+    score    REAL
+)"""</span>)
+
+<span class="kw">def</span> <span class="fn">url_hash</span>(url):
+    <span class="kw">return</span> hashlib.sha1(url.encode(<span class="st">"utf-8"</span>)).hexdigest()
+
+rows = [(<span class="fn">url_hash</span>(<span class="st">f"https://example.com/m/{i}"</span>), <span class="st">f"电影{i}"</span>, <span class="fn">round</span>(<span class="fn">8.5</span> + i * <span class="fn">0.001</span>, <span class="fn">3</span>))
+        <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">1</span>, <span class="fn">1001</span>)]
+
+<span class="kw">try</span>:
+    cur.executemany(
+        <span class="st">"INSERT OR IGNORE INTO movie (url_hash, title, score) VALUES (?, ?, ?)"</span>,
+        rows,                              <span class="cm"># 批量：比循环 execute 快一个量级</span>
+    )
+    conn.commit()                          <span class="cm"># 事务提交：1000 条要么全进，要么一条不进</span>
+<span class="kw">except</span> Exception:
+    conn.rollback()                        <span class="cm"># 爬一半崩了？回滚，不留半批脏数据</span>
+    <span class="kw">raise</span>
+<span class="kw">finally</span>:
+    conn.close()</pre>
+
       <!-- ============ 4.3 ============ -->
       <h2>4.3 非关系型存储 <span class="chip tbook">对齐教材 5.3</span></h2>
       <h3>① MongoDB：文档型，字段不固定就找它</h3>
@@ -229,6 +301,44 @@ r.zadd(<span class="st">"hot_movies"</span>, {<span class="st">"肖申克的救�
 <span class="cm"># ③ list 队列：lpush 进队 + rpop 出队 = FIFO 待爬队列（第 10 章分布式的基础）</span>
 r.lpush(<span class="st">"queue"</span>, <span class="st">"https://example.com/page/2"</span>)
 <span class="fn">print</span>(r.rpop(<span class="st">"queue"</span>))                        <span class="cm"># https://example.com/page/2</span></pre>
+
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · 工程实践：Redis pipeline 与 setnx 指纹</div>
+        <p>上面的 <code class="inline">sadd</code> 去重在单机场景够用，工程上还有两个进阶细节：<br>
+           · <b>逐条命令的 RTT 开销</b>：每条 Redis 命令都是一次网络往返（RTT），10 万个 URL 逐条 sadd 就是 10 万次往返——用 <b>pipeline</b> 把 N 条命令攒成一次发送、一次接收，耗时直接掉一个量级。<br>
+           · <b>setnx 原子去重锁</b>：<code class="inline">SET key value NX EX ttl</code> 是一条原子命令，"不存在才写入 + 带过期时间"一步完成：写入成功 = 第一次见（去爬），失败 = 时间窗内爬过（跳过）。<b>NX 保证原子</b>（没有"先查再设"的竞态窗口），<b>EX 保证过期</b>（七天前抓过的今天可以重抓）。这是"带 TTL 的指纹去重"标准做法，第 10 章 Scrapy 分布式去重（RFPDupeFilter 的 Redis 版）用的就是同一思想。</p>
+        <div class="code-title">fingerprint_dedup.py —— requests 场景的指纹去重</div>
+<pre class="code"><span class="kw">import</span> hashlib
+<span class="kw">import</span> redis
+<span class="kw">from</span> urllib.parse <span class="kw">import</span> urlsplit, parse_qsl, urlencode
+
+r = redis.Redis(host=<span class="st">"127.0.0.1"</span>, port=<span class="fn">6379</span>, db=<span class="fn">0</span>, decode_responses=<span class="kw">True</span>)
+
+<span class="kw">def</span> <span class="fn">normalize</span>(url):
+    <span class="st">"""URL 规范化：参数顺序、末尾斜杠、大小写不影响"是不是同一个页面"的判断"""</span>
+    scheme, netloc, path, query, _ = urlsplit(url)
+    scheme, netloc = scheme.lower(), netloc.lower()
+    path = path.rstrip(<span class="st">"/"</span>) <span class="kw">or</span> <span class="st">"/"</span>
+    query = urlencode(<span class="fn">sorted</span>(parse_qsl(query)))          <span class="cm"># 参数按名字排序再拼回</span>
+    <span class="kw">return</span> <span class="st">f"{scheme}://{netloc}{path}?{query}"</span> <span class="kw">if</span> query <span class="kw">else</span> <span class="st">f"{scheme}://{netloc}{path}"</span>
+
+<span class="kw">def</span> <span class="fn">seen_or_lock</span>(url, ttl=<span class="fn">7</span> * <span class="fn">24</span> * <span class="fn">3600</span>):
+    <span class="st">"""指纹去重：规范化 → sha1 → SETNX。返回 True = 新页面，去爬"""</span>
+    fp = hashlib.sha1(normalize(url).encode()).hexdigest()
+    <span class="kw">return</span> r.set(<span class="st">f"fp:{fp}"</span>, <span class="fn">1</span>, nx=<span class="kw">True</span>, ex=ttl)    <span class="cm"># 原子：不存在才写，7 天过期</span>
+
+<span class="kw">if</span> <span class="fn">seen_or_lock</span>(<span class="st">"https://Example.com/list/?size=10&amp;page=2"</span>):
+    <span class="fn">print</span>(<span class="st">"新页面，去爬"</span>)
+<span class="kw">else</span>:
+    <span class="fn">print</span>(<span class="st">"时间窗内爬过，跳过"</span>)
+
+<span class="cm"># pipeline：批量判重把 N 次往返压成 1 次，万级 URL 从秒级降到毫秒级</span>
+<span class="kw">with</span> r.pipeline(transaction=<span class="kw">False</span>) <span class="kw">as</span> pipe:
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">1000</span>):
+        fp = hashlib.sha1(normalize(<span class="st">f"https://example.com/p/{i}"</span>).encode()).hexdigest()
+        pipe.set(<span class="st">f"fp:{fp}"</span>, <span class="fn">1</span>, nx=<span class="kw">True</span>, ex=<span class="fn">7</span> * <span class="fn">24</span> * <span class="fn">3600</span>)
+    results = pipe.execute()     <span class="cm"># 一次发出一次收回；results 中 True = 新、False = 重复</span></pre>
+      </div>
 
       <!-- ============ 4.4 ============ -->
       <h2>4.4 存储选型决策 <span class="chip tnew">方法论</span></h2>

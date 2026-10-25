@@ -278,6 +278,38 @@ resp = requests.get(<span class="st">"https://example.com/big-video.mp4"</span>,
 <span class="cm"># 带认证：proxies = {"http": "http://user:pass@1.2.3.4:8080", "https": "http://user:pass@1.2.3.4:8080"}</span>
 <span class="fn">print</span>(requests.get(<span class="st">"https://httpbin.org/ip"</span>, proxies=proxies, timeout=<span class="fn">10</span>).text)
 <span class="cm"># {"origin": "代理服务器的 IP"}</span></pre>
+
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · Mitchell《Python网络爬虫权威指南》：彻底解决编码与乱码</div>
+        <p>乱码不是玄学，根源只有两种：① 服务器<b>声明的 charset 与实际不符</b>（头里说 ISO-8859-1，字节其实是 GBK）；② 服务器<b>压根没声明</b>——HTTP 规范让 text/* 回退 ISO-8859-1，浏览器会自己猜 UTF-8，requests 也在猜，猜的依据不同，就出现"浏览器正常、爬虫乱码"。requests 给了你两个编码入口：<code class="inline">resp.encoding</code>（来自响应头声明，没声明就回退 ISO-8859-1）与 <code class="inline">resp.apparent_encoding</code>（requests 2.26+ 内置 <code class="inline">charset_normalizer</code>，旧版用 chardet，按字节特征猜）。<br>
+           Mitchell 推崇的处理思路是社区著名的 <b>"Unicode 三明治"</b>原则（出自 Ned Batchelder 的经典演讲，被爬虫教材广泛引用）：<b>入口处尽早 decode 成 str → 中间处理全程用 unicode → 出口处最后才 encode</b>。乱码事故几乎都发生在"bytes 和 str 混着处理"的地带，把边界收干净，乱码自然绝迹。</p>
+        <div class="code-title">robust_text.py —— 三级策略，终结乱码玄学</div>
+<pre class="code"><span class="kw">import</span> requests
+
+<span class="kw">def</span> <span class="fn">get_text</span>(url, headers=<span class="kw">None</span>, timeout=<span class="fn">10</span>):
+    <span class="st">"""返回解码正确的文本：声明可信就信，不可信就探测"""</span>
+    resp = requests.get(url, headers=headers <span class="kw">or</span> {}, timeout=timeout)
+    resp.raise_for_status()
+
+    <span class="cm"># ① 头里明确声明了 charset（且不是规范的默认回退值）→ 直接信它</span>
+    <span class="kw">if</span> resp.encoding <span class="kw">and</span> resp.encoding.lower() != <span class="st">"iso-8859-1"</span>:
+        <span class="kw">return</span> resp.text
+
+    <span class="cm"># ② 没声明 / 瞎声明 → charset_normalizer 按字节特征猜（返回解码好的字符串）</span>
+    <span class="kw">import</span> charset_normalizer
+    best = charset_normalizer.from_bytes(resp.content).best()
+    <span class="kw">if</span> best:
+        <span class="kw">return</span> <span class="fn">str</span>(best)
+
+    <span class="cm"># ③ 兜底：国内站点常见编码逐个试；坏字节用 ? 占位，绝不让程序崩</span>
+    <span class="kw">for</span> enc <span class="kw">in</span> (<span class="st">"utf-8"</span>, <span class="st">"gb18030"</span>, <span class="st">"big5"</span>):
+        <span class="kw">try</span>:
+            <span class="kw">return</span> resp.content.decode(enc)
+        <span class="kw">except</span> UnicodeDecodeError:
+            <span class="kw">continue</span>
+    <span class="kw">return</span> resp.content.decode(<span class="st">"utf-8"</span>, errors=<span class="st">"replace"</span>)</pre>
+      </div>
+
       <div class="callout ok"><b>九大件串成一句话：</b><code class="inline">Session</code>（⑤）挂好 <code class="inline">headers</code>（④）与 <code class="inline">Retry</code>（⑥），GET 带 <code class="inline">params</code>（①）、POST 分清 <code class="inline">data/json</code>（②），响应用 <code class="inline">text/content/json()</code>（③）解析，上传下载走 <code class="inline">files/iter_content</code>（⑧），过墙走 <code class="inline">proxies</code>（⑨），SSL 别乱关（⑦）。第 07 章的代理池、第 05 章的接口直连，全是这九件的排列组合。</div>
 
       <!-- ============ 2.3 ============ -->
@@ -357,6 +389,38 @@ text = <span class="st">"文档在 https://docs.python.org/zh-cn/3/library/re.ht
 <span class="cm"># sub 清洗：把 HTML 片段里的标签剥掉</span>
 dirty = <span class="st">'&lt;p class="star"&gt;主演：蒂莫西·柴勒梅德&lt;/p&gt;'</span>
 <span class="fn">print</span>(re.sub(<span class="st">r'&lt;[^&gt;]+&gt;'</span>, <span class="st">''</span>, dirty))   <span class="cm"># 主演：蒂莫西·柴勒梅德</span></pre>
+
+      <h3>⚠️ 正则的边界：什么时候正则会害你</h3>
+      <p>正则是好刀，但有两根红线，撞上轻则解析错数据，重则程序卡死：</p>
+      <p><b>红线①：HTML 不是正则语言，嵌套结构用正则解析注定脆弱。</b>正则语言在形式语言里天生表达不了"任意深度的配对"，所以"匹配最外层 div 的完整内容"这类需求，正则只能对固定层数凑合，层数一变立刻失效：</p>
+      <div class="code-title">nested_trap.py</div>
+<pre class="code"><span class="kw">import</span> re
+
+html = <span class="st">'&lt;div id="a"&gt;&lt;div id="b"&gt;正文&lt;/div&gt;&lt;/div&gt;'</span>
+
+<span class="cm"># 想取"最外层 div 的完整内容"：</span>
+m = re.search(<span class="st">r'&lt;div id="a"&gt;(.*)&lt;/div&gt;'</span>, html)
+<span class="fn">print</span>(m.group(<span class="fn">1</span>))
+<span class="cm"># &lt;div id="b"&gt;正文&lt;/div&gt;   ← 贪婪把内层闭合标签也吞了，"配对"配错了对象</span>
+
+<span class="cm"># 换成三层嵌套就彻底无解：&lt;div[^&gt;]*&gt;((?:(?!&lt;/div&gt;).)*)&lt;/div&gt; 这类仿递归写法</span>
+<span class="cm"># 只对固定层数有效，层数一变立刻失效——正则语言天生表达不了任意深度的配对。</span>
+<span class="cm"># 正确姿势：结构提取交给解析器建树（下一章），正则只做最后的字符级兜底。</span></pre>
+      <p><b>红线②：灾难性回溯（catastrophic backtracking）。</b>嵌套量词（量词套量词）会让回溯路径<b>指数爆炸</b>——模式 <code class="inline">(a+)+b</code> 对付 30 个 a 的文本，状态机要枚举约 2^30 种拆分方式，直接卡死：</p>
+      <div class="code-title">backtracking.py</div>
+<pre class="code"><span class="kw">import</span> re
+
+text = <span class="st">"a"</span> * <span class="fn">30</span> + <span class="st">"c"</span>        <span class="cm"># 30 个 a，末尾故意不是 b（逼回溯走到底）</span>
+
+<span class="cm"># ❌ 千万别真跑：re.match(r"(a+)+b", text) —— 嵌套量词，几分钟到"跑不完"都有可能</span>
+<span class="cm"># ❌ 同族危险模式：r"(\d+)+$"、r"(a|a)*b"、r"(.*a){20}" —— 一切"量词套量词"</span>
+
+<span class="cm"># ✅ 展平量词：同一个意图，一层量词，毫秒级返回 None</span>
+<span class="fn">print</span>(re.match(<span class="st">r"a+b"</span>, text))                    <span class="cm"># None</span>
+
+<span class="cm"># ✅ 真需要嵌套语义：第三方 regex 模块的占有量词 a++（吞掉后绝不回退）</span>
+<span class="cm"># pip install regex 后：regex.match(r"(a++)+b", text) —— 立刻失败而不是卡死</span></pre>
+      <div class="callout warn"><b>安全守则：</b>① 量词永远不套量词，能展平就展平；② Python 标准库 re <b>不支持</b>占有量词与原子组，需要时用第三方 <code class="inline">regex</code> 模块（<code class="inline">a++</code>、<code class="inline">(?&gt;…)</code>）；③ 给量词设上限（<code class="inline">.*?</code> 换成 <code class="inline">[^&lt;]{1,200}?</code>），把回溯空间锁死；④ 结构化提取交给解析库，正则只在"压缩成一行、JS 变量"这类短文本里作战。</div>
 
       <!-- ============ 2.4 ============ -->
       <h2>2.4 实战：爬取猫眼电影 TOP100 <span class="chip tbook">对齐教材 3.4</span></h2>
@@ -470,6 +534,22 @@ PATTERN = re.compile(
       </table></div>
 
       <div class="pitfall"><b>本章避坑清单：</b>① <code class="inline">verify=False</code> 只许在测试环境用，且关闭告警（<code class="inline">disable_warnings</code>）之后连"你正在裸奔"的提示都没了——合入前全局搜一遍；② <code class="inline">resp.text</code> 乱码先查 <code class="inline">resp.encoding</code>（头里没写 charset 就回退 ISO-8859-1），改编码要赶在<b>第一次访问 text 之前</b>，或干脆 <code class="inline">resp.content.decode("utf-8")</code>；③ <code class="inline">resp.json()</code> 只对 application/json 响应有效，text 是 str、content 是 bytes，别混用（bytes 没有切片后 decode 再 json 的连环坑）；④ params 与手拼 URL 混用会<b>双重编码</b>——已编码的 <code class="inline">%E4</code> 会被再编码成 <code class="inline">%25E4</code>，编码只做一次，params 和手拼二选一；⑤ 忘了 timeout 或只给一个数：连接卡死和读取卡死是两种病，用元组 <code class="inline">(3, 10)</code> 分别设限。</div>
+
+      <!-- ============ 2.5 ============ -->
+      <h2>2.5 更进一步：TLS 指纹与 curl_cffi <span class="chip tnew">进阶</span></h2>
+      <p>进阶玩家都遇到过这个灵异现象：<b>headers 全对、Cookie 全带、频率正常，请求依然被拒</b>——甚至在 TCP 连上之后就被服务器掐断。原因不在 HTTP 层，而在更底下的 <b>TLS 握手</b>：客户端打招呼（ClientHello）时会报出自己的 TLS 版本、加密套件列表、扩展、椭圆曲线等一串参数，服务器把它们拼起来算个 MD5，就是业界通用的 <b>JA3 指纹</b>。requests 走的 OpenSSL 栈有稳定的默认参数组合，JA3 一眼就能认出"这不是浏览器"——报文伪装得再像，握手阶段就先暴露了。这正是韦世东《Python3反爬虫原理与绕过实战》里"指纹对抗"思想的现代延续：反爬早已从"看请求头"进化到"看握手特征"。</p>
+      <div class="code-title">curl_cffi_demo.py</div>
+<pre class="code"><span class="cm"># pip install curl_cffi —— 基于 curl 的 TLS 实现，可 impersonate 主流浏览器</span>
+<span class="kw">from</span> curl_cffi <span class="kw">import</span> requests
+
+<span class="cm"># impersonate="chrome"：连 TLS ClientHello + HTTP/2 帧特征一起伪装成 Chrome</span>
+resp = requests.get(<span class="st">"https://example.com/"</span>, impersonate=<span class="st">"chrome"</span>, timeout=<span class="fn">10</span>)
+<span class="fn">print</span>(resp.status_code)      <span class="cm"># 之前 403/被掐断的站，现在可能就是 200</span>
+
+<span class="cm"># 同样支持 Session 用法，API 与 requests 基本一致</span>
+s = requests.Session(impersonate=<span class="st">"chrome"</span>)
+r = s.get(<span class="st">"https://example.com/page"</span>, timeout=<span class="fn">10</span>)</pre>
+      <div class="callout warn"><b>使用边界：</b>TLS 指纹伪装是双刃剑——同样的技术也可能被用于绕过你无权访问的系统。<code class="inline">curl_cffi</code> 只在<b>合法场景</b>使用：采集你有权访问的公开数据、做安全测试或兼容性调试；商业风控站点请先读 robots 与服务条款。工具越强，责任越重。</div>
 
       <!-- ============ 打卡 ============ -->
       <h2>✅ 本章打卡清单</h2>

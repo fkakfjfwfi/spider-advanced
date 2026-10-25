@@ -150,6 +150,72 @@ ZSET = <span class="st">"proxy:pool"</span>                                <span
       <h3>免费源的现实与付费建议</h3>
       <div class="callout warn"><b>把丑话说在前面：</b>免费代理站的可用率通常<b>不到 10%</b>，平均寿命以分钟计——这正是检测器必须存在的原因。免费源适合学习练手、搭池子跑通流程；<b>生产采集请直接上付费代理</b>（独享套餐或隧道，见 7.3），按"单次采集的账号/时间成本"算，付费代理几乎总是更便宜的选择。</div>
 
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · 《Python3反爬虫原理与绕过实战》：代理质量的三把尺</div>
+        <p>韦世东提醒：别拿"能不能通"当代理的唯一标准——<b>能通和能用之间差着三把尺</b>。第一把尺是<b>匿名度</b>：透明代理会在请求头里自曝真身（X-Forwarded-For / Via），目标站既知道你用了代理、又知道你从哪来，等于白用。用回显服务一测便知：</p>
+        <div class="code-title">check_anonymity.py（第一把尺：匿名度检测）</div>
+<pre class="code"><span class="kw">import</span> requests
+
+<span class="kw">def</span> <span class="fn">check_anonymity</span>(proxy):
+    <span class="st">"""请求回显服务，看代理有没有把真实 IP 添进头里"""</span>
+    headers = requests.<span class="fn">get</span>(<span class="st">"https://httpbin.org/headers"</span>,
+                           proxies={<span class="st">"http"</span>: <span class="st">f"http://{proxy}"</span>}, timeout=<span class="fn">8</span>).<span class="fn">json</span>()[<span class="st">"headers"</span>]
+    leaked = [k <span class="kw">for</span> k <span class="kw">in</span> headers <span class="kw">if</span> k <span class="kw">in</span> (<span class="st">"X-Forwarded-For"</span>, <span class="st">"Via"</span>, <span class="st">"Forwarded"</span>)]
+    <span class="kw">return</span> <span class="st">"高匿"</span> <span class="kw">if not</span> leaked <span class="kw">else</span> <span class="st">f"暴露字段：{leaked}"</span></pre>
+        <p><b>第二把尺是延迟与成功率</b>：单次测量会骗人（赶上缓存就快），要连测多次看 <b>P50 / P95 分位数</b>——P50 代表"一般时候多快"，P95 代表"最倒霉的那 5% 有多慢"，超时告警往往就是被这 5% 拖出来的：</p>
+        <div class="code-title">measure_latency.py（第二把尺：P50 / P95 延迟）</div>
+<pre class="code"><span class="kw">import</span> time
+
+<span class="kw">def</span> <span class="fn">measure_latency</span>(proxy, n=<span class="fn">10</span>):
+    <span class="st">"""连测 n 次：超时计入失败率；延迟看分位数，不看平均值"""</span>
+    lat, fails = [], <span class="fn">0</span>
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(n):
+        t0 = time.<span class="fn">perf_counter</span>()
+        <span class="kw">try</span>:
+            requests.<span class="fn">get</span>(<span class="st">"https://httpbin.org/ip"</span>,
+                         proxies={<span class="st">"http"</span>: <span class="st">f"http://{proxy}"</span>}, timeout=<span class="fn">8</span>)
+            lat.<span class="fn">append</span>((time.<span class="fn">perf_counter</span>() - t0) * <span class="fn">1000</span>)
+        <span class="kw">except</span> requests.RequestException:
+            fails += <span class="fn">1</span>
+    <span class="kw">if not</span> lat:
+        <span class="kw">return</span> {<span class="st">"fail_rate"</span>: <span class="fn">1.0</span>}
+    lat.<span class="fn">sort</span>()
+    <span class="kw">return</span> {<span class="st">"fail_rate"</span>: fails / n,
+            <span class="st">"p50"</span>: lat[<span class="fn">len</span>(lat) // <span class="fn">2</span>],
+            <span class="st">"p95"</span>: lat[<span class="fn">min</span>(<span class="fn">len</span>(lat) - <span class="fn">1</span>, <span class="fn">int</span>(<span class="fn">len</span>(lat) * <span class="fn">0.95</span>))]}</pre>
+        <p><b>第三把尺是归属地与机房检测</b>：机房 IP 段（阿里云 / 腾讯云 / AWS 的 ASN）天然与住宅用户不同，风控一查 org 字段便知——机房段不是不能用，但要知道它更易被识别、更容易被"重点关照"：</p>
+        <div class="code-title">lookup_asn.py（第三把尺：归属地与机房检测）</div>
+<pre class="code"><span class="kw">def</span> <span class="fn">lookup_asn</span>(proxy):
+    <span class="st">"""查 IP 归属：org 带 Amazon / Alibaba / Tencent 等字样 = 机房 IP"""</span>
+    ip = proxy.<span class="fn">split</span>(<span class="st">":"</span>)[<span class="fn">0</span>]
+    info = requests.<span class="fn">get</span>(<span class="st">f"https://ipinfo.io/{ip}/json"</span>, timeout=<span class="fn">8</span>).<span class="fn">json</span>()
+    <span class="kw">return</span> info.<span class="fn">get</span>(<span class="st">"org"</span>, <span class="st">""</span>)                     <span class="cm"># 如 "AS45102 Alibaba Cloud…"</span></pre>
+        <p>三把尺合起来就是入池前的<b>综合体检</b>——7.2 检测器的 check() 只测了"能不能通"，把它升级成 score_proxy()，体检一次、分数写进 zset 的初始 score：</p>
+        <div class="code-title">score_proxy.py（综合评分：低于 60 不入池）</div>
+<pre class="code"><span class="kw">def</span> <span class="fn">score_proxy</span>(proxy):
+    <span class="st">"""三把尺综合打分：满分 100。匿名度是硬门槛，暴露直接出局"""</span>
+    <span class="kw">try</span>:
+        anonymity = <span class="fn">check_anonymity</span>(proxy)
+        <span class="kw">if</span> anonymity != <span class="st">"高匿"</span>:
+            <span class="kw">return</span> <span class="fn">0</span>, anonymity
+        score, reasons = <span class="fn">40</span>, []
+        m = <span class="fn">measure_latency</span>(proxy)
+        <span class="kw">if</span> m[<span class="st">"fail_rate"</span>] &gt; <span class="fn">0.2</span>:
+            <span class="kw">return</span> <span class="fn">0</span>, <span class="st">f"失败率 {m['fail_rate']:.0%}，直接出局"</span>
+        score += <span class="fn">40</span> <span class="kw">if</span> m[<span class="st">"p50"</span>] &lt; <span class="fn">500</span> <span class="kw">else</span> <span class="fn">20</span>        <span class="cm"># P50 低于 500ms 算快</span>
+        <span class="kw">if</span> m[<span class="st">"p95"</span>] &gt; <span class="fn">3000</span>:
+            score -= <span class="fn">10</span>
+            reasons.<span class="fn">append</span>(<span class="st">f"尾延迟高 P95={m['p95']:.0f}ms"</span>)
+        org = <span class="fn">lookup_asn</span>(proxy)
+        <span class="kw">if any</span>(k <span class="kw">in</span> org <span class="kw">for</span> k <span class="kw">in</span> (<span class="st">"Amazon"</span>, <span class="st">"Alibaba"</span>, <span class="st">"Tencent"</span>, <span class="st">"Huawei"</span>)):
+            score -= <span class="fn">10</span>
+            reasons.<span class="fn">append</span>(<span class="st">f"机房 IP：{org}"</span>)       <span class="cm"># 机房段降分但不禁用</span>
+        <span class="kw">return</span> score, <span class="st">"；"</span>.<span class="fn">join</span>(reasons) <span class="kw">or</span> <span class="st">"三把尺全部通过"</span>
+    <span class="kw">except</span> Exception:
+        <span class="kw">return</span> <span class="fn">0</span>, <span class="st">"不可达"</span></pre>
+        <p>注意体检本身也有成本（每个代理十几次请求），所以它属于<b>入池前的一次性质检</b>，不是每次调度都跑——这正好补上 7.2 检测器"只看通断"的短板。</p>
+      </div>
+
       <!-- ============ 7.3 ============ -->
       <h2>7.3 付费代理与隧道代理 <span class="chip tbook">对齐教材 9.3</span></h2>
       <p>付费代理常见两种形态，选型前分清它们：</p>
@@ -196,6 +262,46 @@ tunnel = {
         <span class="fn">redial</span>()                    <span class="cm"># 出口挂了/被封？重拨换 IP，服务自愈</span>
         time.<span class="fn">sleep</span>(<span class="fn">5</span>)</pre>
       <div class="callout info"><b>适用边界要心里有数：</b>① <b>重拨窗口 = 服务中断</b>——重拨的几秒到几十秒里代理不可用，任务要能容忍抖动；② <b>池子永远只有"当前这一个"IP</b>——无法并发多 IP，只适合中小规模；③ 运营商政策变化大——不少地区的家宽已不发公网 IP（NAT 之内重拨也没用），动手前先验证重拨后 IP 是否真的变化；④ 云机房宽带默认不给你 PPPoE——这套方案的地盘在"有真实宽带线路"的场景。</div>
+
+      <h3>Windows 拨号换 IP：rasdial 实战</h3>
+      <p>上面守护脚本里出现的 rasdial 是 Windows 自带的拨号命令，值得单独展开——它是整台"拨号代理服务器"的发动机。三个用法先记牢（在 cmd 里直接敲）：</p>
+      <div class="code-title">rasdial 命令行三连</div>
+<pre class="code">rasdial                       <span class="cm"># 不带参数：查看当前拨号连接状态</span>
+rasdial 宽带连接 /disconnect   <span class="cm"># 断开：运营商随即收回当前公网 IP</span>
+rasdial 宽带连接 账号 密码     <span class="cm"># 重新拨号：几秒后拿到新分配的公网 IP</span></pre>
+      <p>"宽带连接"是你在网络连接面板里看到的 PPPoE 连接名，账号密码是运营商给的宽带账号。把<b>断开 → 重拨 → 校验新 IP</b> 封装成函数——注意必须校验"新 IP ≠ 旧 IP"，因为重拨后有可能被分配回同一个地址：</p>
+      <div class="code-title">rasdial_redial.py（subprocess 封装 + 新 IP 校验循环）</div>
+<pre class="code"><span class="kw">import</span> subprocess
+<span class="kw">import</span> time
+<span class="kw">import</span> requests
+
+CONN, USER, PWD = <span class="st">"宽带连接"</span>, <span class="st">"宽带账号"</span>, <span class="st">"宽带密码"</span>
+
+<span class="kw">def</span> <span class="fn">current_ip</span>():
+    <span class="kw">try</span>:
+        <span class="kw">return</span> requests.<span class="fn">get</span>(<span class="st">"https://httpbin.org/ip"</span>, timeout=<span class="fn">8</span>).<span class="fn">json</span>()[<span class="st">"origin"</span>]
+    <span class="kw">except</span> requests.RequestException:
+        <span class="kw">return</span> <span class="kw">None</span>
+
+<span class="kw">def</span> <span class="fn">redial_until_new</span>(old_ip, max_tries=<span class="fn">10</span>):
+    <span class="st">"""断开 → 重拨 → 校验：拿到与旧 IP 不同的新地址才算成功"""</span>
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(max_tries):
+        subprocess.<span class="fn">run</span>(<span class="st">f"rasdial {CONN} /disconnect"</span>, shell=<span class="kw">True</span>)
+        time.<span class="fn">sleep</span>(<span class="fn">3</span>)                                <span class="cm"># 给运营商留出释放旧 IP 的时间</span>
+        done = subprocess.<span class="fn">run</span>(<span class="st">f"rasdial {CONN} {USER} {PWD}"</span>,
+                              shell=<span class="kw">True</span>, capture_output=<span class="kw">True</span>, text=<span class="kw">True</span>)
+        <span class="kw">if</span> done.returncode == <span class="fn">0</span>:                     <span class="cm"># 成功时 stdout 会显示"已成功连接"</span>
+            time.<span class="fn">sleep</span>(<span class="fn">5</span>)                            <span class="cm"># 等网卡真正拿到新地址</span>
+            new_ip = <span class="fn">current_ip</span>()
+            <span class="kw">if</span> new_ip <span class="kw">and</span> new_ip != old_ip:
+                <span class="kw">return</span> new_ip
+        time.<span class="fn">sleep</span>(<span class="fn">min</span>(<span class="fn">60</span>, <span class="fn">2</span> ** i))                  <span class="cm"># 失败也退避：狂拨会被运营商限制</span>
+    <span class="kw">raise</span> <span class="fn">RuntimeError</span>(<span class="st">"多次重拨仍是旧 IP：宽带可能已不发公网地址"</span>)
+
+<span class="kw">if</span> __name__ == <span class="st">"__main__"</span>:
+    old = <span class="fn">current_ip</span>()
+    <span class="fn">print</span>(<span class="st">"旧 IP："</span>, old, <span class="st">"→ 新 IP："</span>, <span class="fn">redial_until_new</span>(old))</pre>
+      <div class="callout info"><b>适用边界：</b>rasdial 方案的地盘是<b>有真实家庭/办公宽带的合规场景</b>——给自家采集任务做出口，或学习"拨号换 IP"的原理。三点提醒：重拨窗口内服务中断（7.4 边界①）；不要高频狂拨，运营商会限连甚至暂停宽带账号；中文连接名在 subprocess 里可能遇到编码问题——报错乱码时先在终端执行 <code class="inline">chcp 65001</code> 切 UTF-8，或干脆把连接名改成英文。</div>
 
       <!-- ============ 7.5 ============ -->
       <h2>7.5 反反爬体系总纲 <span class="chip tnew">本章灵魂</span></h2>
@@ -336,6 +442,28 @@ resp = <span class="fn">fetch_with_backoff</span>(<span class="st">"https://http
           </div>
         </div>
       </div>
+
+      <!-- ============ 7.6 认盾 ============ -->
+      <h3>7.6 认出对面的"盾"：CDN / WAF / 指纹识别</h3>
+      <p>打铁先认铁。总纲表（上一节）列的是七道"明盾"，动手前你还要认得出三道<b>更隐蔽的</b>：CDN、WAF 和指纹。认盾永远<b>从响应头开始</b>——先用一条命令把盾牌上的铭文读出来：</p>
+      <div class="code-title">read_shield.py（先读响应头，再谈别的）</div>
+<pre class="code"><span class="kw">import</span> requests
+
+resp = requests.<span class="fn">get</span>(<span class="st">"https://target.site/"</span>, timeout=<span class="fn">10</span>)
+<span class="kw">for</span> k, v <span class="kw">in</span> resp.headers.<span class="fn">items</span>():
+    <span class="fn">print</span>(<span class="st">f"{k}: {v}"</span>)      <span class="cm"># 别急着解析页面：先读一遍头，认认对面的盾</span></pre>
+      <p>常见的"铭文"与它们对应的盾：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>看到什么</th><th>对面是什么</th><th>翻哪一章</th></tr>
+        <tr><td><code class="inline">Server: cloudflare</code>、<code class="inline">CF-Ray</code>、<code class="inline">cf-cache-status</code></td><td>Cloudflare（CDN + 防护一体，可能带 5 秒盾 / JS 挑战）</td><td>IP 层用 7.2 / 7.3；JS 挑战进第 08 章</td></tr>
+        <tr><td><code class="inline">X-Cache: HIT/MISS</code>、<code class="inline">X-Swift-Cache</code>、各类节点编号头</td><td>普通 CDN 缓存（加速为主，不是针对你）</td><td>数据多在接口里，第 05 章直连即可</td></tr>
+        <tr><td><code class="inline">X-AKAMAI-Transformed</code>、<code class="inline">Server: AkamaiGHost</code></td><td>Akamai CDN / 防护</td><td>与 Cloudflare 同思路：先 IP 层后逆向</td></tr>
+        <tr><td>UA 正常仍 405/403；返回体是"请开启 JavaScript / 安全验证"页</td><td>WAF（安全狗 / 宝塔 / 长亭雷池等）</td><td>头伪装看 7.5；JS 挑战进第 08 章</td></tr>
+        <tr><td>换 IP、换头仍被封；过几小时又全解封</td><td>指纹为主（TLS / 行为），不是 IP 黑名单</td><td>curl_cffi（第 02 章）+ 6.2 轨迹</td></tr>
+      </table></div>
+      <p><b>HTTP 层指纹（TLS JA3）：</b>就算把 UA、请求头全套抄齐，requests 与 Chrome 的 <b>TLS 握手指纹（JA3）依旧不同</b>——客户端在握手阶段上报的加密套件顺序、扩展列表像"声纹"，服务器不需要看任何头就能认出"这不是真浏览器"。第 02 章的 <code class="inline">curl_cffi</code>（<code class="inline">impersonate="chrome"</code>）做的正是"把声纹也模仿到位"。怎么判断自己撞上了 JA3 检测：头全对、IP 干净、Cookie 新鲜，仍然 403——九成是它。</p>
+      <p><b>行为指纹（概念）：</b>鼠标移动轨迹、滚动速度、点击间隔、页面停留时长——真人有惯性和犹豫，脚本只有匀速和精确。6.2 的轨迹模拟（先快后慢 + 回拉 + 抖动）就是对付它的第一课；6.3 金字塔塔尖的"无感行为验证"，收集的正是这类数据。</p>
+      <p>认盾的产出是<b>选矛</b>：CDN 挡的是 IP → 上代理；WAF 挡的是特征 → 修头与指纹；指纹挡的是"不像人" → 补行为与 TLS。认出对面是哪道盾，再带着答案回到上一节的总纲表，那张"盾 → 矛"对照表才算真正能用。</p>
 
       <div class="pitfall"><b>本章五大坑：</b>① 透明代理白用——带 X-Forwarded-For 暴露真实 IP，目标既知道你用代理又知道你是谁，先验匿名度再上量；② 免费代理超时连坐——免费源平均寿命几分钟，不配 timeout + 打分剔除，一个死代理能卡死整条请求队列；③ 重试风暴——无退避的立即重试会把 429 升级成永久封禁，重试必须指数退避 + 设上限；④ Cookie 与 IP 只换一个——只换 IP 不清 Cookie，服务器照样凭 Cookie 认出你，排查封禁时两者要一起换；⑤ 大批量任务放白天高峰——深夜跑既是体面也是生存：负载低、风控松、投诉少。</div>
 

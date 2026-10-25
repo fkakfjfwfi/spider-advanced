@@ -159,6 +159,54 @@ det = ddddocr.<span class="fn">DdddOcr</span>(det=<span class="kw">False</span>,
 <pre class="code">[3.55, 6.93, 9.7, 11.8, 9.9, 7.4, 5.6, 3.2, 2.4, 1.9, 1.4, 1.1, 0.4, -1.62, 1.5]</pre>
       <p>把这份轨迹喂给自动化框架逐段移动（每步之间 <code class="inline">time.sleep(random.uniform(0.005, 0.02))</code> 加抖动），就是一次完整的滑动。注意三点：<b>总位移要与缺口距离吻合</b>（回拉已包含在内）；<b>步数别太少</b>（少于 10 步的轨迹一眼假）；<b>别复制粘贴网上的固定轨迹数组</b>——固定轨迹被风控端拿去当特征库，一抓一个准。</p>
 
+      <h3>补全：OpenCV 缺口匹配与完整轨迹生成</h3>
+      <p>ddddocr 的 slide_match 够用，但它是黑盒——遇到滑块图带透明边、缺口镂空、背景有干扰纹理时会失手。这时候回到通用方案 <b>OpenCV</b>：Canny 提取边缘（把颜色干扰全部去掉，只留轮廓），再用模板匹配在背景图上找滑块轮廓的最佳落点：</p>
+      <div class="code-title">cv2_find_gap.py</div>
+<pre class="code"><span class="cm"># pip install opencv-python</span>
+<span class="kw">import</span> cv2
+
+<span class="kw">def</span> <span class="fn">find_gap</span>(bg_path, slider_path):
+    <span class="st">"""Canny 边缘 + 模板匹配：返回缺口左上角的 x 坐标（即滑动距离）"""</span>
+    bg = cv2.<span class="fn">imread</span>(bg_path)
+    slider = cv2.<span class="fn">imread</span>(slider_path)
+    bg_edge = cv2.<span class="fn">Canny</span>(cv2.<span class="fn">cvtColor</span>(bg, cv2.COLOR_BGR2GRAY), <span class="fn">100</span>, <span class="fn">200</span>)
+    sl_edge = cv2.<span class="fn">Canny</span>(cv2.<span class="fn">cvtColor</span>(slider, cv2.COLOR_BGR2GRAY), <span class="fn">100</span>, <span class="fn">200</span>)
+    res = cv2.<span class="fn">matchTemplate</span>(bg_edge, sl_edge, cv2.TM_CCOEFF_NORMED)
+    _, _, _, max_loc = cv2.<span class="fn">minMaxLoc</span>(res)       <span class="cm"># 归一化相关系数最大的位置 = 缺口所在</span>
+    <span class="kw">return</span> max_loc[<span class="fn">0</span>]</pre>
+      <p>轨迹方面，上面 gen_tracks 输出的是一维位移。实战里更常用<b>带 y 抖动的完整轨迹</b>——真人拖滑块时手在垂直方向也会轻微晃动，减速点每次还不一样。下面这版输出整数位移（Selenium 的 move_by_offset 只吃整数），总位移与缺口距离严格吻合：</p>
+      <div class="code-title">gen_full_track.py（完整轨迹生成器：先加速后减速 + 微回拉 + 随机抖动）</div>
+<pre class="code"><span class="kw">import</span> random
+
+<span class="kw">def</span> <span class="fn">gen_full_track</span>(distance):
+    <span class="st">"""返回 [(dx, dy), …] 整数位移列表，总位移 = distance（含回拉）"""</span>
+    tracks, moved, v = [], <span class="fn">0</span>, <span class="fn">0.0</span>
+    mid = distance * random.<span class="fn">uniform</span>(<span class="fn">0.6</span>, <span class="fn">0.75</span>)     <span class="cm"># 减速点随机化：固定节奏会被当成特征</span>
+    <span class="kw">while</span> moved &lt; distance:
+        <span class="kw">if</span> moved &lt; mid:                              <span class="cm"># 加速段：步子越迈越大</span>
+            v = <span class="fn">min</span>(v + random.<span class="fn">uniform</span>(<span class="fn">1.5</span>, <span class="fn">3.5</span>), distance * <span class="fn">0.22</span>)
+        <span class="kw">else</span>:                                        <span class="cm"># 减速段：速度按比例衰减</span>
+            v = <span class="fn">max</span>(<span class="fn">1.0</span>, v * random.<span class="fn">uniform</span>(<span class="fn">0.5</span>, <span class="fn">0.85</span>))
+        step = <span class="fn">min</span>(<span class="fn">int</span>(<span class="fn">round</span>(v)), distance - moved)  <span class="cm"># 收口：最后一步贴着总距离</span>
+        dy = random.<span class="fn">choice</span>([-<span class="fn">1</span>, <span class="fn">0</span>, <span class="fn">0</span>, <span class="fn">1</span>])            <span class="cm"># y 方向微抖：真人的手会晃</span>
+        tracks.<span class="fn">append</span>((step, dy))
+        moved += step
+    over = random.<span class="fn">randint</span>(<span class="fn">1</span>, <span class="fn">2</span>)                      <span class="cm"># 微回拉：先冲过头 1~2px</span>
+    tracks.<span class="fn">append</span>((over, <span class="fn">0</span>))
+    tracks.<span class="fn">append</span>((-(over - <span class="fn">1</span>), <span class="fn">0</span>))                  <span class="cm"># 再弹回修正，故意留 1px 误差更像人</span>
+    <span class="kw">return</span> tracks</pre>
+      <div class="code-title">slide_solve.py（两步合起来：喂给 Selenium 的 ActionChains）</div>
+<pre class="code"><span class="kw">import</span> time
+<span class="kw">from</span> selenium.webdriver.common.action_chains <span class="kw">import</span> ActionChains
+
+slider = driver.<span class="fn">find_element</span>(By.CSS_SELECTOR, <span class="st">".slider-btn"</span>)
+ActionChains(driver).<span class="fn">click_and_hold</span>(slider).<span class="fn">perform</span>()
+<span class="kw">for</span> dx, dy <span class="kw">in</span> <span class="fn">gen_full_track</span>(<span class="fn">find_gap</span>(<span class="st">"bg.png"</span>, <span class="st">"slider.png"</span>)):
+    ActionChains(driver).<span class="fn">move_by_offset</span>(dx, dy).<span class="fn">perform</span>()
+    time.<span class="fn">sleep</span>(random.<span class="fn">uniform</span>(<span class="fn">0.005</span>, <span class="fn">0.02</span>))        <span class="cm"># 每步之间加抖动间隔</span>
+ActionChains(driver).<span class="fn">release</span>().<span class="fn">perform</span>()</pre>
+      <div class="callout warn"><b>标注：</b>缺口匹配是纯视觉技术，<b>轨迹模拟属于行为对抗</b>——它专门用于绕过"判断你是不是人"的检测。这类代码请务必<b>只在授权平台（Scrape Center / 猿人学）或自己搭的练习站上运行</b>，对真实站点使用可能违反其服务条款与相关法律。</div>
+
       <!-- ============ 6.3 ============ -->
       <h2>6.3 点触 / 宫格验证码 <span class="chip tbook">对齐教材 8.3 / 8.4</span></h2>
       <p>点触（按语序点击图中的文字）和宫格（点击符合描述的图标）把难度从"看得清"升级到了"看得懂"——需要语义理解，OCR 搞不定，自研模型性价比极低。<b>现实的标准答案只有一个：打码平台</b>——你把截图传上去，平台的真人/AI 混合队列把坐标传回来，按条计费。</p>
@@ -190,6 +238,19 @@ det = ddddocr.<span class="fn">DdddOcr</span>(det=<span class="kw">False</span>,
     <span class="kw">return</span> <span class="fn">eval</span>(result[<span class="st">"result"</span>])   <span class="cm"># 生产环境请用 json.loads 并做好异常兜底</span></pre>
 
       <div class="callout ok"><b>本站立场：优先绕开，打码是最后手段。</b>点触/宫格的破解成本（按条计费 + 秒级延迟 + 质量不稳）远高于"绕开它"的成本——<b>人肉过一次验证码，Cookie 复用跑一整周</b>（6.5）。打码平台留给"登录频次高、账号多、必须全自动化"的场景。此外提醒：打码服务同样要用于合规目标，只碰你有权采集的数据。</div>
+
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · 《Python3反爬虫原理与绕过实战》：验证码攻防的成本金字塔</div>
+        <p>把 6.1~6.3 的类型表竖起来看，它其实是一座<b>成本金字塔</b>：塔基的图形码，OCR 一行代码就破，攻防双方都不在乎；越往上，盾的强度和矛的成本同步陡增——到塔尖的"行为验证"，破解成本已经高到"硬刚不如绕行"。韦世东在书里给出的结论，正是 6.5 Cookie 复用最好的注脚：<b>策略上"绕"永远优先于"破"</b>——Cookie 复用、换接口、换数据源，都是绕。</p>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>类型（塔基 → 塔尖）</th><th>盾强度</th><th>破解成本</th><th>推荐策略</th></tr>
+          <tr><td>图形码（数字/字母）</td><td>★</td><td>极低：ddddocr 一行搞定</td><td>直接识别 + 失败刷新重试</td></tr>
+          <tr><td>滑块</td><td>★★</td><td>低：缺口匹配 + 轨迹模拟，开源方案齐备</td><td>识别 + 轨迹，严控重试次数</td></tr>
+          <tr><td>点选 / 宫格</td><td>★★★</td><td>中：打码平台按条计费 + 秒级延迟 + 质量不稳</td><td>优先绕：人工过一次 + Cookie 复用跑一周</td></tr>
+          <tr><td>行为验证（无感）</td><td>★★★★</td><td>高：环境指纹 + 行为模型，自研模型不现实</td><td>只绕不打：换接口 / 换数据源 / 复用登录态</td></tr>
+        </table></div>
+        <p>这张表还有一层用法：<b>对方突然换了更强的验证码，往往说明你的行为已经先暴露了</b>——先回去检查频率、请求头和 IP（第 07 章），比换更贵的打码方案更对症。</p>
+      </div>
 
       <!-- ============ 6.4 ============ -->
       <h2>6.4 模拟登录 GitHub：方法论 <span class="chip tbook">对齐教材 10.1</span></h2>
@@ -323,6 +384,73 @@ r = redis.<span class="fn">Redis</span>(decode_responses=<span class="kw">True</
 <pre class="code">{"cookie": "sessionid=8f3ka9; uid=10086; csrftoken=…"}
 <span class="cm"># 池空时返回 503：{"error": "池子空了，等登录器补货"}</span></pre>
       <div class="callout ok"><b>闭环达成：</b>这个池子把本章所有零件串成生产线——登录器用 6.4 复刻登录、用 6.1~6.3 过验证码；检测器复用 6.5 的探活逻辑；业务爬虫只管调 <code class="inline">/random</code> 拿 Cookie 干活，完全不知道验证码的存在。第 07 章的代理池是同一套架构思想换了个被池化的资源。</div>
+
+      <h3>池子最小实现：一个文件跑通闭环</h3>
+      <p>上面只给了调度接口这一块积木。下面把五个模块捏进一个文件：<b>账号队列 → 登录器（失败重试 + 验证码钩子）→ Redis 存储（账号: Cookie JSON）→ 检测器（访问轻量接口验活）→ 取用接口</b>。骨架可直接运行，把 login 与验活里的 demo.site 换成你的目标站实现即可：</p>
+      <div class="code-title">cookies_pool_full.py（精简可运行骨架）</div>
+<pre class="code"><span class="kw">import</span> json
+<span class="kw">import</span> random
+<span class="kw">import</span> time
+<span class="kw">import</span> redis
+<span class="kw">import</span> requests
+<span class="kw">from</span> flask <span class="kw">import</span> Flask, jsonify
+
+r = redis.<span class="fn">Redis</span>(decode_responses=<span class="kw">True</span>)
+POOL = <span class="st">"cookies:demo"</span>                          <span class="cm"># hash：field=账号，value=Cookie JSON 串</span>
+ACCOUNTS = [(<span class="st">"acc01"</span>, <span class="st">"pw01"</span>), (<span class="st">"acc02"</span>, <span class="st">"pw02"</span>)]   <span class="cm"># 账号队列（生产中放 Redis list 用 SPOP 取号）</span>
+
+<span class="kw">def</span> <span class="fn">solve_captcha</span>(s):
+    <span class="kw">return</span> <span class="st">""</span>    <span class="cm"># 验证码钩子：占位。按 6.1~6.3 接入 ddddocr / 打码平台后返回真值</span>
+
+<span class="kw">def</span> <span class="fn">login</span>(user, pwd):
+    <span class="st">"""登录器：按 6.4 五步法实现；失败重试 3 次并拉开间隔，防触发连败风控"""</span>
+    s = requests.<span class="fn">Session</span>()
+    s.headers.update({<span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"</span>})
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">3</span>):
+        captcha = <span class="fn">solve_captcha</span>(s)
+        resp = s.<span class="fn">post</span>(<span class="st">"https://demo.site/login"</span>,
+                      data={<span class="st">"user"</span>: user, <span class="st">"pwd"</span>: pwd, <span class="st">"captcha"</span>: captcha}, timeout=<span class="fn">10</span>)
+        <span class="kw">if</span> resp.<span class="fn">json</span>().<span class="fn">get</span>(<span class="st">"code"</span>) == <span class="fn">0</span>:
+            <span class="kw">return</span> json.<span class="fn">dumps</span>(requests.utils.<span class="fn">dict_from_cookiejar</span>(s.cookies))  <span class="cm"># 存 JSON 串</span>
+        time.<span class="fn">sleep</span>(random.<span class="fn">uniform</span>(<span class="fn">2</span>, <span class="fn">5</span>))           <span class="cm"># 重试间隔拉开，绝不顶风重试</span>
+    <span class="kw">return</span> <span class="kw">None</span>
+
+<span class="kw">def</span> <span class="fn">stock_up</span>():
+    <span class="st">"""补货：取号 → 登录 → 入库（跳过已有登录态的账号）"""</span>
+    <span class="kw">for</span> user, pwd <span class="kw">in</span> ACCOUNTS:
+        <span class="kw">if</span> r.<span class="fn">hexists</span>(POOL, user):
+            <span class="kw">continue</span>
+        cookie = <span class="fn">login</span>(user, pwd)
+        <span class="kw">if</span> cookie:
+            r.<span class="fn">hset</span>(POOL, user, cookie)
+
+<span class="kw">def</span> <span class="fn">alive</span>(cookie_json):
+    <span class="st">"""检测器用的验活：访问轻量接口，看登录态还在不在"""</span>
+    header = <span class="st">"; "</span>.<span class="fn">join</span>(<span class="st">f"{k}={v}"</span> <span class="kw">for</span> k, v <span class="kw">in</span> json.<span class="fn">loads</span>(cookie_json).<span class="fn">items</span>())
+    resp = requests.<span class="fn">get</span>(<span class="st">"https://demo.site/api/me"</span>, headers={<span class="st">"Cookie"</span>: header}, timeout=<span class="fn">5</span>)
+    <span class="kw">return</span> resp.status_code == <span class="fn">200</span>
+
+<span class="kw">def</span> <span class="fn">checker</span>():
+    <span class="st">"""检测器：周期验活，失效即剔除（生产中挂 APScheduler/cron 独立进程跑）"""</span>
+    <span class="kw">for</span> user, cookie <span class="kw">in</span> r.<span class="fn">hgetall</span>(POOL).<span class="fn">items</span>():
+        <span class="kw">if not</span> <span class="fn">alive</span>(cookie):
+            r.<span class="fn">hdel</span>(POOL, user)                     <span class="cm"># 死 Cookie 下架，等下一轮补货</span>
+
+app = <span class="fn">Flask</span>(__name__)
+
+@app.route(<span class="st">"/cookie"</span>)
+<span class="kw">def</span> <span class="fn">give_cookie</span>():
+    <span class="st">"""取用接口：业务爬虫只管来这里领 Cookie，完全不知道验证码的存在"""</span>
+    keys = r.<span class="fn">hkeys</span>(POOL)
+    <span class="kw">if not</span> keys:
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"error"</span>: <span class="st">"池空，先跑 stock_up() 补货"</span>}), <span class="fn">503</span>
+    user = random.<span class="fn">choice</span>(keys)
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"user"</span>: user, <span class="st">"cookie"</span>: json.<span class="fn">loads</span>(r.<span class="fn">hget</span>(POOL, user))})
+
+<span class="kw">if</span> __name__ == <span class="st">"__main__"</span>:
+    <span class="fn">stock_up</span>()                <span class="cm"># 启动先补一轮货（生产中由独立进程定时补/验）</span>
+    app.<span class="fn">run</span>(port=<span class="fn">5001</span>)</pre>
+      <p>业务侧的取用只要两行，与 6.5 的注入方式完全一致：<code class="inline">s.cookies.update(requests.get("http://127.0.0.1:5001/cookie").json()["cookie"])</code>。两个衔接点：存储用 <code class="inline">hash（field=账号）</code> 天然去重，与下方 Q3 的并发设计兼容；验活接口要选<b>轻量、稳定、需要登录</b>的——验活本身也是请求量，别拿重接口浪费。</p>
 
       <div class="pitfall"><b>本章五大坑：</b>① 验证码连败风控——失败重试不设上限等于自爆，失败 3~5 次就应告警/换号/换 IP，重试间隔要拉开；② 密码字段前端加密——抓包看到的是 RSA/AES 密文，明文加密发生在 JS 里，复刻登录前先确认字段有没有加密，有就先去第 08 章报到；③ HttpOnly 不影响抓包——HttpOnly 只禁 JS 读取，F12 Application 面板和抓包工具照样看得到、抄得走，别被它唬住；④ Cookie 跨域失联——Cookie 绑定 Domain，a.com 的 Cookie 发给 b.com 的接口不会生效，整包注入时确认域名一致（含二级域名范围）；⑤ 拿生产账号练打码——多次失败触发账号风控，轻则锁号重则拉黑，练手请用小号或授权练习站。</div>
 

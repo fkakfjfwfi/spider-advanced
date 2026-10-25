@@ -254,6 +254,39 @@ driver = webdriver.<span class="fn">Chrome</span>(options=options)
 星际穿越 9.4
 拿到 7 枚 Cookie</pre>
 
+      <h3>Selenium 补充四件套（对齐教材 7.1 的其余要点）</h3>
+      <p>八要素之外，教材 7.1 还点名了四个高频场景。它们的共同症状是"<b>元素明明在页面上，代码却够不着</b>"——先认出场景，再对症下药：</p>
+
+      <p><b>① iframe 切换：</b>很多站把播放器、编辑器、正文塞进 <code class="inline">&lt;iframe&gt;</code>（页中页）里。Selenium 的 find_element <b>只在当前 frame 里找</b>，不先切进去，就永远 NoSuchElementException——这就是"明明看得见却抓不到 iframe 内元素"的全部原因：</p>
+      <div class="code-title">selenium_frame.py</div>
+<pre class="code">driver.<span class="fn">get</span>(<span class="st">"https://demo-movies.site/player"</span>)
+driver.switch_to.<span class="fn">frame</span>(<span class="st">"player-iframe"</span>)           <span class="cm"># 按 id/name 切入；也可传元素对象或第几个下标</span>
+<span class="fn">print</span>(driver.<span class="fn">find_element</span>(By.CSS_SELECTOR, <span class="st">".video-title"</span>).text)   <span class="cm"># 切入后才能看见</span>
+driver.switch_to.<span class="fn">default_content</span>()                 <span class="cm"># 用完切回主文档，否则主页面元素又找不到了</span></pre>
+
+      <p><b>② 多窗口句柄切换：</b>点"<b>在新窗口打开</b>"后，新标签页开了，driver 却还停在旧页面——电视换了台，遥控器没换。用 window_handles 拿到全部句柄再切换：</p>
+      <div class="code-title">selenium_windows.py</div>
+<pre class="code">driver.<span class="fn">find_element</span>(By.LINK_TEXT, <span class="st">"查看详情"</span>).<span class="fn">click</span>()      <span class="cm"># 新标签页打开</span>
+handles = driver.window_handles                        <span class="cm"># 句柄列表：顺序 = 标签页开启顺序</span>
+driver.switch_to.<span class="fn">window</span>(handles[-<span class="fn">1</span>])                   <span class="cm"># 切到最新开的标签页</span>
+<span class="cm"># ……在新页面里提取数据……</span>
+driver.<span class="fn">close</span>()                                         <span class="cm"># 关掉当前标签页</span>
+driver.switch_to.<span class="fn">window</span>(handles[<span class="fn">0</span>])                    <span class="cm"># 切回主窗口继续干活</span></pre>
+
+      <p><b>③ 原生弹窗处理：</b>confirm / alert / prompt 这类弹窗不是 DOM 元素，find_element 定位不到，必须用 switch_to.alert 接管：</p>
+      <div class="code-title">selenium_alert.py</div>
+<pre class="code">driver.<span class="fn">find_element</span>(By.ID, <span class="st">"delete-btn"</span>).<span class="fn">click</span>()
+alert = <span class="fn">WebDriverWait</span>(driver, <span class="fn">5</span>).<span class="fn">until</span>(EC.<span class="fn">alert_is_present</span>())    <span class="cm"># 显式等待弹窗出现</span>
+<span class="fn">print</span>(alert.text)          <span class="cm"># 弹窗文案，如"确定删除吗？"</span>
+alert.<span class="fn">accept</span>()             <span class="cm"># 点"确定"；dismiss() 是"取消"；prompt 弹窗先 send_keys() 输入</span></pre>
+
+      <p><b>④ 执行 JS：</b>有些操作原生 API 做不到或做不好——滚动到底触发懒加载、点击被遮挡的元素、直接改前端状态——交给 execute_script 在页面里跑一段 JS，它就是你的"浏览器后门"：</p>
+      <div class="code-title">selenium_js.py</div>
+<pre class="code">driver.<span class="fn">execute_script</span>(<span class="st">"window.scrollTo(0, document.body.scrollHeight)"</span>)   <span class="cm"># 滚到底触发懒加载</span>
+btn = driver.<span class="fn">find_element</span>(By.CSS_SELECTOR, <span class="st">".hidden-trigger"</span>)
+driver.<span class="fn">execute_script</span>(<span class="st">"arguments[0].click();"</span>, btn)    <span class="cm"># JS 直点：元素被遮挡也能点中</span>
+driver.<span class="fn">execute_script</span>(<span class="st">"localStorage.setItem('page','3')"</span>)   <span class="cm"># 直接改前端状态再刷新</span></pre>
+
       <h3>路 ②：Playwright（现代首选，重点掌握）</h3>
       <p>Selenium 能做的 Playwright 都能做，而且更顺手：<b>locator 操作前自动等待元素出现</b>（天然少一半等待代码）、API 更现代、支持 Chrome/Firefox/WebKit 三内核。安装：<code class="inline">pip install playwright</code> 然后 <code class="inline">playwright install chromium</code>。但真正的<b>杀手锏是响应监听</b>：<code class="inline">page.on("response")</code> 让你挂在浏览器旁边，<b>接口数据一到就直接截走 JSON</b>——页面照常渲染，你却根本不用解析 DOM，"渲染"与"提取"两条需求一次满足：</p>
 
@@ -285,8 +318,53 @@ results = []                                          <span class="cm"># 截获�
 
       <div class="callout ok"><b>为什么响应监听是杀手锏：</b>遇到"参数算不出来"的接口，常规思路是两条——花三天逆向 sign（第 08 章），或者花三秒让浏览器自己算。Playwright 选后者：浏览器替你执行全部 JS，接口响应回来时你在 <code class="inline">page.on("response")</code> 里<b>半路截胡</b>，拿到的是浏览器"亲口"承认的 JSON。逆向保证"拿得漂亮"，自动化保证"先拿得到"，两条腿走路。</div>
 
+      <h3>Playwright 补充：登录态复用与移动端模拟</h3>
+      <p>渲染方案最贵的开销是"每次都从零开始"——重新登录、重新过验证码、重新等首屏。Playwright 给了两件省钱装备，正好与第 06 章的 Cookie 复用思想打通。</p>
+
+      <p><b>① storage_state 登录态复用：</b>把整个登录态（Cookie + localStorage + sessionStorage）存成一个 JSON 文件，下次启动直接注入——<b>登录一次，长期复用</b>。它和 6.5 手抄 Cookie 是同一个思想，只是由浏览器替你保管、且保得更全：</p>
+      <div class="code-title">pw_storage_state.py</div>
+<pre class="code"><span class="cm"># 第一次：手动或自动化完成登录后，把登录态整体落盘</span>
+context = browser.<span class="fn">new_context</span>()
+<span class="cm"># ……登录流程……</span>
+context.<span class="fn">storage_state</span>(path=<span class="st">"auth.json"</span>)
+
+<span class="cm"># 以后每次：启动即带登录态，跳过登录与验证码</span>
+context = browser.<span class="fn">new_context</span>(storage_state=<span class="st">"auth.json"</span>)
+page = context.<span class="fn">new_page</span>()                     <span class="cm"># 打开即是已登录状态</span></pre>
+
+      <p><b>② 设备模拟：</b>很多站移动端与桌面端是<b>两套页面、两套接口</b>，移动版往往风控更松、结构更简单。Playwright 内置官方设备档案，一行换装：</p>
+      <div class="code-title">pw_mobile.py</div>
+<pre class="code">iphone = p.devices[<span class="st">"iPhone 13"</span>]               <span class="cm"># 官方档案：UA/视口/触屏/像素比一次配齐</span>
+context = browser.<span class="fn">new_context</span>(**iphone, locale=<span class="st">"zh-CN"</span>)
+page = context.<span class="fn">new_page</span>()
+page.<span class="fn">goto</span>(<span class="st">"https://m.demo-movies.site/hot"</span>)   <span class="cm"># 同一域名，移动版接口常是另一条</span></pre>
+
+      <p><b>③ 反检测现状：</b>Playwright 驱动的浏览器仍带自动化痕迹（<code class="inline">navigator.webdriver === true</code> 等），社区有 <b>playwright-stealth</b> 等补丁包可抹掉大部分特征，Selenium 阵营对应的是 undetected-chromedriver。反检测的本质是"让自动化流量不被误伤"——<b>请只在授权平台与自己有权的账号上使用</b>：拿它对抗真实站点的风控既不合规，也赢不了持续升级的检测。</p>
+      <div class="code-title">pw_stealth.py（社区方案示意）</div>
+<pre class="code"><span class="cm"># pip install playwright-stealth</span>
+<span class="kw">from</span> playwright.sync_api <span class="kw">import</span> sync_playwright
+<span class="kw">from</span> playwright_stealth <span class="kw">import</span> stealth_sync
+
+<span class="kw">with</span> <span class="fn">sync_playwright</span>() <span class="kw">as</span> p:
+    browser = p.chromium.<span class="fn">launch</span>(headless=<span class="kw">True</span>)
+    page = browser.<span class="fn">new_page</span>()
+    <span class="fn">stealth_sync</span>(page)                        <span class="cm"># 抹掉 webdriver 等常见自动化指纹</span>
+    page.<span class="fn">goto</span>(<span class="st">"https://bot.sannysoft.com/"</span>)   <span class="cm"># 经典自动化特征检测页，自查抹掉了多少</span>
+    page.<span class="fn">wait_for_timeout</span>(<span class="fn">3000</span>)</pre>
+
       <h3>路 ③：Splash（了解即可）</h3>
       <div class="callout warn"><b>一句话定位（对齐教材 7.2/7.3）：</b>Splash 是一个带 JavaScript 渲染引擎的"无头浏览器即服务"，用 Lua 脚本描述"打开页面→等渲染→返回 HTML"，可配合 Scrapy 批量渲染。教材成书时它是主流方案之一，<b>如今 Playwright/Selenium 已全面覆盖它的场景且生态更活跃</b>——知道它是"渲染服务"这个角色即可，新项目不必选它。</div>
+
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · 《Python3反爬虫原理与绕过实战》：先走完四步排除法，再谈渲染</div>
+        <p>韦世东在书里把"要不要上渲染方案"写成了一条<b>排除链</b>：源代码里没有数据 → 切到 Elements 面板能看到 → 说明数据是 JS 事后塞进 DOM 的，去 Network 找那条 XHR → 用 requests 直连试试 → <b>直连也失败（接口带加密参数或校验）</b>——四步全部走完，才轮到本章的渲染方案。新手最常见的浪费，是第二步就直接开 Selenium：慢十倍不说，还错过了"接口其实根本不用逆向"的可能。</p>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>方案</th><th>速度</th><th>资源占用</th><th>稳定性</th><th>定位</th></tr>
+          <tr><td>接口直连（requests）</td><td>毫秒级</td><td>极低</td><td>接口一改就挂，但好排查、好修复</td><td>默认首选</td></tr>
+          <tr><td>渲染方案（Selenium / Playwright）</td><td>秒级，慢 10~50 倍</td><td>高：一个任务一个浏览器实例</td><td>抗改版能力强，但怕弹窗、怕检测、怕内存膨胀</td><td>接口死活拿不下时兜底</td></tr>
+        </table></div>
+        <p><b>决策底线一句话：能用接口直连就别渲染。</b>渲染是"全能的慢方案"，直连是"偏科的快方案"——先用 5.2 的五步法证明接口确实不可得，再心安理得地开浏览器。</p>
+      </div>
 
       <div class="pitfall"><b>本章五大坑：</b>① 只看 Elements 不看 Network——Elements 是 JS 改过的实时 DOM，源代码里没有的数据要找的是那条 XHR；② iframe 没切入——iframe 里的元素必须先 <code class="inline">driver.switch_to.frame(...)</code>，否则 find_element 永远扑空；③ 把显式等待写成固定 sleep——<code class="inline">time.sleep(5)</code> 网快时白等、网慢时崩，WebDriverWait 等条件不等人；④ json 多包一层 data——<code class="inline">{"code":0,"data":{"list":[…]}}</code> 直接取 ["list"] 必 KeyError，先在 Preview 看清真实层级；⑤ 翻页参数双重编码——requests 的 params= 会自动 URL 编码，自己拼 URL 又手动 quote 一次，中文就变成 %25 双重编码，接口装聋作哑。</div>
 

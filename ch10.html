@@ -352,6 +352,20 @@ PROXY_POOL = [
 }
 SQLITE_DB = <span class="st">"quotes.db"</span></pre>
       <p><b>权重说明</b>：取值 0~1000，从小到大依次执行；同一个类里 <code class="inline">open_spider / close_spider</code> 是生命周期钩子（启动时建连接、结束时收尾）；<code class="inline">from_crawler</code> 是拿 settings 的标准入口——配置写在 settings 里而不是硬编码在管道里，换库换表只改配置。</p>
+      <h3>Feed Exports：一行配置导出数据</h3>
+      <p>如果目标只是"爬完把数据拿走"，其实一行 Pipeline 都不用写——Scrapy 内置 <b>Feed Exports</b>：settings 里声明 <code class="inline">FEEDS</code>，Item 会自动按指定格式落盘。10.2 里 <code class="inline">scrapy crawl quotes -O quotes.json</code> 是它的命令行一次性版，<code class="inline">FEEDS</code> 则是写进项目的持久配置：</p>
+      <div class="code-title">settings.py —— 爬完直接导出</div>
+<pre class="code">FEEDS = {
+    <span class="st">"items.json"</span>: {<span class="st">"format"</span>: <span class="st">"json"</span>, <span class="st">"overwrite"</span>: <span class="kw">True</span>},
+}                <span class="cm"># 键是导出路径，值是导出参数</span></pre>
+      <p>换格式只改 <code class="inline">format</code> 一个词，常用三种：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>格式</th><th>写法</th><th>特点与适用</th></tr>
+        <tr><td><code class="inline">json</code></td><td><code class="inline">{"format": "json"}</code></td><td>整个文件是一个 JSON 数组；量小、要整体查看结构时方便</td></tr>
+        <tr><td><code class="inline">jsonlines</code></td><td><code class="inline">{"format": "jsonlines"}</code></td><td>每行一条 JSON，追加写不坏旧数据——与 9.2 的 JSONL 同一思想，量大首选</td></tr>
+        <tr><td><code class="inline">csv</code></td><td><code class="inline">{"format": "csv"}</code></td><td>表格结构，Excel 能直接打开；给非技术同事看数据时最友好</td></tr>
+      </table></div>
+      <p>两个实用细节：<code class="inline">"overwrite": True</code> 让每次运行<b>覆盖旧文件</b>（不加的话 Scrapy 会生成 items-1.json、items-2.json 一直堆积）；Windows 下 Excel 打开 CSV 中文乱码，给该条目加 <code class="inline">"encoding": "utf-8-sig"</code> 即可。那什么时候仍要写 Pipeline？<b>Feed Exports 只做"原样落地"</b>——Item 长什么样就存什么样，要清洗、去重、校验、写入数据库，就得回到上面的三段式 Pipeline。经验法则：新任务先配 FEEDS 快速出一版数据验证选择器，方案定型后再把落盘换成 Pipeline 入库。</p>
 
       <!-- ============ 10.6 ============ -->
       <h2>10.6 对接 Selenium / Playwright <span class="chip tbook">对齐教材 13.8</span></h2>
@@ -410,6 +424,17 @@ DUPEFILTER_CLASS = <span class="st">"scrapy_redis_bloomfilter.dupefilter.RFPDupe
 BLOOMFILTER_HASH_NUMBER = <span class="fn">6</span>    <span class="cm"># 每个元素用几个哈希函数</span>
 BLOOMFILTER_BIT = <span class="fn">30</span>           <span class="cm"># 位数组 2^30 bit ≈ 128MB，亿级 URL 够用</span></pre>
 
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · 夜幕团队：Crawlab vs Gerapy</div>
+        <p>下一节的部署管理里会认识 Gerapy，但这块还有个更值得认识的现代选手。<b>Crawlab</b> 是夜幕团队出品的分布式爬虫管理平台：它<b>不绑定框架</b>——Scrapy、requests 脚本、Selenium/Playwright 乃至任意语言写的爬虫都能纳管，把"多机节点 + 定时调度 + 结果查看"做成一站式平台。与 Gerapy 放在一起对比：</p>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>工具</th><th>定位</th><th>部署体验</th><th>功能覆盖</th><th>社区活跃度</th></tr>
+          <tr><td><b>Gerapy</b></td><td>Scrapyd 的中文可视化管理面板（基于 Django + Vue）</td><td>需先自建好 Scrapyd 集群，面板再统一纳管</td><td>项目打包部署、主机管理、定时调度——围绕 Scrapyd API 展开</td><td>维护节奏放缓，issue 响应一般</td></tr>
+          <tr><td><b>Crawlab</b></td><td>通用分布式爬虫管理平台（不限框架）</td><td>Docker 一条命令起服务，Web 界面添加节点</td><td>节点管理、定时任务、依赖管理、任务日志、结果预览、用户权限</td><td>GitHub 10k+ star，迭代与社区响应活跃</td></tr>
+        </table></div>
+        <p><b>现代选型建议</b>：新项目优先了解 Crawlab——不限框架、功能闭环、社区活跃，是分布式管理的默认候选；如果团队已经是"纯 Scrapy + Scrapyd"技术栈、跑得很好，只缺一块顺手的管理面板，Gerapy 仍是接入成本最低的选择。两者是"轻量面板"与"通用平台"两种规模的选择，不是谁取代谁。</p>
+      </div>
+
       <!-- ============ 10.8 ============ -->
       <h2>10.8 部署与管理 <span class="chip tbook">对齐教材 第 15 章</span></h2>
       <h3>Scrapyd：把爬虫当服务跑</h3>
@@ -435,6 +460,54 @@ CMD [<span class="st">"scrapyd"</span>]        <span class="cm"># 或换成运�
       <p><b>Gerapy</b> 是基于 Scrapyd HTTP API 的可视化管理面板：多台 Scrapyd 集中在一块屏上、鼠标点点就能部署与定时调度——本质仍是本节的几个 API，只是套了件 GUI 外衣，适合交给团队使用。</p>
 
       <div class="pitfall"><b>Scrapy 五大坑：</b>① settings 里 USER_AGENT 忘改——默认 "Scrapy/x.y" 一秒被识别，新项目第一件事改 UA 或上中间件；② 下载中间件 process_response 漏 return response——响应凭空消失，Spider 永远收不到还不知道为什么；③ Pipeline 权重设错——入库管道比清洗先跑，脏数据直接落库，事后清洗成本翻倍；④ 默认调度器队列在<b>内存</b>里，爬大站几十万请求会 OOM——大任务换 Scrapy-Redis 落盘或配 JOBDIR 断点目录；⑤ ROBOTSTXT_OBEY 本地测试嫌麻烦关掉，上线忘了开——合规礼仪别丢（第 01 章的约定）。</div>
+
+      <!-- ============ 10.9 ============ -->
+      <h3>10.9 监控：让系统会"说话"</h3>
+      <p>采集系统与一次性脚本的分水岭就在这一节：<b>你不在场时，它出事了你知不知道？</b>监控分三步：看得见（自带统计 + 日志落盘）、说得出（结束推送）、叫得醒（阈值告警）。第一步 Scrapy 已经替你做完了——每次爬虫结束，日志末尾都会 dump 一段 stats 字典：</p>
+      <div class="code-title">跑完后日志末尾的 stats（节选）</div>
+<pre class="code">{<span class="st">'finish_reason'</span>: <span class="st">'finished'</span>,
+ <span class="st">'item_scraped_count'</span>: <span class="fn">1200</span>,
+ <span class="st">'response_received_count'</span>: <span class="fn">1240</span>,
+ <span class="st">'dupefilter/filtered'</span>: <span class="fn">37</span>,
+ <span class="st">'downloader/response_status_count/200'</span>: <span class="fn">1240</span>, ...}</pre>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>统计项</th><th>含义</th><th>怎么用它判断健康状态</th></tr>
+        <tr><td><code class="inline">finish_reason</code></td><td>结束原因</td><td><code class="inline">finished</code> = 正常跑完队列；出现 <code class="inline">cancelled</code> / <code class="inline">unclean</code> 说明被中断或异常退出，先翻日志</td></tr>
+        <tr><td><code class="inline">item_scraped_count</code></td><td>成功走完管道的 Item 数——你的"产量"</td><td>与历史均值对比，骤降就是异常信号（下面告警的依据）</td></tr>
+        <tr><td><code class="inline">response_received_count</code></td><td>下载器实际收到的响应数</td><td>响应很多但产量很低 → 大概率网站改版，解析选择器失效</td></tr>
+        <tr><td><code class="inline">dupefilter/filtered</code></td><td>被指纹去重丢弃的请求数</td><td>异常暴涨 → 翻页逻辑死循环、重复提交同一批 URL</td></tr>
+      </table></div>
+      <p>长期运行还要把日志<b>落盘</b>——控制台日志一关终端就没了，排查"昨晚为什么只抓了一半"全靠文件：</p>
+      <div class="code-title">settings.py —— 日志级别与落盘</div>
+<pre class="code">LOG_LEVEL = <span class="st">"INFO"</span>            <span class="cm"># DEBUG 太吵，线上 INFO 起步</span>
+LOG_FILE = <span class="st">"logs/quotes.log"</span>  <span class="cm"># 落盘留证（默认追加写入）</span>
+<span class="cm"># 注意：配了 LOG_FILE 后日志写进文件，终端不再滚动——现场排障可临时注释掉</span></pre>
+      <p><b>结束推送</b>靠 Scrapy 的<b>信号机制</b>：注册 <code class="inline">spider_closed</code> 信号，爬虫一结束（无论正常还是异常）就触发回调。下面这个扩展跑完就把 stats 摘要推到飞书群机器人（邮件同理，换发送函数即可）：</p>
+      <div class="code-title">monitor.py —— 结束时把统计推送到飞书（约 20 行）</div>
+<pre class="code"><span class="kw">import</span> requests
+<span class="kw">from</span> scrapy <span class="kw">import</span> signals
+
+<span class="kw">class</span> <span class="fn">StatsNotify</span>:
+    <span class="kw">@classmethod</span>
+    <span class="kw">def</span> <span class="fn">from_crawler</span>(<span class="kw">cls</span>, crawler):
+        ext = <span class="kw">cls</span>()
+        ext.webhook = crawler.settings.<span class="fn">get</span>(<span class="st">"FEISHU_WEBHOOK"</span>, <span class="st">""</span>)
+        crawler.signals.<span class="fn">connect</span>(ext.spider_closed, signal=signals.spider_closed)
+        <span class="kw">return</span> ext
+
+    <span class="kw">def</span> <span class="fn">spider_closed</span>(<span class="kw">self</span>, spider):
+        s = spider.crawler.stats.<span class="fn">get_stats</span>()
+        msg = (<span class="st">f"[</span>{spider.name}<span class="st">] </span>{s.<span class="fn">get</span>(<span class="st">'finish_reason'</span>)}<span class="st"> | "</span>
+               <span class="st">f"产量 </span>{s.<span class="fn">get</span>(<span class="st">'item_scraped_count'</span>, <span class="fn">0</span>)}<span class="st"> 条 | "</span>
+               <span class="st">f"响应 </span>{s.<span class="fn">get</span>(<span class="st">'response_received_count'</span>, <span class="fn">0</span>)}<span class="st"> 个 | "</span>
+               <span class="st">f"去重丢弃 </span>{s.<span class="fn">get</span>(<span class="st">'dupefilter/filtered'</span>, <span class="fn">0</span>)}<span class="st"> 条"</span>)
+        <span class="kw">if</span> self.webhook:
+            requests.<span class="fn">post</span>(self.webhook,
+                          json={<span class="st">"msg_type"</span>: <span class="st">"text"</span>, <span class="st">"content"</span>: {<span class="st">"text"</span>: msg}})</pre>
+      <div class="code-title">settings.py —— 启用扩展</div>
+<pre class="code">EXTENSIONS = {<span class="st">"quotes.monitor.StatsNotify"</span>: <span class="fn">500</span>}   <span class="cm"># 值是执行顺序权重</span>
+FEISHU_WEBHOOK = <span class="st">"https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"</span>  <span class="cm"># 群机器人地址</span></pre>
+      <div class="callout info"><b>阈值告警思想：</b>单次推送只是"会说话"，<b>会告警</b>还要加一条判断——把每次的 <code class="inline">item_scraped_count</code> 记进 SQLite/文件，与历史基线比较：<b>连续 N 次（如 3 次）低于基线的 50%，或连续 N 次 finish_reason 非 finished，才触发告警</b>。为什么要"连续 N 次"而不是一次就报？单次波动可能只是网站临时抽风、或当天本来就没多少新内容；连续下滑才说明解析坏了或被风控——这正是 10.1 两条回路之外、采集系统七件套里"告警"一件的完整落地。</div>
 
       <!-- ============ 动画课堂 ============ -->
       <h2 id="lesson">🎬 动画课堂 · 《从脚本到采集系统》 <span class="chip tanim">第 6 集</span></h2>

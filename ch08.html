@@ -158,6 +158,21 @@ CryptoJS.AES.encrypt(data, key, {
         <p class="plabel" id="ci-score" aria-live="polite"></p>
       </div>
 
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · K哥《JS逆向百例》：先对号入座的六大套路</div>
+        <p>K哥把上百个真实案例整理成六大套路——逆向老手拿到新站，第一件事不是打开 Sources，而是<b>判断它属于哪一类</b>，然后直接调用对应的成熟打法。这张分类表值得贴在显示器旁边：</p>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>套路</th><th>特征</th><th>定位方法</th><th>一般解法</th></tr>
+          <tr><td>① Cookie 加密型<br>（acw_sc__v2 等）</td><td>首次访问返回一段加密 JS 而不是页面；算出 cookie 前接口一律 412/521</td><td>看第一个 document 请求的响应体是不是 JS</td><td>本地跑这段 JS 算出 cookie（execjs），Session 带上再访问</td></tr>
+          <tr><td>② sign 拼接型</td><td>参数 + 盐 / 时间戳做 MD5/SHA；改一个字符就 403</td><td>搜参数名 → XHR 断点 → 调用栈回溯</td><td>Python hashlib 复刻拼接顺序与大小写</td></tr>
+          <tr><td>③ 密码 RSA 加密传输型</td><td>登录时 password 抓包是超长 Base64；页面引了 JSEncrypt</td><td>搜 setPublicKey / JSEncrypt</td><td>拿公钥用 Python rsa 加密，或整体扣代码执行</td></tr>
+          <tr><td>④ Webpack 打包型</td><td>全局搜参数名一无所获；代码是"加载器 + 模块表"</td><td>搜 __webpack_require__ / webpackChunk</td><td>8.5 的三种打法：掏模块 / 整包扣 / 运行时 Hook</td></tr>
+          <tr><td>⑤ eval / AAencode / ob 混淆型</td><td>满屏 _0x…、颜文字，或一大坨 eval 包着字符串数组</td><td>先 Pretty-print 格式化，找大数组 + 位移函数</td><td>按 8.6 顺序还原：三件套 → 字符串 → 平坦化</td></tr>
+          <tr><td>⑥ JSVMP 型（最难）</td><td>代码是自定义虚拟机解释器 + 大数组字节码，找不到明文算法</td><td>看到"取指-译码-执行"的解释器循环</td><td>先看下方夜幕团队的"值得吗"判断，再决定啃还是绕</td></tr>
+        </table></div>
+        <p>对号入座之后，去 K哥的<a href="https://juejin.cn/column/6993510687448252424" target="_blank" rel="noopener">掘金专栏《JS逆向百例》</a>或<a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match</a> 找同类型例题对照练手——每类套路都有完整案例，先自己砍，再翻 writeup。</p>
+      </div>
+
       <!-- ============ 8.4 ============ -->
       <h2>8.4 扣代码与补环境（核心三） <span class="chip tnew">核心三 · 还原</span></h2>
       <p>验证闭环后到了还原环节。算法简单（如 MD5 拼接）用 Python 的 hashlib 几行就复刻了；但遇到 AES 带盐加密、自研魔改算法、多层嵌套拼接，用 Python 手写复刻的成本急剧上升——这时更聪明的做法是<b>扣代码</b>：把浏览器里那段加密 JS <b>原样拷出来</b>，在本地用 Node 执行。核心逻辑一句话：<b>浏览器能算的，Node 就能算</b>。</p>
@@ -200,6 +215,33 @@ token = ctx.<span class="fn">call</span>(<span class="st">"getToken"</span>, <sp
 <span class="kw">var</span> location = { href: <span class="st">'https://target.example/'</span>, protocol: <span class="st">'https:'</span> };
 <span class="kw">var</span> screen = { width: <span class="fn">1920</span>, height: <span class="fn">1080</span> };</pre>
       <div class="callout ok"><b>补环境纪律：</b>只补报错的，不补想象的。多补一个属性就可能改变加密结果（有些代码真的会拿 navigator 的值参与运算），也可能触发更深的环境检测。补到"能算出与浏览器一致的结果"即停，验证标准仍然是 8.3 那句话：逐字符一致。</div>
+
+      <h3>补环境的工程技巧：少走三天弯路</h3>
+      <p>补环境占了扣代码一半的工时，几个技巧能显著提速。<b>① 依赖缺失就 npm install</b>：被扣的代码里有 <code class="inline">require('crypto-js')</code> 之类的依赖，报 <code class="inline">Cannot find module</code> 不要手写替代，直接在 .js 同目录安装：</p>
+      <div class="code-title">终端（在 encrypt.js 所在目录执行）</div>
+<pre class="code">npm init -y                   <span class="cm"># 没有 package.json 就先生成一个</span>
+npm install crypto-js jsdom   <span class="cm"># 最常见的两个依赖：crypto-js（加密）、jsdom（DOM 环境）</span></pre>
+      <p><b>② jsdom 一行换整套 DOM</b>：手写 window 骨架（上面的 env.js）适合轻量场景——快、可控、零依赖；但代码重度操作 DOM（createElement、appendChild、getBoundingClientRect）时，手写骨架会补到天亮。这时用 jsdom 一次到位：</p>
+      <div class="code-title">env_jsdom.js（jsdom 方案：放在加密代码之前 require）</div>
+<pre class="code"><span class="kw">const</span> { JSDOM } = <span class="fn">require</span>(<span class="st">"jsdom"</span>);
+<span class="kw">const</span> dom = <span class="kw">new</span> <span class="fn">JSDOM</span>(<span class="st">"&lt;!doctype html&gt;&lt;html&gt;&lt;body&gt;&lt;/body&gt;&lt;/html&gt;"</span>, { url: <span class="st">"https://target.example/"</span> });
+global.window = dom.window;           <span class="cm">// 一行伪造完整 DOM 环境，覆盖手写骨架的全部字段</span>
+global.document = dom.window.document;
+global.navigator = dom.window.navigator;
+global.location = dom.window.location;</pre>
+      <p><b>③ node --inspect 断点调被扣的 JS</b>：扣下来的 JS 有几千行时，print 调试等于大海捞针。用 <code class="inline">--inspect-brk</code> 启动，再在 Chrome 地址栏输入 <code class="inline">chrome://inspect</code> 连上去——本地 JS 也能像网页一样下断点、看调用栈、单步执行：</p>
+      <div class="code-title">终端</div>
+<pre class="code">node --inspect-brk encrypt.js   <span class="cm"># 第一行暂停 → 打开 chrome://inspect → 点绿色链接进 DevTools</span></pre>
+      <p><b>④ 常见报错 → 处理对照表</b>（配合 8.4 的"报什么补什么"纪律使用）：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>报错</th><th>原因</th><th>处理</th></tr>
+        <tr><td><code class="inline">window is not defined</code></td><td>Node 没有 window 全局</td><td>env.js 顶部补 <code class="inline">var window = this;</code>，或换 jsdom</td></tr>
+        <tr><td><code class="inline">document is not defined</code></td><td>代码读 DOM（cookie / 元素）</td><td>补最小 document 骨架；重度 DOM 操作换 jsdom</td></tr>
+        <tr><td><code class="inline">navigator is not defined</code> / 其属性 undefined</td><td>环境检测在读 userAgent、language 等</td><td>补 navigator 并给全<b>被读到的</b>字段，别照抄别人的全家桶</td></tr>
+        <tr><td><code class="inline">Cannot find module 'xxx'</code></td><td>依赖缺失</td><td>同目录 <code class="inline">npm install xxx</code>，缺什么装什么</td></tr>
+        <tr><td><code class="inline">Cannot read properties of undefined</code></td><td>多半是<b>调用顺序</b>错了：初始化没先跑、环境字段取值时机不对</td><td>检查调用顺序：先执行注册 / 入口函数，再调加密函数</td></tr>
+        <tr><td>结果与浏览器不一致</td><td>补了不该补的环境字段参与运算；或时间戳单位不一致</td><td>逐项回退刚补的字段定位元凶；对齐时间戳秒 / 毫秒（8.3 指纹表）</td></tr>
+      </table></div>
 
       <!-- ============ 8.5 ============ -->
       <h2>8.5 Webpack 打包站 <span class="chip tnew">webpack</span></h2>
@@ -263,6 +305,20 @@ token = ctx.<span class="fn">call</span>(<span class="st">"getToken"</span>, <sp
 });
 console.<span class="fn">log</span>(<span class="fn">generator</span>(ast).code);            <span class="cm">// ③ generator：AST → 源码</span>
 <span class="cm">// 输出：var _0x1f2a = "hello world";</span></pre>
+
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · 夜幕团队 NightTeam：JSVMP 与"值得吗"判断</div>
+        <p>混淆之上还有一档：<b>JSVMP（JS Virtual Machine Protect）</b>。它把业务 JS 预先<b>编译成自定义虚拟机的字节码</b>，页面里只剩一个通用"解释器 + 一大段字节数组"，运行时逐条取指、译码、执行——你在 Sources 里看到的不再是加密函数，而是一台"软件 CPU"。这正是上方 K哥套路表的第⑥类，也是目前最强的 JS 保护之一：字符串搜不到（全在字节码里）、断点下不准（没有"算法那一行"）、硬啃要把解释器的每条自定义指令映射回语义——逆向成本陡增一到两个数量级。</p>
+        <p>夜幕团队的文章里反复强调一个思路：<b>动手之前先算账</b>——"逆向的预期时间"与"直接渲染 / 换数据源的成本"哪个划算？这道判断题的答案集：</p>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>处境</th><th>建议路线</th></tr>
+          <tr><td>字节码几千条、核心逻辑还按周轮换、数据量不大</td><td>直接 Playwright 渲染（5.4），让浏览器自己跑 VM</td></tr>
+          <tr><td>数据量大、接口稳定、值得长期投入</td><td>值得硬啃：对解释器插桩记录执行 trace，把高频指令映射回语义</td></tr>
+          <tr><td>有替代数据源（镜像站 / 官方 API / 其他平台）</td><td>换数据源——一秒钟都不用逆向，这永远是最优解</td></tr>
+          <tr><td>学习目的</td><td>挑个小的啃一遍：JSVMP 是 JS 逆向的"毕业设计"，啃完豁然开朗</td></tr>
+        </table></div>
+        <p>记住这个判断本身就是高手能力的一部分：<b>"放弃"也是一种策略</b>。工程目标永远是"稳定拿到数据"，逆向只是手段之一——把时间花在刀刃上，是一线逆向团队和新手最大的区别。延伸阅读见章末"多源精读"的 NightTeam 入口。</p>
+      </div>
 
       <!-- ============ 8.7 ============ -->
       <h2>8.7 实战路线 <span class="chip tlab">实战</span></h2>

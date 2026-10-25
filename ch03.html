@@ -153,6 +153,43 @@ links = tree.xpath(<span class="st">'//div[@class="quote"]//span[2]/a/@href'</sp
 <span class="cm"># Albert Einstein | March 14, 1879</span></pre>
       <p>这个"列表页 → 详情页"的两层结构就是后续所有整站爬虫的骨架：第 02 章的正则负责一页内的硬捞，XPath 负责页面间的<b>导航</b>。</p>
 
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · Mitchell《Python网络爬虫权威指南》：鲁棒解析三原则</div>
+        <p>Mitchell 在书里反复强调：解析代码的价值不在"今天能跑"，而在<b>改版后的第三个月还能跑</b>。她的工程习惯可以浓缩成三条：<br>
+           · <b>① 解析结构，而非猜测字符串位置。</b>位置（第几个标签、第几行）随改版漂移，结构（class 名、语义层级）稳定得多——这正是 XPath/CSS 选择器优于字符串切片与绝对路径的原因。<br>
+           · <b>② 多选择器回退。</b>主选择器失败就换备用，再不行还有按语义层级的兜底写法——站点改版通常只动一层，回退链能扛住大部分小改版。<br>
+           · <b>③ 校验字段数与类型，解析失败要"响亮地失败"。</b>宁可抛异常、发告警，也绝不把 None / 空串静默写进库——静默空数据是最贵的错误，等你发现时坏数据已经堆了一个月。</p>
+        <div class="code-title">robust_parse.py —— 带回退与校验的解析函数</div>
+<pre class="code"><span class="kw">from</span> lxml <span class="kw">import</span> etree
+<span class="kw">import</span> logging
+
+logger = logging.getLogger(<span class="st">"spider"</span>)
+
+<span class="kw">def</span> <span class="fn">parse_article</span>(tree):
+    <span class="st">"""② 多选择器回退：主选择器失败就换备用"""</span>
+    title = <span class="kw">None</span>
+    <span class="kw">for</span> xp <span class="kw">in</span> (<span class="st">'//h3[@class="title"]/text()'</span>,      <span class="cm"># 主：现在的结构</span>
+               <span class="st">'//h2[@class="title"]/text()'</span>,      <span class="cm"># 备：改版后 h3 可能变 h2</span>
+               <span class="st">'//article//h3/text()'</span>):            <span class="cm"># 兜底：只认语义层级</span>
+        found = tree.xpath(xp)
+        <span class="kw">if</span> found:
+            title = found[<span class="fn">0</span>].strip()
+            <span class="kw">break</span>
+
+    scores = tree.xpath(<span class="st">'//span[@class="score"]/text()'</span>)
+
+    <span class="cm"># ③ 校验：缺字段、类型不对就抛异常——响亮地失败，绝不静默返回空值</span>
+    <span class="kw">if</span> <span class="kw">not</span> title:
+        logger.error(<span class="st">"title 未命中，页面结构可能改版"</span>)
+        <span class="kw">raise</span> ValueError(<span class="st">"title 解析失败"</span>)
+    <span class="kw">if</span> <span class="kw">not</span> scores:
+        <span class="kw">raise</span> ValueError(<span class="st">"score 解析失败"</span>)
+    score = <span class="fn">float</span>(scores[<span class="fn">0</span>])              <span class="cm"># 类型校验：转不动就抛 ValueError</span>
+    <span class="kw">if</span> <span class="kw">not</span> <span class="fn">0</span> &lt;= score &lt;= <span class="fn">10</span>:
+        <span class="kw">raise</span> ValueError(<span class="st">f"score 越界: {score}"</span>)
+    <span class="kw">return</span> {<span class="st">"title"</span>: title, <span class="st">"score"</span>: score}</pre>
+      </div>
+
       <!-- ============ 选择器游乐场（自 stage2 原样移植） ============ -->
       <section class="section">
         <h2>互动 1 · 选择器游乐场（CSS / XPath 双模式） <span class="chip tlab">互动</span></h2>
@@ -253,6 +290,32 @@ a = soup.select_one(<span class="st">".item-1 a"</span>)            <span class=
 <span class="fn">print</span>(a.get_text(strip=<span class="kw">True</span>))       <span class="cm"># 第二篇 —— 取文本并去首尾空白，最常用</span></pre>
       <div class="callout ok"><b>BS4 使用心法：</b>定位用 <code class="inline">select/select_one</code>（CSS 语法最顺手），批量提取用 <code class="inline">find_all</code>，取文本一律 <code class="inline">get_text(strip=True)</code>，取属性用 <code class="inline">tag["attr"]</code>。复杂条件（按文本找、按位置找）做不了时，就是该换 XPath 的信号。</div>
 
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · Mitchell《Python网络爬虫权威指南》：脏 HTML 与编码黑魔法</div>
+        <p>教程里的 HTML 永远规整，真实页面永远"脏"，Mitchell 在书里花了大量篇幅对付它们。真实页面的脏可归为三类：<b>未闭合标签</b>（<code class="inline">&lt;p&gt;</code> 忘了 <code class="inline">&lt;/p&gt;</code>）、<b>非法嵌套</b>（<code class="inline">&lt;ul&gt;</code> 里直接塞 <code class="inline">&lt;div&gt;</code>）、<b>隐藏字符</b>——最阴险的是零宽空格 <code class="inline">\u200b</code>（看不见、strip() 剥不掉，但会让字符串比较失败）和不间断空格 <code class="inline">\xa0</code>（<code class="inline">&amp;nbsp;</code>，相等比较与计数时的隐形杀手）。对策双管齐下：<b>结构</b>交给容错解析器修复（BS4 + lxml / html5lib），<b>字符</b>交给清洗函数。编码方面，BeautifulSoup 内置探测器 <code class="inline">UnicodeDammit</code>：喂给它 bytes，它按字节特征猜编码并转成 unicode，猜中的源编码会记在 <code class="inline">soup.original_encoding</code> 里——响应头没声明 charset 的老站，这一招能救命。</p>
+        <div class="code-title">clean_html.py</div>
+<pre class="code"><span class="kw">import</span> re, unicodedata
+<span class="kw">from</span> bs4 <span class="kw">import</span> BeautifulSoup
+<span class="kw">from</span> bs4.dammit <span class="kw">import</span> UnicodeDammit
+
+<span class="cm"># ① 结构脏：p 忘了闭合 —— lxml 解析器自动补全，选择器照样能用</span>
+dirty = <span class="st">'&lt;div&gt;&lt;p class="price"&gt;￥45.5&lt;span&gt;实付&lt;/span&gt;&lt;/div&gt;'</span>
+soup = BeautifulSoup(dirty, <span class="st">"lxml"</span>)
+<span class="fn">print</span>(soup.select_one(<span class="st">".price"</span>).get_text())     <span class="cm"># ￥45.5实付 —— 结构已被修复</span>
+
+<span class="cm"># ② 编码脏：拿到一段没声明编码的字节，UnicodeDammit 自动探测并转成 unicode</span>
+dammit = UnicodeDammit(<span class="st">"你好"</span>.encode(<span class="st">"utf-16"</span>))
+<span class="fn">print</span>(dammit.unicode_markup)                   <span class="cm"># 你好 —— 带 BOM 时不用猜，直接命中</span>
+
+<span class="cm"># ③ 字符脏：零宽字符、&amp;nbsp;、全半角、连续空白，一个清洗函数全部处理</span>
+<span class="kw">def</span> <span class="fn">clean_text</span>(s):
+    s = s.replace(<span class="st">"\u200b"</span>, <span class="st">""</span>)                <span class="cm"># 零宽空格：删</span>
+    s = s.replace(<span class="st">"\xa0"</span>, <span class="st">" "</span>)                 <span class="cm"># 不间断空格 → 普通空格</span>
+    s = unicodedata.normalize(<span class="st">"NFKC"</span>, s)       <span class="cm"># 全角→半角：ＡＢＣ１２３ → ABC123</span>
+    s = re.sub(<span class="st">r"\s+"</span>, <span class="st">" "</span>, s)                 <span class="cm"># 连续空白折叠成一个</span>
+    <span class="kw">return</span> s.strip()</pre>
+      </div>
+
       <!-- ============ 3.3 ============ -->
       <h2>3.3 pyquery <span class="chip tbook">对齐教材 4.3</span></h2>
       <p>安装：<code class="inline">pip install pyquery</code>。如果你写过 jQuery 或前端，pyquery 会让你瞬间上手：CSS 选择器 + 链式调用，<code class="inline">$</code> 换成 <code class="inline">pq</code>：</p>
@@ -330,6 +393,51 @@ data = json.loads(text)                                   <span class="cm"># str
             <span class="kw">except</span> json.JSONDecodeError:
                 <span class="kw">continue</span>
 <span class="cm"># 三体  活着</span></pre>
+
+      <!-- ============ 3.6 ============ -->
+      <h2>3.6 选择器的可维护性：防改版设计 <span class="chip tnew">拓展</span></h2>
+      <p>写选择器只看"今天命中"，是玩具和工程的最大分水岭。先亮性能底牌（同一页面提取同一批字段的大致量级对比）：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>方案</th><th>速度量级</th><th>可维护性</th><th>适用</th></tr>
+        <tr><td>正则</td><td>视模式而定：简单模式极快，复杂模式回溯可能失控（见 2.3 边界）</td><td>差——表达式与页面结构脱节，改版要重新找规律</td><td>压缩文本、JS 变量的最后兜底</td></tr>
+        <tr><td>BeautifulSoup</td><td>慢（纯 Python，比 lxml 慢一到两个数量级）</td><td>好——API 最友好</td><td>小脚本、一次性提取</td></tr>
+        <tr><td>lxml / XPath（parsel）</td><td><b>最快</b>（C 实现）</td><td>好——表达式即结构</td><td>正式项目、批量任务、Scrapy</td></tr>
+      </table></div>
+      <p>速度可以花钱换机器，<b>改版只能靠设计扛</b>。防改版三板斧：① <b>多级回退选择器</b>——每级都写清"应对哪种改版"；② <b>字段校验</b>——数量、类型、取值范围；③ <b>结构变更告警</b>——抓不到就报警，绝不静默返回空数据（等你发现"库里一个月没新数据"时，损失已经造成）。</p>
+      <div class="code-title">parse_with_fallback.py</div>
+<pre class="code"><span class="kw">import</span> logging
+<span class="kw">from</span> lxml <span class="kw">import</span> etree
+
+logger = logging.getLogger(<span class="st">"spider"</span>)
+
+<span class="cm"># 三板斧之一：多级回退选择器——每级注明"为什么会有这一级"</span>
+TITLE_XPATHS = [
+    <span class="st">'.//h3[@class="title"]/text()'</span>,   <span class="cm"># 主：当前结构</span>
+    <span class="st">'.//h2[@class="title"]/text()'</span>,   <span class="cm"># 备：h3 被改成 h2</span>
+    <span class="st">'.//h3/text()'</span>,                   <span class="cm"># 兜底：class 变了只剩语义层级</span>
+]
+
+<span class="kw">def</span> <span class="fn">parse_with_fallback</span>(html, base_url=<span class="st">""</span>):
+    tree = etree.HTML(html)
+    items = []
+    <span class="kw">for</span> art <span class="kw">in</span> tree.xpath(<span class="st">'//article[@class="item"]'</span>):
+        title = <span class="kw">None</span>
+        <span class="kw">for</span> xp <span class="kw">in</span> TITLE_XPATHS:               <span class="cm"># ① 多级回退</span>
+            hit = art.xpath(xp)
+            <span class="kw">if</span> hit:
+                title = hit[<span class="fn">0</span>].strip()
+                <span class="kw">break</span>
+        score = art.xpath(<span class="st">'.//span[@class="score"]/text()'</span>)
+        <span class="kw">if</span> <span class="kw">not</span> title <span class="kw">or</span> <span class="kw">not</span> score:             <span class="cm"># ② 字段校验：缺了就跳过这条</span>
+            <span class="kw">continue</span>
+        items.append({<span class="st">"title"</span>: title, <span class="st">"score"</span>: <span class="fn">float</span>(score[<span class="fn">0</span>])})
+
+    <span class="cm"># ③ 结构变更告警：列表页每页应稳定命中预期条数，骤降即报警</span>
+    <span class="kw">if</span> <span class="fn">len</span>(items) &lt; <span class="fn">5</span>:
+        logger.error(<span class="st">"【结构告警】%s 仅解析出 %d 条（预期 10 条左右），页面可能已改版"</span>,
+                     base_url, <span class="fn">len</span>(items))
+    <span class="kw">return</span> items</pre>
+      <div class="callout ok"><b>设计心法：</b>回退链是"缓存"，告警是"保险丝"——回退兜住了小改版，告警保证大改版第一时间被发现。两者合起来，才配叫"可维护的选择器"。</div>
 
       <div class="pitfall"><b>本章避坑清单：</b>① XPath 位置从 <b>1</b> 数起：<code class="inline">//li[1]</code> 是第一个元素，不是第二个——和 Python 下标 [0] 相反，翻页/取第 N 条时最容易栽；② <code class="inline">text()</code> 返回列表，直接 <code class="inline">[0]</code> 会在结构变动时 IndexError——先判空，或用 parsel 的 <code class="inline">.get()</code>（无结果返回 None）；③ BS4 的 <code class="inline">children/next_sibling</code> 会把换行符当文本节点混进来——用 <code class="inline">find_next_sibling("li")</code> 按标签找，或 <code class="inline">getattr(x, "name", None)</code> 过滤；④ <code class="inline">BeautifulSoup(html, "lxml")</code> 没装 lxml 会抛 FeatureNotFound，用 "xml" 解析 HTML 也会莫名报错——解析器参数永远显式写对；⑤ requests 拿到的永远是<b>原始 HTML</b>：Elements 面板里 JS 塞的内容不在里面（呼应 1.2），解析不到先想"数据在不在源代码里"，别怀疑选择器写错。</div>
 

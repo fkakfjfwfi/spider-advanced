@@ -129,6 +129,36 @@ OUT    = <span class="st">"app_capture.jsonl"</span>
     <span class="kw">with</span> <span class="fn">open</span>(OUT, <span class="st">"a"</span>, encoding=<span class="st">"utf-8"</span>) <span class="kw">as</span> f:
         f.<span class="fn">write</span>(json.<span class="fn">dumps</span>(item, ensure_ascii=<span class="kw">False</span>) + <span class="st">"\n"</span>)</pre>
       <div class="callout ok"><b>工程化提示：</b>落盘用 <b>JSONL</b>（每行一个 JSON 对象）——手机一直产生数据，追加写不会损坏旧数据；后续 <code class="inline">pandas.read_json(..., lines=True)</code> 一行读入，直接接第 04 章的存储体系。人在 App 里正常点屏幕，数据就源源不断进文件——这就是教材 11.3 方法的通用化。</div>
+      <h3>mitmdump 进阶：只抓目标域 + 直接入库</h3>
+      <p>上面的模板存 JSONL 适合离线处理，工程里更常见的做法是<b>边抓边入库</b>。思路：<code class="inline">request</code> 事件里把目标域名的流量打上标记（这就是"过滤"），<code class="inline">response</code> 事件里只处理带标记的响应——解析 JSON 后直接写入 SQLite。注意 addon 的<b>模块级代码只执行一次</b>（被 mitmdump 加载时），建连接、建表放在这里正合适。另外别在 request 里粗暴丢弃非目标流量——那会把 App 的图片、CDN 请求全杀掉，页面加载不出来，你也就点不到目标页了：</p>
+      <div class="code-title">app_to_db.py —— 只抓目标域并写入 SQLite</div>
+<pre class="code"><span class="cm"># 运行：mitmdump -s app_to_db.py -p 8080（手机代理照 9.1 指向电脑 8080）</span>
+<span class="kw">import</span> json, sqlite3, time
+<span class="kw">from</span> mitmproxy <span class="kw">import</span> http
+
+TARGET = <span class="st">"api.example.com"</span>
+db = sqlite3.<span class="fn">connect</span>(<span class="st">"app_log.db"</span>)            <span class="cm"># 模块级：加载时执行一次</span>
+db.<span class="fn">execute</span>(<span class="st">"CREATE TABLE IF NOT EXISTS app_log"</span>
+           <span class="st">"(ts REAL, host TEXT, path TEXT, status INTEGER, body_snippet TEXT)"</span>)
+
+<span class="kw">def</span> <span class="fn">request</span>(flow: http.HTTPFlow) -&gt; <span class="kw">None</span>:
+    <span class="cm"># 请求期过滤：目标域打标记，其余流量原样放行（不影响 App 正常使用）</span>
+    flow.metadata[<span class="st">"is_target"</span>] = TARGET <span class="kw">in</span> flow.request.host
+
+<span class="kw">def</span> <span class="fn">response</span>(flow: http.HTTPFlow) -&gt; <span class="kw">None</span>:
+    <span class="kw">if</span> <span class="kw">not</span> flow.metadata.<span class="fn">get</span>(<span class="st">"is_target"</span>):
+        <span class="kw">return</span>                            <span class="cm"># 非目标域：不解析、不落库</span>
+    <span class="kw">try</span>:
+        body = flow.response.<span class="fn">get_text</span>()
+        json.<span class="fn">loads</span>(body)                  <span class="cm"># 只收 JSON：解析失败直接跳过</span>
+    <span class="kw">except</span> (ValueError, TypeError):
+        <span class="kw">return</span>
+    db.<span class="fn">execute</span>(<span class="st">"INSERT INTO app_log(ts, host, path, status, body_snippet)"</span>
+               <span class="st">"VALUES(?,?,?,?,?)"</span>,
+               (time.<span class="fn">time</span>(), flow.request.host, flow.request.path,
+                flow.response.status_code, body[:<span class="fn">500</span>]))   <span class="cm"># 正文截断 500 字符防膨胀</span>
+    db.<span class="fn">commit</span>()                           <span class="cm"># 每条一提交：中途崩了不丢已抓数据</span></pre>
+      <div class="callout ok"><b>两处细节：</b>① <code class="inline">flow.metadata</code> 是挂在 flow 上的字典，用来在 request 与 response 两个事件之间传状态；② <code class="inline">body_snippet</code> 只存前 500 字符——完整响应体让数据库快速膨胀，排查阶段够用，确需全量再单开一列。验证入库：<code class="inline">sqlite3 app_log.db "SELECT * FROM app_log LIMIT 5"</code>。</div>
 
       <!-- ============ 9.3 ============ -->
       <h2>9.3 App 请求分析的特殊性 <span class="chip tnew">拓展</span></h2>
@@ -193,6 +223,25 @@ WebDriverWait(driver, <span class="fn">15</span>).<span class="fn">until</span>(
       <h3>何时选 Appium</h3>
       <p>① 接口参数被 so 层加密或深度风控，还原成本明显过高 → Appium；② 数据直接显示在 UI 上且采集量不大 → Appium 简单直接；③ 量大、要求长期稳定跑几万次 → 先想接口方案，Appium 是最后手段；④ 登录有验证码/扫码等人工环节 → 半自动：人登录一次，<code class="inline">no_reset=True</code> 保住登录态，脚本接管后续。</p>
       <div class="callout ok"><b>上手成本：</b>Appium 本质是 <b>WebDriver 协议</b>——和你在 05 章用过的 Selenium 是同一套协议思想。会 Selenium 的人学 Appium，成本只有半天：换一套定位器和 Capabilities 而已。</div>
+      <h3>Appium 补充：混合应用（WebView）的坑</h3>
+      <p>现在大量 App 页面其实是 <b>WebView 套壳</b>：原生壳里嵌一个浏览器内核渲染 H5。这种页面在 NATIVE 层只能看到一个 <code class="inline">android.webkit.WebView</code> 大控件——里面的按钮、文本对 uiautomator 完全不可见。于是出现经典症状：<b>Inspector 里怎么都定位不到页面元素，find_element 永远报 NotFound</b>。九成原因就一个：<b>没切 context</b>。Appium 把页面分成两层容器：<code class="inline">NATIVE_APP</code> 是原生层，<code class="inline">WEBVIEW_xxx</code> 是每个 WebView 页面对应的网页层——定位器只在"当前层"里找元素：</p>
+      <div class="code-title">webview_demo.py —— 切换 context 操作 H5 部分</div>
+<pre class="code"><span class="cm"># 进入 WebView 页面后，先列出所有可用上下文</span>
+<span class="fn">print</span>(driver.contexts)
+<span class="cm"># → ['NATIVE_APP', 'WEBVIEW_com.example.app']</span>
+
+driver.<span class="fn">switch_to</span>.context(<span class="st">"WEBVIEW_com.example.app"</span>)   <span class="cm"># 切进网页层</span>
+<span class="cm"># 此后定位走网页那套（CSS/XPath/id），与 03、05 章完全一致：</span>
+<span class="kw">from</span> selenium.webdriver.common.by <span class="kw">import</span> By
+driver.<span class="fn">find_element</span>(By.CSS_SELECTOR, <span class="st">".article-title"</span>).<span class="fn">click</span>()
+
+driver.<span class="fn">switch_to</span>.context(<span class="st">"NATIVE_APP"</span>)               <span class="cm"># 干完切回原生层</span>
+driver.<span class="fn">find_element</span>(AppiumBy.ID, <span class="st">"com.example.app:id/back"</span>).<span class="fn">click</span>()</pre>
+      <p>第二个坑是 <b>chromedriver 版本</b>：UiAutomator2 驱动是借 chromedriver 操作 WebView 的，<b>chromedriver 大版本必须与 WebView 内核（Chromium 版本）匹配</b>，否则切 context 时报 chromedriver 相关错误。排查路径：电脑 Chrome 打开 <code class="inline">chrome://inspect</code>（手机开 USB 调试、App 需开启 WebView 调试，测试包才行）看内核版本 → 下载对应 chromedriver → 在 Capabilities 里指定路径：</p>
+      <div class="code-title">Capabilities 指定 chromedriver</div>
+<pre class="code">options.<span class="fn">set_capability</span>(<span class="st">"appium:chromedriverExecutable"</span>,
+                      r<span class="st">"C:\tools\chromedriver\chromedriver.exe"</span>)</pre>
+      <div class="callout info"><b>判断该不该切 context：</b>用 Appium Inspector 看页面源码——满屏 android.webkit.WebView 包着一个巨大节点、内部元素全看不到 → 该切了。也可以在 Capabilities 里设 <code class="inline">"appium:autoWebview": True</code>，会话启动后自动切进检测到的 WebView，但页面中途跳转仍要手动切。</div>
 
       <!-- ============ 9.5 ============ -->
       <h2>9.5 Frida 入门 <span class="chip tnew">拓展</span></h2>
@@ -221,6 +270,23 @@ pip install frida-tools              <span class="cm"># 电脑侧工具</span>
 frida -U -f com.example.app -l hook.js --no-pause    <span class="cm"># spawn：重启并注入</span>
 frida -U -F -l hook.js                               <span class="cm"># attach：挂到前台应用</span></pre>
       <p>两大典型用途：① <b>hook 加密函数拿明文</b>——配合 jadx 反编译定位到类与方法，一次 hook，参数明文与签名结果全部打印，比扣 so 层代码便宜一个数量级；② <b>绕证书锁定</b>——hook OkHttp CertificatePinner 等校验类，社区有现成通用脚本（如 objection 自带的 android sslpinning disable）。提醒一句：Frida 的版本管理是出名的坑——<b>pip 装的 frida 版本必须与设备上 frida-server 版本完全一致</b>，报错先查版本。</p>
+
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · 生态对照：Frida / objection / Xposed(LSPosed)</div>
+        <p>Frida 从不是孤军奋战，围绕它形成了三层 hook 生态：<b>Frida</b> 是底座——动态插桩框架，能力最强但要自己写 JS 脚本；<b>objection</b> 站在 Frida 之上，把高频操作（枚举类、绕证书锁定、搜内存）封装成现成命令，不写一行脚本就能开工；<b>Xposed / LSPosed</b> 则是另一条技术路线——系统级模块框架，刷进系统后模块<b>常驻生效</b>，开机即 hook，不依赖电脑连线。三者的定位与取舍：</p>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>工具</th><th>定位</th><th>上手难度</th><th>典型用途</th></tr>
+          <tr><td><b>Frida</b></td><td>动态插桩框架（底座）</td><td>中：要写 JS hook 脚本</td><td>hook 指定函数拿明文参数与密文输出、绕证书锁定（9.3 应对① / 9.5 主力）</td></tr>
+          <tr><td><b>objection</b></td><td>基于 Frida 的 CLI 工具集</td><td>低：一条命令起步</td><td>枚举/搜索类与方法、一条命令绕 SSL Pinning，快速摸底首选</td></tr>
+          <tr><td><b>Xposed / LSPosed</b></td><td>系统级 hook 模块框架（需 Root 刷入）</td><td>高：写模块要会 Java/Android 开发</td><td>模块常驻：重启也生效、无需连电脑，适合长期运行的自动化场景</td></tr>
+        </table></div>
+        <pre class="code">pip install objection                       <span class="cm"># 底层就是 Frida，依赖会一并装上</span>
+objection -g com.example.app explore        <span class="cm"># 注入目标 App，进入交互式命令行</span>
+&gt; android hooking list classes              <span class="cm"># 枚举已加载的全部类</span>
+&gt; android hooking search classes Sign       <span class="cm"># 按关键词搜类，定位加密工具类</span>
+&gt; android sslpinning disable                <span class="cm"># 一条命令绕证书锁定（9.3 应对①）</span></pre>
+        <p><b>何时选谁</b>：快速摸底、不想写脚本 → objection；要 hook 特定函数拿明文、逻辑定制 → Frida 手写脚本（常见打法是先用 objection 枚举搜出类名，再回 Frida 精准 hook——两者是搭档不是对手）；要 7×24 常驻、设备早已 Root 刷机 → Xposed/LSPosed 模块。最后重申 9.6 的红线：以上工具<b>仅限自有设备与授权环境</b>使用。</p>
+      </div>
 
       <!-- ============ 9.6 ============ -->
       <h2>9.6 合规特别提醒 <span class="chip">红线</span></h2>

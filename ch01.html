@@ -151,6 +151,36 @@ Server: nginx
 
       <div class="callout info"><b>HTTPS 与 TLS（连接 408）：</b>HTTPS = HTTP over TLS。握手阶段用<b>非对称加密</b>协商出对称会话密钥，之后全程对称加密——所以抓包工具（如 Fiddler/Charles）要做<b>中间人</b>：装自己的根证书替两边加解密（第 09 章 App 抓包会实际操作）。</div>
 
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · 《HTTP权威指南》：连接管理与缓存</div>
+        <p>· <b>连接管理（该书第 4 章）</b>：HTTP 建立在 TCP 上，而 TCP 连接是有成本的——每条新连接都要付一次<b>三次握手</b>的往返延迟，HTTPS 还要再加 TLS 握手，握手完还有"慢启动"的爬坡期。浏览器为此用了两手：<b>并行连接</b>（同时开几条连接，把串行等待摊薄）和 <b>keep-alive 持久连接</b>（HTTP/1.1 默认开启：一条 TCP 通道上连续处理多对请求/响应，后续请求免掉握手与慢启动成本）。<br>
+           · 这正是 <code class="inline">requests.Session</code> 在 TCP 层的真正意义：Session 底层的 urllib3 维护着<b>连接池</b>，同一域名反复请求只握手一次——不仅快，流量特征也更像"一个正常浏览器的连续访问"。<br>
+           · <b>缓存（该书第 7 章）</b>：服务器可用 <code class="inline">Cache-Control: max-age</code> 声明资源的新鲜期；新鲜期过了也不必全量重下——带着 <code class="inline">ETag</code>（资源指纹）发 <code class="inline">If-None-Match</code> 条件请求，资源没变服务器只回 <b>304 Not Modified</b>（不含正文），变了才回 200 + 新内容。这是爬虫<b>增量抓取的免费武器</b>：省流量、省时间，还更礼貌。</p>
+        <div class="code-title">etag_cache.py —— Session 复用连接 + ETag 条件请求</div>
+<pre class="code"><span class="kw">import</span> pathlib
+<span class="kw">import</span> requests
+
+s = requests.Session()                    <span class="cm"># 复用连接池：同域第二次请求不再付 TCP+TLS 握手成本</span>
+etag_file = pathlib.Path(<span class="st">"page.etag"</span>)
+body_file = pathlib.Path(<span class="st">"page.html"</span>)
+url = <span class="st">"https://httpbin.org/etag/v1.0"</span>     <span class="cm"># httpbin 练习接口：把 v1.0 当资源指纹，支持条件请求</span>
+
+<span class="kw">if</span> etag_file.exists():                    <span class="cm"># ---- 增量抓取：先问一句"资源变了吗" ----</span>
+    resp = s.get(url, headers={<span class="st">"If-None-Match"</span>: etag_file.read_text()}, timeout=<span class="fn">10</span>)
+    <span class="kw">if</span> resp.status_code == <span class="fn">304</span>:          <span class="cm"># Not Modified：只有状态行几个字节，正文零传输</span>
+        html = body_file.read_text(encoding=<span class="st">"utf-8"</span>)
+        <span class="fn">print</span>(<span class="st">"304 命中缓存：直接用本地副本"</span>)
+    <span class="kw">else</span>:                                 <span class="cm"># 200：资源真的变了，回写正文与新指纹</span>
+        body_file.write_text(resp.text, encoding=<span class="st">"utf-8"</span>)
+        etag_file.write_text(resp.headers.get(<span class="st">"ETag"</span>, <span class="st">""</span>))
+        <span class="fn">print</span>(<span class="st">"资源已更新：缓存与 ETag 已刷新"</span>)
+<span class="kw">else</span>:                                     <span class="cm"># ---- 第一次：全量抓取并保存指纹 ----</span>
+    resp = s.get(url, timeout=<span class="fn">10</span>)
+    body_file.write_text(resp.text, encoding=<span class="st">"utf-8"</span>)
+    etag_file.write_text(resp.headers.get(<span class="st">"ETag"</span>, <span class="st">""</span>))
+    <span class="fn">print</span>(<span class="st">"首次抓取：正文与 ETag 已落盘"</span>)</pre>
+      </div>
+
       <!-- ============ 1.2 ============ -->
       <h2>1.2 Web 网页基础 <span class="chip tbook">对齐教材 2.2</span></h2>
       <p>网页由三种技术构成，爬虫视角下各有含义：</p>
@@ -170,6 +200,35 @@ Server: nginx
         <tr><td>Application</td><td>Cookie / localStorage / Session Storage</td><td>06、09</td></tr>
         <tr><td>Console</td><td>现场执行 JS 验证猜想</td><td>08</td></tr>
       </table></div>
+
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · Mitchell《Python网络爬虫权威指南》：robots.txt 与抓取礼仪</div>
+        <p>开工前先看一眼 <code class="inline">https://目标站/robots.txt</code>——网站放在根目录的"抓取须知"，也是"我们是不是不受欢迎"的最快信号。robots 协议<b>不是法律</b>，没有技术强制力，但它是行业第一礼仪：遵守它，你是有操守的数据采集者；无视它，轻则被封 IP，重则踩进法律灰区。Mitchell 在书中把这份礼仪落成几条朴素原则：<b>限速</b>（加延时，别把人家服务器打挂）、<b>表明身份</b>（UA 写清自己是谁）、<b>可被联系</b>（留下联系方式，站长发现异常能找到你）、<b>只拿公开数据</b>（登录后才可见、明确禁止的内容不碰）。</p>
+        <div class="code-title">robots.txt 语法速览</div>
+<pre class="code">User-agent: *                <span class="cm"># 以下规则适用于所有爬虫</span>
+Disallow: /admin/            <span class="cm"># 禁止抓取后台</span>
+Disallow: /search            <span class="cm"># 禁止搜索结果页（防重复内容、省服务器资源）</span>
+Allow: /admin/public         <span class="cm"># 禁区内挖洞放行：更长（更具体）的规则优先，Google 系引擎支持</span>
+Crawl-delay: 5               <span class="cm"># 建议 5 秒最多 1 次请求（非官方标准，Bing/Yandex 等支持）</span>
+Sitemap: https://example.com/sitemap.xml   <span class="cm"># 官方全站地图，拿 URL 列表的最省事入口</span>
+
+User-agent: GPTBot           <span class="cm"># 也可以针对特定爬止单独设一组规则</span>
+Disallow: /</pre>
+        <div class="code-title">check_robots.py —— 标准库一行判"能不能抓"</div>
+<pre class="code"><span class="kw">from</span> urllib.robotparser <span class="kw">import</span> RobotFileParser
+
+rp = RobotFileParser()
+rp.parse([                          <span class="cm"># 线上用法：rp.set_url("https://example.com/robots.txt"); rp.read()</span>
+    <span class="st">"User-agent: *"</span>,
+    <span class="st">"Disallow: /admin/"</span>,
+    <span class="st">"Disallow: /search"</span>,
+    <span class="st">"Crawl-delay: 5"</span>,
+])
+<span class="fn">print</span>(rp.can_fetch(<span class="st">"MySpider/1.0"</span>, <span class="st">"https://example.com/admin/login"</span>))   <span class="cm"># False：命中禁区</span>
+<span class="fn">print</span>(rp.can_fetch(<span class="st">"MySpider/1.0"</span>, <span class="st">"https://example.com/hot?page=1"</span>))    <span class="cm"># True：未被禁止</span>
+<span class="fn">print</span>(rp.crawl_delay(<span class="st">"MySpider/1.0"</span>))                                     <span class="cm"># 5.0：官方建议限速（秒）</span></pre>
+      </div>
+
       <div class="callout warn"><b>关键区分：</b>右键"查看网页源代码"给你的是<b>原始 HTML</b>；Elements 面板显示的是 <b>JS 改过之后的实时 DOM</b>。源代码里找不到的数据，可能 Elements 里有（JS 塞的），但真正要找的是那条 XHR 请求。</div>
 
       <!-- ============ 1.3 ============ -->
@@ -188,6 +247,22 @@ Server: nginx
         <tr><td>XHR/Fetch 接口里</td><td>源代码没有，Network 有</td><td>接口直连（05 章）</td></tr>
         <tr><td>JS 变量/加密参数里</td><td>接口都要带 token/sign</td><td>JS 逆向（08 章）或浏览器自动化（05 章）</td></tr>
       </table></div>
+
+      <div class="connect-box" style="border-left-color:#b45309">
+        <div class="bx-title" style="color:#b45309">🌐 多源视角 · 韦世东《Python3反爬虫原理与绕过实战》：反爬的三层分类学</div>
+        <p>拿到 403 先别急着堆手段——韦世东在书里给出的方法论是：先<b>识别对方在哪一层设防</b>，再选择对应层的武器，这是选择武器的第一步。他把常见反爬手段归为三层：<br>
+           · <b>网络层</b>——在"连接"上动手脚：IP 封禁、限频、机房 IP（数据中心段）识别、流量行为分析。识别特征："换个请求头没用，换个 IP 就好了"。典型手段：黑名单、速率阈值、访问频率画像。<br>
+           · <b>协议层</b>——在"报文"上动手脚：请求头完整性校验、Cookie 考验、参数签名（sign/token）、TLS/HTTP2 指纹。识别特征："报文长得不像浏览器，就不给数据"。<br>
+           · <b>内容层</b>——在"数据"上动手脚：就算你拿到响应，给你的也是变过形的内容——字体反爬、文本混淆（字符映射）、图片化文字、暗语黑话。识别特征："响应 200，内容看不懂"。</p>
+        <div class="tbl-wrap"><table class="tbl">
+          <tr><th>反爬层级</th><th>一句话识别法</th><th>本课对应章节</th></tr>
+          <tr><td>网络层</td><td>换 IP 有效、换请求头无效</td><td>07 章代理池</td></tr>
+          <tr><td>协议层</td><td>报文与浏览器有差异就被拒</td><td>07 / 08 章（指纹与签名）</td></tr>
+          <tr><td>内容层</td><td>响应正常但内容不可读</td><td>07 / 08 章（字体与混淆）</td></tr>
+        </table></div>
+        <p>把层级判断练成条件反射，第 07、08 章你能省一半力气。</p>
+      </div>
+
       <p>用 requests 复刻浏览器行为的的最小闭环长这样（02 章展开讲透）：</p>
       <div class="code-title">first_spider.py</div>
 <pre class="code"><span class="kw">import</span> requests
@@ -248,6 +323,42 @@ s2.cookies.update({<span class="st">"sessionid"</span>: <span class="st">"从浏
 requests.get(<span class="st">"https://httpbin.org/ip"</span>, proxies=proxies, timeout=<span class="fn">10</span>)</pre>
 
       <div class="pitfall"><b>新手五大坑：</b>① 只看 Elements 不看 Network，对着实时 DOM 白费劲；② 用 GET 请求带请求体、POST 参数塞 URL；③ 忘了 <code class="inline">timeout</code>，爬虫挂死一整夜；④ 429/403 一直无脑重试，把封禁升级成永久；⑤ 把 HttpOnly 当成"拿不到"——JS 拿不到不等于 HTTP 层拿不到。</div>
+
+      <!-- ============ 1.6 ============ -->
+      <h2>1.6 更现代的请求生态：httpx 与 HTTP/2 <span class="chip tnew">拓展</span></h2>
+      <p>requests 是事实标准，但它有两个先天限制：<b>只支持 HTTP/1.1</b>，也没有原生异步能力。新一代库 <code class="inline">httpx</code> 把这两块补上了，API 却几乎照搬 requests——迁移成本接近零：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>维度</th><th>requests</th><th>httpx</th></tr>
+        <tr><td>HTTP 版本</td><td>HTTP/1.1（底层 urllib3 不支持 HTTP/2）</td><td><b>HTTP/1.1 + HTTP/2</b>：装 <code class="inline">httpx[http2]</code>，Client 开 <code class="inline">http2=True</code></td></tr>
+        <tr><td>同步 / 异步</td><td>仅同步（异步要换 aiohttp）</td><td><b>双模</b>：同步 API 与 <code class="inline">async</code> API 同一套心智</td></tr>
+        <tr><td>API 兼容</td><td>—</td><td>get / post / headers / timeout / Session 概念全对齐，会 requests 就会 httpx</td></tr>
+        <tr><td>生态与资料</td><td>最成熟、教程最多</td><td>较新，异步爬虫场景的事实选择</td></tr>
+      </table></div>
+      <div class="code-title">httpx_sync.py —— 同步用法几乎零迁移</div>
+<pre class="code"><span class="cm"># pip install httpx        （需要 HTTP/2 时：pip install "httpx[http2]"）</span>
+<span class="kw">import</span> httpx
+
+resp = httpx.get(<span class="st">"https://httpbin.org/get"</span>,
+                 headers={<span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0"</span>}, timeout=<span class="fn">10</span>)
+<span class="fn">print</span>(resp.status_code, resp.http_version)    <span class="cm"># 200 HTTP/1.1</span>
+
+<span class="cm"># 想走 HTTP/2：显式建 Client 并打开 http2（通过 ALPN 与服务器协商）</span>
+<span class="kw">with</span> httpx.Client(http2=<span class="kw">True</span>) <span class="kw">as</span> client:
+    r = client.get(<span class="st">"https://www.baidu.com"</span>, timeout=<span class="fn">10</span>)
+    <span class="fn">print</span>(r.http_version)                     <span class="cm"># 服务器支持时显示 HTTP/2，否则自动回落 HTTP/1.1</span></pre>
+      <div class="code-title">httpx_async.py —— 异步双模：同一套 API，换个 await</div>
+<pre class="code"><span class="kw">import</span> asyncio, httpx
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">fetch_all</span>(urls):
+    <span class="kw">async with</span> httpx.AsyncClient(timeout=<span class="fn">10</span>) <span class="kw">as</span> client:
+        rs = <span class="kw">await</span> asyncio.gather(
+            *(client.get(u, headers={<span class="st">"User-Agent"</span>: <span class="st">"Mozilla/5.0"</span>}) <span class="kw">for</span> u <span class="kw">in</span> urls)
+        )
+        <span class="kw">for</span> r <span class="kw">in</span> rs:
+            <span class="fn">print</span>(r.status_code, r.url)
+
+asyncio.run(fetch_all([<span class="st">f"https://httpbin.org/get?i={i}"</span> <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">5</span>)]))</pre>
+      <div class="callout info"><b>何时值得换：</b>① 目标站<b>强制 HTTP/2</b>——HTTP/1.1 请求直接被拒或被降权，多见于重风控的 CDN 站点；② 单机要<b>成百上千并发</b>，协程比线程池轻量得多（大规模采集的并发方案见第 07、10 章）；③ 两条都不占，继续用 requests——生态成熟本身就是生产力。<br><b>合规提醒：</b>更强的并发能力 = 更大的施压能力。换更快的库之前，先把 timeout、限速、robots.txt（1.2 节）三件事刻进肌肉记忆。</div>
 
       <!-- ============ 动画课堂 ============ -->
       <h2 id="lesson">🎬 动画课堂 · 《一次 HTTP 请求的一生》 <span class="chip tanim">第 1 集 · 2 分 37 秒</span></h2>
