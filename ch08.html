@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ===== SECURITY-HARDENING 安全加固（勿删）：限制资源来源与外发，防点击劫持 ===== -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+/* 防点击劫持：GitHub Pages 无法下发 X-Frame-Options，被第三方页面嵌套时自动跳出 */
+(function () {
+  if (window.top !== window.self) {
+    try { window.top.location.href = window.self.location.href; }
+    catch (e) { document.documentElement.innerHTML = ''; }
+  }
+})();
+</script>
+<!-- ===== SECURITY-HARDENING END ===== -->
 <title>08 · JS 逆向专题 — 爬虫进阶</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -170,7 +183,7 @@ CryptoJS.AES.encrypt(data, key, {
           <tr><td>⑤ eval / AAencode / ob 混淆型</td><td>满屏 _0x…、颜文字，或一大坨 eval 包着字符串数组</td><td>先 Pretty-print 格式化，找大数组 + 位移函数</td><td>按 8.6 顺序还原：三件套 → 字符串 → 平坦化</td></tr>
           <tr><td>⑥ JSVMP 型（最难）</td><td>代码是自定义虚拟机解释器 + 大数组字节码，找不到明文算法</td><td>看到"取指-译码-执行"的解释器循环</td><td>先看下方夜幕团队的"值得吗"判断，再决定啃还是绕</td></tr>
         </table></div>
-        <p>对号入座之后，去 K哥的<a href="https://juejin.cn/column/6993510687448252424" target="_blank" rel="noopener">掘金专栏《JS逆向百例》</a>或<a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match</a> 找同类型例题对照练手——每类套路都有完整案例，先自己砍，再翻 writeup。</p>
+        <p>对号入座之后，去 K哥的<a href="https://juejin.cn/column/6993510687448252424" target="_blank" rel="noopener noreferrer">掘金专栏《JS逆向百例》</a>或<a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener noreferrer">猿人学 match</a> 找同类型例题对照练手——每类套路都有完整案例，先自己砍，再翻 writeup。</p>
       </div>
 
       <!-- ============ 8.4 ============ -->
@@ -322,7 +335,7 @@ console.<span class="fn">log</span>(<span class="fn">generator</span>(ast).code)
 
       <!-- ============ 8.7 ============ -->
       <h2>8.7 实战路线 <span class="chip tlab">实战</span></h2>
-      <p>学完 8.1~8.6，去 <a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match</a>（授权练习平台）按序通关。前 10 题覆盖了本章全部技术点，下面给<b>方向性攻略提示</b>（只指路，不给答案）：</p>
+      <p>学完 8.1~8.6，去 <a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener noreferrer">猿人学 match</a>（授权练习平台）按序通关。前 10 题覆盖了本章全部技术点，下面给<b>方向性攻略提示</b>（只指路，不给答案）：</p>
       <div class="tbl-wrap"><table class="tbl">
         <tr><th>题号</th><th>攻略提示（只给方向，不给答案）</th></tr>
         <tr><td><b>第 1 题</b></td><td>简单加密参数：最适合验证"三板斧 + 识别 + 还原"闭环的起点</td></tr>
@@ -418,19 +431,19 @@ token = MD5("page={page}&amp;ts={ts}" + "ydsecret#2024")    （秒级时间戳�
 
       <div class="book-box">
         <div class="bx-title">📚 对齐与拓展</div>
-        <p>· 本章为<b>教材外拓展</b>：主教材未专章覆盖 JS 逆向，知识体系对齐 <a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match</a> 实战体系（前 10 题与 8.2~8.7 一一对应）；<br>
-           · 配套视频：<a href="https://www.bilibili.com/video/BV1TC1jYmEve" target="_blank" rel="noopener">B站 · JS 逆向技术剖析与实战</a>（21 小时，跟着做）；<br>
-           · 加练平台：<a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a>（ssr → spa → antispider 全谱系）、<a href="https://www.python-spider.com/challenge/" target="_blank" rel="noopener">python-spider.com 挑战题</a>；<br>
+        <p>· 本章为<b>教材外拓展</b>：主教材未专章覆盖 JS 逆向，知识体系对齐 <a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener noreferrer">猿人学 match</a> 实战体系（前 10 题与 8.2~8.7 一一对应）；<br>
+           · 配套视频：<a href="https://www.bilibili.com/video/BV1TC1jYmEve" target="_blank" rel="noopener noreferrer">B站 · JS 逆向技术剖析与实战</a>（21 小时，跟着做）；<br>
+           · 加练平台：<a href="https://scrape.center" target="_blank" rel="noopener noreferrer">Scrape Center</a>（ssr → spa → antispider 全谱系）、<a href="https://www.python-spider.com/challenge/" target="_blank" rel="noopener noreferrer">python-spider.com 挑战题</a>；<br>
            · 猿人学每题评论区有公开 writeup——卡 2 天再看，先自己砍。</p>
       </div>
 
             <div class="book-box">
         <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
         <p>
-         · <a href="https://juejin.cn/column/6993510687448252424" target="_blank" rel="noopener">K哥《JS逆向百例》（掘金专栏）</a>——一百个真实案例按套路分类，逆向人的案例字典（配套 <a href="https://www.cnblogs.com/ikdl" target="_blank" rel="noopener">博客园</a> / <a href="https://www.kgtools.cn" target="_blank" rel="noopener">KGtools</a>）;
-         · <a href="https://nightteam.github.io/" target="_blank" rel="noopener">夜幕团队 NightTeam</a>——崔庆才也是成员，爬虫/反爬/JS 逆向深度系列（<a href="https://github.com/nightteam" target="_blank" rel="noopener">GitHub</a>）;
-         · <a href="https://github.com/JSREI" target="_blank" rel="noopener">GitHub · JSREI 组织</a>——JS 逆向脚本与案例仓库集合；B站"宇哥 JS逆向"“编程奇遇”跟练向网课;
-         · 实战线：<a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match</a> 逐题实战 + 卡点回本节补理论。</p>
+         · <a href="https://juejin.cn/column/6993510687448252424" target="_blank" rel="noopener noreferrer">K哥《JS逆向百例》（掘金专栏）</a>——一百个真实案例按套路分类，逆向人的案例字典（配套 <a href="https://www.cnblogs.com/ikdl" target="_blank" rel="noopener noreferrer">博客园</a> / <a href="https://www.kgtools.cn" target="_blank" rel="noopener noreferrer">KGtools</a>）;
+         · <a href="https://nightteam.github.io/" target="_blank" rel="noopener noreferrer">夜幕团队 NightTeam</a>——崔庆才也是成员，爬虫/反爬/JS 逆向深度系列（<a href="https://github.com/nightteam" target="_blank" rel="noopener noreferrer">GitHub</a>）;
+         · <a href="https://github.com/JSREI" target="_blank" rel="noopener noreferrer">GitHub · JSREI 组织</a>——JS 逆向脚本与案例仓库集合；B站"宇哥 JS逆向"“编程奇遇”跟练向网课;
+         · 实战线：<a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener noreferrer">猿人学 match</a> 逐题实战 + 卡点回本节补理论。</p>
       </div>
 
       <div class="pager">

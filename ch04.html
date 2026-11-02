@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ===== SECURITY-HARDENING 安全加固（勿删）：限制资源来源与外发，防点击劫持 ===== -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+/* 防点击劫持：GitHub Pages 无法下发 X-Frame-Options，被第三方页面嵌套时自动跳出 */
+(function () {
+  if (window.top !== window.self) {
+    try { window.top.location.href = window.self.location.href; }
+    catch (e) { document.documentElement.innerHTML = ''; }
+  }
+})();
+</script>
+<!-- ===== SECURITY-HARDENING END ===== -->
 <title>04 · 数据存储：文件 / MySQL / MongoDB — 爬虫进阶</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -437,7 +450,7 @@ cur.execute(sql)</pre>
       <div class="book-box">
         <div class="bx-title">📚 对齐与拓展</div>
         <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 5 章 数据的存储</b>（5.1 文件存储 / 5.2 关系型数据库存储 / 5.3 非关系型数据库存储）；<br>
-           · 拓展阅读：<a href="https://docs.python.org/zh-cn/3/library/sqlite3.html" target="_blank" rel="noopener">sqlite3 官方文档</a>、<a href="https://pymysql.readthedocs.io/" target="_blank" rel="noopener">PyMySQL 文档</a>、<a href="https://pymongo.readthedocs.io/" target="_blank" rel="noopener">PyMongo 教程</a>（重点 CRUD + upsert）、<a href="https://redis-py.readthedocs.io/" target="_blank" rel="noopener">redis-py 文档</a>；<br>
+           · 拓展阅读：<a href="https://docs.python.org/zh-cn/3/library/sqlite3.html" target="_blank" rel="noopener noreferrer">sqlite3 官方文档</a>、<a href="https://pymysql.readthedocs.io/" target="_blank" rel="noopener noreferrer">PyMySQL 文档</a>、<a href="https://pymongo.readthedocs.io/" target="_blank" rel="noopener noreferrer">PyMongo 教程</a>（重点 CRUD + upsert）、<a href="https://redis-py.readthedocs.io/" target="_blank" rel="noopener noreferrer">redis-py 文档</a>；<br>
            · 自检实验：本地起 MongoDB 与 Redis（Docker 一条命令），把第 02 章猫眼数据改存 SQLite → MongoDB → Redis zset 各练一遍。</p>
       </div>
 
@@ -445,8 +458,8 @@ cur.execute(sql)</pre>
         <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
         <p>
          · 《Python网络爬虫权威指南》第 5 章"数据库"——存储选型的国际视角;
-         · <a href="https://www.mongodb.com/docs/manual/" target="_blank" rel="noopener">MongoDB 官方手册</a>——文档模型与增查改权威参考;
-         · <a href="https://redis.io/docs/latest/develop/data-types/" target="_blank" rel="noopener">Redis 数据类型文档</a>——set/zlist/list 的正源，第 07/10 章的地基。</p>
+         · <a href="https://www.mongodb.com/docs/manual/" target="_blank" rel="noopener noreferrer">MongoDB 官方手册</a>——文档模型与增查改权威参考;
+         · <a href="https://redis.io/docs/latest/develop/data-types/" target="_blank" rel="noopener noreferrer">Redis 数据类型文档</a>——set/zlist/list 的正源，第 07/10 章的地基。</p>
       </div>
 
       <div class="pager">

@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ===== SECURITY-HARDENING 安全加固（勿删）：限制资源来源与外发，防点击劫持 ===== -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+/* 防点击劫持：GitHub Pages 无法下发 X-Frame-Options，被第三方页面嵌套时自动跳出 */
+(function () {
+  if (window.top !== window.self) {
+    try { window.top.location.href = window.self.location.href; }
+    catch (e) { document.documentElement.innerHTML = ''; }
+  }
+})();
+</script>
+<!-- ===== SECURITY-HARDENING END ===== -->
 <title>05 · Ajax 分析与动态渲染 — 爬虫进阶</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -484,15 +497,15 @@ t0 = time.<span class="fn">perf_counter</span>()
       <div class="book-box">
         <div class="bx-title">📚 对齐与拓展</div>
         <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 6 章 Ajax 数据爬取</b>（6.1 什么是 Ajax / 6.2 Ajax 分析方法 / 6.3 Ajax 结果提取 / 6.4 爬取实战）与<b>第 7 章 动态渲染页面爬取</b>（7.1 Selenium / 7.2 Splash 基础 / 7.3 Splash 用法详解 / 7.4 Playwright）；<br>
-           · 拓展阅读：<a href="https://playwright.dev/python/" target="_blank" rel="noopener">Playwright Python 官方文档</a>（重点看 auto-waiting 与 network 事件）、<a href="https://www.selenium.dev/documentation/" target="_blank" rel="noopener">Selenium 官方文档</a>；<br>
-           · 配套实战：<a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a> 的 spa1 → spa5 关卡——先抓接口直连，不行再上 Playwright，正好把"两条路"各走一遍。</p>
+           · 拓展阅读：<a href="https://playwright.dev/python/" target="_blank" rel="noopener noreferrer">Playwright Python 官方文档</a>（重点看 auto-waiting 与 network 事件）、<a href="https://www.selenium.dev/documentation/" target="_blank" rel="noopener noreferrer">Selenium 官方文档</a>；<br>
+           · 配套实战：<a href="https://scrape.center" target="_blank" rel="noopener noreferrer">Scrape Center</a> 的 spa1 → spa5 关卡——先抓接口直连，不行再上 Playwright，正好把"两条路"各走一遍。</p>
       </div>
 
             <div class="book-box">
         <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
         <p>
-         · <a href="https://playwright.dev/python/" target="_blank" rel="noopener">Playwright 官方文档</a>——自动等待与网络拦截是现代自动化事实标准;
-         · <a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center spa 关卡</a>——崔庆才书 6/7 章的配套实战，边学边闯;
+         · <a href="https://playwright.dev/python/" target="_blank" rel="noopener noreferrer">Playwright 官方文档</a>——自动等待与网络拦截是现代自动化事实标准;
+         · <a href="https://scrape.center" target="_blank" rel="noopener noreferrer">Scrape Center spa 关卡</a>——崔庆才书 6/7 章的配套实战，边学边闯;
          · 《Python网络爬虫权威指南》第 10 章"读懂 JavaScript"——渲染问题的另一讲法。</p>
       </div>
 

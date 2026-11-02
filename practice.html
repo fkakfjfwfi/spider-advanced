@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ===== SECURITY-HARDENING 安全加固（勿删）：限制资源来源与外发，防点击劫持 ===== -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+/* 防点击劫持：GitHub Pages 无法下发 X-Frame-Options，被第三方页面嵌套时自动跳出 */
+(function () {
+  if (window.top !== window.self) {
+    try { window.top.location.href = window.self.location.href; }
+    catch (e) { document.documentElement.innerHTML = ''; }
+  }
+})();
+</script>
+<!-- ===== SECURITY-HARDENING END ===== -->
 <title>练习场 · 30+ 题库与实战任务 — 爬虫进阶</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -146,14 +159,14 @@ for page in range(1, 100):
   <h2 style="margin-top:34px">🗺 实战任务卡（授权练习平台）</h2>
   <div class="tbl-wrap"><table class="tbl">
     <tr><th>关卡</th><th>练什么</th><th>对应章节</th><th>通关标准</th></tr>
-    <tr><td><a href="https://quotes.toscrape.com" target="_blank" rel="noopener">quotes.toscrape.com</a></td><td>静态列表 + 翻页 + 存储</td><td>02/03/04</td><td>10 页名句入库，字段完整</td></tr>
-    <tr><td><a href="https://books.toscrape.com" target="_blank" rel="noopener">books.toscrape.com</a></td><td>分类聚合 + 详情页跟进</td><td>03/04</td><td>全站图书带分类入库</td></tr>
-    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener">scrape.center ssr1~5</a></td><td>服务端渲染页</td><td>02/03</td><td>5 关全清</td></tr>
-    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener">scrape.center spa1~9</a></td><td>前端渲染 + 接口分析</td><td>05</td><td>spa5 前全部接口直连拿下</td></tr>
-    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener">scrape.center login 系列</a></td><td>登录与验证码</td><td>06</td><td>至少 2 种登录方式跑通</td></tr>
-    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener">scrape.center antispider1~9</a></td><td>反爬阶梯</td><td>07</td><td>全清并写出每关的"盾"是什么</td></tr>
-    <tr><td><a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match 1~10</a></td><td>JS 逆向</td><td>08</td><td>1~5 独立解出；6~10 有笔记</td></tr>
-    <tr><td><a href="https://github.com/hhuayuan/spiderbuf" target="_blank" rel="noopener">Spiderbuf</a></td><td>攻防综合</td><td>07/08</td><td>连闯 3 关</td></tr>
+    <tr><td><a href="https://quotes.toscrape.com" target="_blank" rel="noopener noreferrer">quotes.toscrape.com</a></td><td>静态列表 + 翻页 + 存储</td><td>02/03/04</td><td>10 页名句入库，字段完整</td></tr>
+    <tr><td><a href="https://books.toscrape.com" target="_blank" rel="noopener noreferrer">books.toscrape.com</a></td><td>分类聚合 + 详情页跟进</td><td>03/04</td><td>全站图书带分类入库</td></tr>
+    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener noreferrer">scrape.center ssr1~5</a></td><td>服务端渲染页</td><td>02/03</td><td>5 关全清</td></tr>
+    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener noreferrer">scrape.center spa1~9</a></td><td>前端渲染 + 接口分析</td><td>05</td><td>spa5 前全部接口直连拿下</td></tr>
+    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener noreferrer">scrape.center login 系列</a></td><td>登录与验证码</td><td>06</td><td>至少 2 种登录方式跑通</td></tr>
+    <tr><td><a href="https://scrape.center" target="_blank" rel="noopener noreferrer">scrape.center antispider1~9</a></td><td>反爬阶梯</td><td>07</td><td>全清并写出每关的"盾"是什么</td></tr>
+    <tr><td><a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener noreferrer">猿人学 match 1~10</a></td><td>JS 逆向</td><td>08</td><td>1~5 独立解出；6~10 有笔记</td></tr>
+    <tr><td><a href="https://github.com/hhuayuan/spiderbuf" target="_blank" rel="noopener noreferrer">Spiderbuf</a></td><td>攻防综合</td><td>07/08</td><td>连闯 3 关</td></tr>
   </table></div>
 
   <div class="callout warn" style="margin-top:20px"><b>提醒：</b>所有练习仅在授权平台进行；真实站点务必遵守 robots 与频率礼仪。把每道卡关的题发给 AI 助教，一起复盘"卡在哪一步"。</div>

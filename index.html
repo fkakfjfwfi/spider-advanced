@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ===== SECURITY-HARDENING 安全加固（勿删）：限制资源来源与外发，防点击劫持 ===== -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+/* 防点击劫持：GitHub Pages 无法下发 X-Frame-Options，被第三方页面嵌套时自动跳出 */
+(function () {
+  if (window.top !== window.self) {
+    try { window.top.location.href = window.self.location.href; }
+    catch (e) { document.documentElement.innerHTML = ''; }
+  }
+})();
+</script>
+<!-- ===== SECURITY-HARDENING END ===== -->
 <meta name="description" content="爬虫进阶：对齐《Python3网络爬虫开发实战（第二版）》知识体系，配动画课堂、互动实验室与练习场，面向有 Python 基础的进阶学习者。">
 <title>爬虫进阶 · 对齐优质教材的爬虫体系课</title>
 <link rel="stylesheet" href="assets/style.css">
@@ -153,11 +166,11 @@
       </a>
       <div class="card">
         <h3>🗺 练习平台闯关地图（授权平台）</h3>
-        <p>• <a href="https://quotes.toscrape.com" target="_blank" rel="noopener">quotes / books.toscrape.com</a> — 静态页入门<br>
-           • <a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a> — ssr → spa → login → antispider 全谱系<br>
-           • <a href="https://github.com/hhuayuan/spiderbuf" target="_blank" rel="noopener">Spiderbuf</a> — 矛与盾攻防闯关<br>
-           • <a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener">猿人学 match</a> — JS 逆向刷题圣地（第 1~10 题起步）<br>
-           • <a href="https://www.python-spider.com/challenge/" target="_blank" rel="noopener">python-spider.com</a> — 挑战题加练</p>
+        <p>• <a href="https://quotes.toscrape.com" target="_blank" rel="noopener noreferrer">quotes / books.toscrape.com</a> — 静态页入门<br>
+           • <a href="https://scrape.center" target="_blank" rel="noopener noreferrer">Scrape Center</a> — ssr → spa → login → antispider 全谱系<br>
+           • <a href="https://github.com/hhuayuan/spiderbuf" target="_blank" rel="noopener noreferrer">Spiderbuf</a> — 矛与盾攻防闯关<br>
+           • <a href="https://match.yuanrenxue.cn" target="_blank" rel="noopener noreferrer">猿人学 match</a> — JS 逆向刷题圣地（第 1~10 题起步）<br>
+           • <a href="https://www.python-spider.com/challenge/" target="_blank" rel="noopener noreferrer">python-spider.com</a> — 挑战题加练</p>
       </div>
     </div>
   </section>
@@ -173,14 +186,14 @@
     <div class="grid-2">
       <div class="card">
         <h3>📖 主教材与文档</h3>
-        <p>• 崔庆才《Python3 网络爬虫开发实战（第二版）》——本站主对齐教材，<a href="https://python3webspider.cuiqingcai.com/" target="_blank" rel="noopener">官方文档站</a><br>
-           • <a href="https://developer.mozilla.org/zh-CN/docs/Web/HTTP" target="_blank" rel="noopener">MDN HTTP 文档</a> · <a href="https://scrapy.org" target="_blank" rel="noopener">Scrapy 官方文档</a> · <a href="https://playwright.dev/python/" target="_blank" rel="noopener">Playwright 文档</a></p>
+        <p>• 崔庆才《Python3 网络爬虫开发实战（第二版）》——本站主对齐教材，<a href="https://python3webspider.cuiqingcai.com/" target="_blank" rel="noopener noreferrer">官方文档站</a><br>
+           • <a href="https://developer.mozilla.org/zh-CN/docs/Web/HTTP" target="_blank" rel="noopener noreferrer">MDN HTTP 文档</a> · <a href="https://scrapy.org" target="_blank" rel="noopener noreferrer">Scrapy 官方文档</a> · <a href="https://playwright.dev/python/" target="_blank" rel="noopener noreferrer">Playwright 文档</a></p>
       </div>
       <div class="card">
         <h3>📺 视频与代码仓库</h3>
-        <p>• <a href="https://www.bilibili.com/video/BV1TC1jYmEve" target="_blank" rel="noopener">B站 · JS 逆向技术剖析与实战</a>（21h，配第 08 章）<br>
-           • <a href="https://github.com/wistbean/learn_python3_spider" target="_blank" rel="noopener">wistbean/learn_python3_spider</a>（22k★）<br>
-           • <a href="https://github.com/Kr1s77/Python-crawler-tutorial-starts-from-zero" target="_blank" rel="noopener">Kr1s77 从零教程</a>（含 js 逆向）</p>
+        <p>• <a href="https://www.bilibili.com/video/BV1TC1jYmEve" target="_blank" rel="noopener noreferrer">B站 · JS 逆向技术剖析与实战</a>（21h，配第 08 章）<br>
+           • <a href="https://github.com/wistbean/learn_python3_spider" target="_blank" rel="noopener noreferrer">wistbean/learn_python3_spider</a>（22k★）<br>
+           • <a href="https://github.com/Kr1s77/Python-crawler-tutorial-starts-from-zero" target="_blank" rel="noopener noreferrer">Kr1s77 从零教程</a>（含 js 逆向）</p>
       </div>
     </div>
   </section>

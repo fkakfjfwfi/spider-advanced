@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ===== SECURITY-HARDENING 安全加固（勿删）：限制资源来源与外发，防点击劫持 ===== -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+/* 防点击劫持：GitHub Pages 无法下发 X-Frame-Options，被第三方页面嵌套时自动跳出 */
+(function () {
+  if (window.top !== window.self) {
+    try { window.top.location.href = window.self.location.href; }
+    catch (e) { document.documentElement.innerHTML = ''; }
+  }
+})();
+</script>
+<!-- ===== SECURITY-HARDENING END ===== -->
 <title>07 · 代理与反反爬体系 — 爬虫进阶</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -571,7 +584,7 @@ ZRANGEBYSCORE proxy:pool 3 +inf           <span class="cm"># 调度：先从 3 �
       <div class="book-box">
         <div class="bx-title">📚 对齐与拓展</div>
         <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 9 章 代理与反反爬</b>（9.1 代理设置 / 9.2 代理池的维护 / 9.3 付费代理的使用 / 9.4 ADSL 拨号代理 / 9.5 反爬思路总述）；7.5 总纲为本站在教材 9.5 基础上的体系化重组；<br>
-           · 拓展阅读：<a href="https://github.com/hellysmile/fake-useragent" target="_blank" rel="noopener">fake-useragent</a>、令牌桶 / Token Bucket 算法（计网流量整形经典模型）、<a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a> 的 antispider1 → antispider9 关卡（每关就是图鉴里的一种手段，由浅入深）；<br>
+           · 拓展阅读：<a href="https://github.com/hellysmile/fake-useragent" target="_blank" rel="noopener noreferrer">fake-useragent</a>、令牌桶 / Token Bucket 算法（计网流量整形经典模型）、<a href="https://scrape.center" target="_blank" rel="noopener noreferrer">Scrape Center</a> 的 antispider1 → antispider9 关卡（每关就是图鉴里的一种手段，由浅入深）；<br>
            · 合规提醒：代理与反反爬手段只用于公开数据采集与授权测试，红线见首页"合规红线"。</p>
       </div>
 
@@ -579,7 +592,7 @@ ZRANGEBYSCORE proxy:pool 3 +inf           <span class="cm"># 调度：先从 3 �
         <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
         <p>
          · 韦世东《Python3反爬虫原理与绕过实战》全本——本章之后反爬体系的主线续篇（字体/指纹/JS 混淆）;
-         · <a href="https://github.com/jhao104/proxy_pool" target="_blank" rel="noopener">jhao104/proxy_pool</a>——高星开源代理池，架构与本章"四模块"完全对应，读源码学工程;
+         · <a href="https://github.com/jhao104/proxy_pool" target="_blank" rel="noopener noreferrer">jhao104/proxy_pool</a>——高星开源代理池，架构与本章"四模块"完全对应，读源码学工程;
          · 崔庆才书第 9 章 9.1~9.5——代理细节（ADSL、付费隧道）的教材原版。</p>
       </div>
 

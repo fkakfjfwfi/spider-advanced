@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ===== SECURITY-HARDENING 安全加固（勿删）：限制资源来源与外发，防点击劫持 ===== -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+/* 防点击劫持：GitHub Pages 无法下发 X-Frame-Options，被第三方页面嵌套时自动跳出 */
+(function () {
+  if (window.top !== window.self) {
+    try { window.top.location.href = window.self.location.href; }
+    catch (e) { document.documentElement.innerHTML = ''; }
+  }
+})();
+</script>
+<!-- ===== SECURITY-HARDENING END ===== -->
 <title>10 · Scrapy 框架与分布式部署 — 爬虫进阶</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -598,7 +611,7 @@ FEISHU_WEBHOOK = <span class="st">"https://open.feishu.cn/open-apis/bot/v2/hook/
       <div class="book-box">
         <div class="bx-title">📚 对齐与拓展</div>
         <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 13 章 Scrapy 框架</b>（13.1 架构 / 13.2 入门 / 13.3 Selector / 13.4 Spider / 13.5 下载中间件 / 13.7 Item Pipeline / 13.8 对接 Selenium）+ <b>第 14 章 Scrapy-Redis 分布式</b> + <b>第 15 章 部署与管理</b>（Scrapyd / Docker / Gerapy）；<br>
-           · 手册：<a href="https://scrapy.org" target="_blank" rel="noopener">Scrapy 官方文档</a>（Deployment / Jobs 章节）· <a href="https://github.com/rmax/scrapy-redis" target="_blank" rel="noopener">scrapy-redis</a> · <a href="https://github.com/Gerapy/Gerapy" target="_blank" rel="noopener">Gerapy</a>；<br>
+           · 手册：<a href="https://scrapy.org" target="_blank" rel="noopener noreferrer">Scrapy 官方文档</a>（Deployment / Jobs 章节）· <a href="https://github.com/rmax/scrapy-redis" target="_blank" rel="noopener noreferrer">scrapy-redis</a> · <a href="https://github.com/Gerapy/Gerapy" target="_blank" rel="noopener noreferrer">Gerapy</a>；<br>
            · 视频：B站搜"黑马程序员 Scrapy 框架"（入门跟练）；<br>
            · 毕业课题：把前面章节的任意爬虫重构成"Scrapy + 定时调度 + 失败告警 + 增量入库"的采集系统。</p>
       </div>
@@ -606,10 +619,10 @@ FEISHU_WEBHOOK = <span class="st">"https://open.feishu.cn/open-apis/bot/v2/hook/
             <div class="book-box">
         <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
         <p>
-         · <a href="https://book.douban.com/subject_search?search_text=精通Scrapy网络爬虫" target="_blank" rel="noopener">《精通Scrapy网络爬虫》</a>——从"会用"讲到"懂原理"（调度器/去重源码级）;
-         · <a href="https://scrapy.org" target="_blank" rel="noopener">Scrapy 官方文档</a>——Deployment/Jobs/AutoThrottle 三节是工程化精髓;
-         · <a href="https://github.com/crawlab-team/crawlab" target="_blank" rel="noopener">crawlab-team/crawlab</a>——夜幕系开源分布式管理平台，Gerapy 的现代活跃替代;
-         · <a href="https://github.com/wistbean/learn_python3_spider" target="_blank" rel="noopener">wistbean/learn_python3_spider</a> / <a href="https://github.com/facert/awesome-spider" target="_blank" rel="noopener">facert/awesome-spider</a>——找"某类网站怎么爬"先翻这里。</p>
+         · <a href="https://book.douban.com/subject_search?search_text=精通Scrapy网络爬虫" target="_blank" rel="noopener noreferrer">《精通Scrapy网络爬虫》</a>——从"会用"讲到"懂原理"（调度器/去重源码级）;
+         · <a href="https://scrapy.org" target="_blank" rel="noopener noreferrer">Scrapy 官方文档</a>——Deployment/Jobs/AutoThrottle 三节是工程化精髓;
+         · <a href="https://github.com/crawlab-team/crawlab" target="_blank" rel="noopener noreferrer">crawlab-team/crawlab</a>——夜幕系开源分布式管理平台，Gerapy 的现代活跃替代;
+         · <a href="https://github.com/wistbean/learn_python3_spider" target="_blank" rel="noopener noreferrer">wistbean/learn_python3_spider</a> / <a href="https://github.com/facert/awesome-spider" target="_blank" rel="noopener noreferrer">facert/awesome-spider</a>——找"某类网站怎么爬"先翻这里。</p>
       </div>
 
       <div class="pager">

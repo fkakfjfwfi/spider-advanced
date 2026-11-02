@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ===== SECURITY-HARDENING 安全加固（勿删）：限制资源来源与外发，防点击劫持 ===== -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+/* 防点击劫持：GitHub Pages 无法下发 X-Frame-Options，被第三方页面嵌套时自动跳出 */
+(function () {
+  if (window.top !== window.self) {
+    try { window.top.location.href = window.self.location.href; }
+    catch (e) { document.documentElement.innerHTML = ''; }
+  }
+})();
+</script>
+<!-- ===== SECURITY-HARDENING END ===== -->
 <title>03 · 解析库全解：XPath / BeautifulSoup / pyquery — 爬虫进阶</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -568,16 +581,16 @@ save_jsonl(<span class="st">"items.jsonl"</span>, {<span class="st">"title"</spa
       <div class="book-box">
         <div class="bx-title">📚 对齐与拓展</div>
         <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 4 章 解析库的使用</b>（4.1 XPath 语言 / 4.2 BeautifulSoup 的使用 / 4.3 pyquery 的使用）；parsel 与 JSON 为第 10 章 Scrapy 与接口爬取的先修拓展；<br>
-           · 拓展阅读：<a href="https://lxml.de/" target="_blank" rel="noopener">lxml 官方文档</a>、<a href="https://parsel.readthedocs.io/" target="_blank" rel="noopener">parsel 官方文档</a>、<a href="https://www.crummy.com/software/BeautifulSoup/bs4/doc.zh/" target="_blank" rel="noopener">BeautifulSoup 中文文档</a>；<br>
-           · 练习站点：<a href="https://quotes.toscrape.com" target="_blank" rel="noopener">quotes.toscrape.com</a> 与 <a href="https://books.toscrape.com" target="_blank" rel="noopener">books.toscrape.com</a>（专为练解析而生，拿本章四大库各爬一遍）。</p>
+           · 拓展阅读：<a href="https://lxml.de/" target="_blank" rel="noopener noreferrer">lxml 官方文档</a>、<a href="https://parsel.readthedocs.io/" target="_blank" rel="noopener noreferrer">parsel 官方文档</a>、<a href="https://www.crummy.com/software/BeautifulSoup/bs4/doc.zh/" target="_blank" rel="noopener noreferrer">BeautifulSoup 中文文档</a>；<br>
+           · 练习站点：<a href="https://quotes.toscrape.com" target="_blank" rel="noopener noreferrer">quotes.toscrape.com</a> 与 <a href="https://books.toscrape.com" target="_blank" rel="noopener noreferrer">books.toscrape.com</a>（专为练解析而生，拿本章四大库各爬一遍）。</p>
       </div>
 
             <div class="book-box">
         <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
         <p>
-         · <a href="https://www.crummy.com/software/BeautifulSoup/bs4/doc.zh/" target="_blank" rel="noopener">BeautifulSoup 中文文档</a> / <a href="https://lxml.de/" target="_blank" rel="noopener">lxml 官方文档</a>——两大解析库权威手册;
-         · <a href="https://www.kgtools.cn" target="_blank" rel="noopener">KGtools XPath/正则测试器</a>——表达式先在线验证再写进代码;
-         · <a href="https://www.ituring.com.cn/book/1980" target="_blank" rel="noopener">《Python网络爬虫权威指南》</a>第 2 章——BS4 高级解析的另一种讲法。</p>
+         · <a href="https://www.crummy.com/software/BeautifulSoup/bs4/doc.zh/" target="_blank" rel="noopener noreferrer">BeautifulSoup 中文文档</a> / <a href="https://lxml.de/" target="_blank" rel="noopener noreferrer">lxml 官方文档</a>——两大解析库权威手册;
+         · <a href="https://www.kgtools.cn" target="_blank" rel="noopener noreferrer">KGtools XPath/正则测试器</a>——表达式先在线验证再写进代码;
+         · <a href="https://www.ituring.com.cn/book/1980" target="_blank" rel="noopener noreferrer">《Python网络爬虫权威指南》</a>第 2 章——BS4 高级解析的另一种讲法。</p>
       </div>
 
       <div class="pager">

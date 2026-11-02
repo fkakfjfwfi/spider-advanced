@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ===== SECURITY-HARDENING 安全加固（勿删）：限制资源来源与外发，防点击劫持 ===== -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+/* 防点击劫持：GitHub Pages 无法下发 X-Frame-Options，被第三方页面嵌套时自动跳出 */
+(function () {
+  if (window.top !== window.self) {
+    try { window.top.location.href = window.self.location.href; }
+    catch (e) { document.documentElement.innerHTML = ''; }
+  }
+})();
+</script>
+<!-- ===== SECURITY-HARDENING END ===== -->
 <title>01 · 爬虫基础与抓包分析 — 爬虫进阶</title>
 <link rel="stylesheet" href="assets/style.css">
 <style>
@@ -437,15 +450,15 @@ asyncio.run(fetch_all([<span class="st">f"https://httpbin.org/get?i={i}"</span> 
       <div class="book-box">
         <div class="bx-title">📚 对齐与拓展</div>
         <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 2 章 爬虫基础</b>（2.1 HTTP 基本原理 / 2.2 Web 网页基础 / 2.3 爬虫基本原理 / 2.4 会话和 Cookies / 2.5 代理基本原理）；<br>
-           · 拓展阅读：<a href="https://developer.mozilla.org/zh-CN/docs/Web/HTTP" target="_blank" rel="noopener">MDN HTTP 文档</a>（当手册查）；<br>
+           · 拓展阅读：<a href="https://developer.mozilla.org/zh-CN/docs/Web/HTTP" target="_blank" rel="noopener noreferrer">MDN HTTP 文档</a>（当手册查）；<br>
            · 配套视频：B站 搜索"麦叔 HTTP 协议入门"（1 小时速通）。</p>
       </div>
 
       <div class="book-box">
         <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
-        <p>· 📚 <a href="https://book.douban.com/subject_search?search_text=HTTP权威指南" target="_blank" rel="noopener">《HTTP权威指南》</a>——把 HTTP 读厚的字典，重点前 5 章与 Cookie/连接管理章节；<br>
-           · 📚 <a href="https://www.ituring.com.cn/book/1980" target="_blank" rel="noopener">《Python网络爬虫权威指南》</a>（Ryan Mitchell）第 1~3 章——国际视角看"第一个爬虫"与抓取礼仪；<br>
-           · 📄 <a href="https://developer.mozilla.org/zh-CN/docs/Web/HTTP" target="_blank" rel="noopener">MDN HTTP</a>——每个头、每个状态码的权威定义，当字典查。</p>
+        <p>· 📚 <a href="https://book.douban.com/subject_search?search_text=HTTP权威指南" target="_blank" rel="noopener noreferrer">《HTTP权威指南》</a>——把 HTTP 读厚的字典，重点前 5 章与 Cookie/连接管理章节；<br>
+           · 📚 <a href="https://www.ituring.com.cn/book/1980" target="_blank" rel="noopener noreferrer">《Python网络爬虫权威指南》</a>（Ryan Mitchell）第 1~3 章——国际视角看"第一个爬虫"与抓取礼仪；<br>
+           · 📄 <a href="https://developer.mozilla.org/zh-CN/docs/Web/HTTP" target="_blank" rel="noopener noreferrer">MDN HTTP</a>——每个头、每个状态码的权威定义，当字典查。</p>
       </div>
 
       <div class="pager">

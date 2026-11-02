@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ===== SECURITY-HARDENING 安全加固（勿删）：限制资源来源与外发，防点击劫持 ===== -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+/* 防点击劫持：GitHub Pages 无法下发 X-Frame-Options，被第三方页面嵌套时自动跳出 */
+(function () {
+  if (window.top !== window.self) {
+    try { window.top.location.href = window.self.location.href; }
+    catch (e) { document.documentElement.innerHTML = ''; }
+  }
+})();
+</script>
+<!-- ===== SECURITY-HARDENING END ===== -->
 <title>06 · 验证码识别与模拟登录 — 爬虫进阶</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -515,16 +528,16 @@ app = <span class="fn">Flask</span>(__name__)
       <div class="book-box">
         <div class="bx-title">📚 对齐与拓展</div>
         <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 8 章 验证码识别</b>（8.1 图形验证码 / 8.2 滑动验证码 / 8.3 点触验证码 / 8.4 宫格验证码）与<b>第 10 章</b>（10.1 模拟登录 / 10.2 Cookies 池）；<br>
-           · 拓展阅读：<a href="https://github.com/sml2h3/ddddocr" target="_blank" rel="noopener">ddddocr 项目主页</a>（API 与更多用法）、所用打码平台的题型编号文档；<br>
-           · 配套实战：<a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a> 的 login 系列关卡，专门练登录与验证码；再次提醒——只在授权平台与自有账号上练习。</p>
+           · 拓展阅读：<a href="https://github.com/sml2h3/ddddocr" target="_blank" rel="noopener noreferrer">ddddocr 项目主页</a>（API 与更多用法）、所用打码平台的题型编号文档；<br>
+           · 配套实战：<a href="https://scrape.center" target="_blank" rel="noopener noreferrer">Scrape Center</a> 的 login 系列关卡，专门练登录与验证码；再次提醒——只在授权平台与自有账号上练习。</p>
       </div>
 
             <div class="book-box">
         <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
         <p>
-         · <a href="https://book.douban.com/subject_search?search_text=Python3反爬虫原理与绕过实战" target="_blank" rel="noopener">韦世东《Python3反爬虫原理与绕过实战》</a>——验证码章节比教材展开更细（崔庆才作序推荐）;
-         · <a href="https://github.com/Kr1s77/awesome-python-login-model" target="_blank" rel="noopener">Kr1s77/awesome-python-login-model</a>——数十个网站登录源码合集，登录方法论的实操场;
-         · <a href="https://github.com/sml2h3/ddddocr" target="_blank" rel="noopener">sml2h3/ddddocr</a>——验证码 OCR 库官方仓库，README 即完整教程。</p>
+         · <a href="https://book.douban.com/subject_search?search_text=Python3反爬虫原理与绕过实战" target="_blank" rel="noopener noreferrer">韦世东《Python3反爬虫原理与绕过实战》</a>——验证码章节比教材展开更细（崔庆才作序推荐）;
+         · <a href="https://github.com/Kr1s77/awesome-python-login-model" target="_blank" rel="noopener noreferrer">Kr1s77/awesome-python-login-model</a>——数十个网站登录源码合集，登录方法论的实操场;
+         · <a href="https://github.com/sml2h3/ddddocr" target="_blank" rel="noopener noreferrer">sml2h3/ddddocr</a>——验证码 OCR 库官方仓库，README 即完整教程。</p>
       </div>
 
       <div class="pager">

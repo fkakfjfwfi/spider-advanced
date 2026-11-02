@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ===== SECURITY-HARDENING 安全加固（勿删）：限制资源来源与外发，防点击劫持 ===== -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+/* 防点击劫持：GitHub Pages 无法下发 X-Frame-Options，被第三方页面嵌套时自动跳出 */
+(function () {
+  if (window.top !== window.self) {
+    try { window.top.location.href = window.self.location.href; }
+    catch (e) { document.documentElement.innerHTML = ''; }
+  }
+})();
+</script>
+<!-- ===== SECURITY-HARDENING END ===== -->
 <title>09 · App 爬取：抓包与自动化 — 爬虫进阶</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -348,15 +361,15 @@ db.<span class="fn">execute</span>(<span class="st">"CREATE TABLE IF NOT EXISTS 
       <div class="book-box">
         <div class="bx-title">📚 对齐与拓展</div>
         <p>· 本章对应《Python3网络爬虫开发实战（第二版）》<b>第 11 章 App 爬取</b>（11.1 抓包原理与 Charles / 11.2 mitmproxy / 11.3 安卓模拟器抓包实战 / 11.4~11.6 Appium 自动化）；<br>
-           · Frida 为拓展内容，手册：<a href="https://frida.re" target="_blank" rel="noopener">Frida 官方文档</a> · <a href="https://mitmproxy.org" target="_blank" rel="noopener">mitmproxy 文档</a> · <a href="https://appium.io" target="_blank" rel="noopener">Appium 文档</a>；<br>
-           · 实战加练：<a href="https://scrape.center" target="_blank" rel="noopener">Scrape Center</a> 的 App 系列练习（授权平台），从 mApp 系列入门 Frida。</p>
+           · Frida 为拓展内容，手册：<a href="https://frida.re" target="_blank" rel="noopener noreferrer">Frida 官方文档</a> · <a href="https://mitmproxy.org" target="_blank" rel="noopener noreferrer">mitmproxy 文档</a> · <a href="https://appium.io" target="_blank" rel="noopener noreferrer">Appium 文档</a>；<br>
+           · 实战加练：<a href="https://scrape.center" target="_blank" rel="noopener noreferrer">Scrape Center</a> 的 App 系列练习（授权平台），从 mApp 系列入门 Frida。</p>
       </div>
 
             <div class="book-box">
         <div class="bx-title">🌐 多源精读 · 换几个视角吃透本章（更多见<a href="library.html">多源图书馆</a>）</div>
         <p>
-         · <a href="https://docs.mitmproxy.org/stable/" target="_blank" rel="noopener">mitmproxy 官方文档</a>——抓包三模式与 addon 脚本权威手册;
-         · <a href="https://frida.re/docs/home/" target="_blank" rel="noopener">Frida 官方文档</a>——短而精，建议直接啃英文原版;
+         · <a href="https://docs.mitmproxy.org/stable/" target="_blank" rel="noopener noreferrer">mitmproxy 官方文档</a>——抓包三模式与 addon 脚本权威手册;
+         · <a href="https://frida.re/docs/home/" target="_blank" rel="noopener noreferrer">Frida 官方文档</a>——短而精，建议直接啃英文原版;
          · 崔庆才书第 11 章 11.1~11.6——Charles/Appium 流程的教材原版。</p>
       </div>
 
