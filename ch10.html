@@ -84,7 +84,7 @@
       <div class="tbl-wrap"><table class="tbl">
         <tr><th>组件</th><th>职责</th><th>你会在哪里碰它</th></tr>
         <tr><td><b>引擎 Engine</b></td><td>全场总指挥：所有数据流动都由它中转，全链路异步（基于 Twisted 事件驱动）</td><td>几乎不改它，但理解它 = 理解 Scrapy 的一切</td></tr>
-        <tr><td><b>调度器 Scheduler</b></td><td>请求的"候车室"：决定下一个爬哪个 URL，内置请求指纹去重</td><td>10.7 分布式就是把它换成 Redis 队列</td></tr>
+        <tr><td><b>调度器 Scheduler</b></td><td>请求的"候车室"：决定下一个爬哪个 URL，内置请求指纹去重</td><td>10.9 分布式就是把它换成 Redis 队列</td></tr>
         <tr><td><b>下载器 Downloader</b></td><td>真正发 HTTP 请求的地方：并发、延时、限速都在这层配置</td><td>10.2 的 settings、10.4 的中间件</td></tr>
         <tr><td><b>爬虫 Spider</b></td><td><b>你写主逻辑的地方</b>：解析 Response，产出 Item 或新 Request</td><td>10.2/10.3 的 parse 函数</td></tr>
         <tr><td><b>Item Pipeline</b></td><td>数据流水线：清洗 → 校验 → 去重 → 入库</td><td>10.5 的 pipeline 类</td></tr>
@@ -154,7 +154,7 @@ cd quotes
 scrapy genspider quotes quotes.toscrape.com   <span class="cm"># 生成爬虫模板（名字 + 允许域名）</span></pre>
       <div class="code-title">项目目录树（含注释）</div>
 <pre class="code">quotes/
-├── scrapy.cfg               <span class="cm"># 部署配置文件（10.8 Scrapyd 上传时用）</span>
+├── scrapy.cfg               <span class="cm"># 部署配置文件（10.10 Scrapyd 上传时用）</span>
 └── quotes/
     ├── settings.py          <span class="cm"># 全局配置：并发 / 延时 / UA / 中间件与管道开关</span>
     ├── items.py             <span class="cm"># 数据结构定义（像定义数据库表）</span>
@@ -412,7 +412,289 @@ SQLITE_DB = <span class="st">"quotes.db"</span></pre>
       <p>使用时在 Spider 里 <code class="inline">yield scrapy.Request(url, meta={"render": True})</code> 即可。要点：① 用 <code class="inline">request.meta</code> 做<b>开关</b>，只让需要的请求付出渲染成本，普通请求照走高速；② 浏览器实例全局一个，<code class="inline">spider_closed</code> 信号里关闭；③ 渲染是<b>同步阻塞</b>的，与 CONCURRENT_REQUESTS 的并发有张力，量大的渲染任务考虑 <code class="inline">scrapy-playwright</code> 插件（官方维护的异步集成）。</p>
 
       <!-- ============ 10.7 ============ -->
-      <h2>10.7 分布式 <span class="chip tbook">对齐教材 第 14 章</span></h2>
+      <h2>10.7 自己造一个网址池 <span class="chip tnew">新 · 工程实现</span></h2>
+      <p>下一节用 Scrapy-Redis 做分布式，那是<b>用现成的池</b>。但在用之前得先想明白一件事：<b>一个池到底要管什么</b>？如果连"URL 有几种状态"都说不清，用谁的池都是黑盒。这一节把池拆开，用不到 60 行代码造一个——造过之后，再看 Scrapy-Redis 的每个配置项，你都知道它在对应哪一行。</p>
+
+      <h3>先问一个问题：URL 只有"爬过/没爬过"两种状态吗</h3>
+      <p>抓一个京东全站，品量几千万。用 Python 的 <code class="inline">set</code> 记"爬过的 URL"行不行？小规模可以，规模一上来就碎：set 在内存里，进程一挂全丢；而且它只会记"爬过"，记不住"正在爬"。实际至少需要<b>六种状态</b>：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>状态</th><th>存在哪</th><th>怎么进去</th><th>怎么出来</th></tr>
+        <tr><td>待下载</td><td><code class="inline">waiting[host]</code> 集合</td><td>add() 入池；失败回炉</td><td>被 pop() 取走</td></tr>
+        <tr><td>下载中</td><td><code class="inline">pending[url]</code> = 时间戳</td><td>pop() 时标记</td><td>set_status() 回报；或超时被踢出</td></tr>
+        <tr><td>失败待重试</td><td><code class="inline">failure[url]</code> = 次数</td><td>非 200 且非 404</td><td>满 3 次转永久失败</td></tr>
+        <tr><td>永久失败</td><td><b>持久库</b>（值 f）</td><td>404，或失败满 3 次</td><td>终态，不再碰</td></tr>
+        <tr><td>已成功</td><td><b>持久库</b>（值 s）</td><td>返回 200</td><td>终态，不再碰</td></tr>
+        <tr><td>待刷新</td><td><code class="inline">hub[url]</code> = 时间戳</td><td>set_hubs() 注册</td><td>距上次超过 refresh_span 可取</td></tr>
+      </table></div>
+      <p>为什么要把"已成功/永久失败"单独存到<b>持久库</b>（LevelDB / Redis / 数据库都行）而不是内存字典：这两个是<b>终态</b>，爬虫重启后必须还记得，否则第二天从头再来。而 waiting / pending / failure 是<b>过程态</b>，丢了无非是重复下载几个页面，代价可以接受。</p>
+
+      <h3>为什么 waiting 要按 host 分组</h3>
+      <p>这是整个设计里最容易被忽略、也最有含金量的一点。</p>
+      <pre class="code"><span class="cm"># ❌ 一个扁平的集合</span>
+waiting = {<span class="st">"http://a.com/1"</span>, <span class="st">"http://a.com/2"</span>, <span class="st">"http://a.com/3"</span>, ...}
+
+<span class="cm"># ✅ 按 host 分组</span>
+waiting = {
+    <span class="st">"a.com"</span>: {<span class="st">"http://a.com/1"</span>, <span class="st">"http://a.com/2"</span>},
+    <span class="st">"b.com"</span>: {<span class="st">"http://b.com/9"</span>},
+}</pre>
+      <p>假设并发 1000。用扁平集合，很可能 1000 个 URL 里 900 个都来自同一个站——你会在一瞬间给这个站发 900 个请求，<b>相当于一次小型 DDoS</b>，对方服务器卡死，你的 IP 被封。按 host 分组后，<code class="inline">pop()</code> 每次从<b>不同 host 各取一个</b>，请求天然分散到几百个站，每个站一秒只收到一次请求，完全无感。</p>
+      <div class="callout info"><b>这个设计的出发点不是"我更快"，而是"别把人家搞挂"。</b>它和后面讲的所有反爬手段是同一个逻辑：<b>你的礼貌程度，决定了你能活多久</b>。分组这一行代码，比任何 UA 伪装都更有效地降低封禁率。</div>
+
+      <h3>那个 10 秒：pending 的失联判定</h3>
+      <p><code class="inline">pending</code> 记的是"谁拿走了这个 URL、什么时候拿的"。正常情况下，一个协程取走 URL，1~2 秒就该回来报告"下完了，状态 200"。如果 <b>10 秒</b>还没动静呢？</p>
+      <p>说明那个协程可能已经崩了——异常退出、被 kill、或者网络卡死在某个死连接上。这时 URL 就永远"卡"在 pending 里，既不在 waiting（不会被重试），也没进持久库（不算完成），<b>就这么凭空消失了</b>。</p>
+      <p>解法很巧：不在后台开个线程扫 pending（那要多一套定时逻辑），而是<b>在下次有人把同一个 URL 重新 add 进来时顺手检查</b>——发现它在 pending 且超过 10 秒，就判定原下载者已死，踢出 pending、重新入池。用一句大白话描述这个规则：<b>"这人拿走 URL 说去干活，按说两秒就回来回话。过去 10 秒了还没动静——他多半是睡着了，东西我收回来给别人。"</b></p>
+
+      <h3>代码骨架：三个方法撑起一个池</h3>
+      <div class="code-title">urlpool.py —— 去掉了实现细节的最小可用版</div>
+<pre class="code"><span class="kw">import</span> time
+<span class="kw">from</span> urllib.parse <span class="kw">import</span> urlparse
+
+
+<span class="kw">class</span> <span class="fn">UrlPool</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="kw">self</span>, db):
+        <span class="kw">self</span>.db      = db          <span class="cm"># 持久层：has() / set_success() / set_failure()</span>
+        <span class="kw">self</span>.waiting = {}          <span class="cm"># host -> {url, ...}</span>
+        <span class="kw">self</span>.pending = {}          <span class="cm"># url  -> 取走时的时间戳</span>
+        <span class="kw">self</span>.failure = {}          <span class="cm"># url  -> 失败次数</span>
+        <span class="kw">self</span>.hub      = {}          <span class="cm"># hub_url -> 上次抓取时间</span>
+        <span class="kw">self</span>.refresh_span = <span class="fn">300</span>   <span class="cm"># hub 页 5 分钟刷一次</span>
+
+    <span class="kw">def</span> <span class="fn">add</span>(<span class="kw">self</span>, url):
+        ts = <span class="kw">self</span>.pending.<span class="fn">get</span>(url)
+        <span class="kw">if</span> ts <span class="kw">is</span> <span class="kw">not</span> <span class="kw">None</span>:
+            <span class="kw">if</span> time.<span class="fn">time</span>() - ts &lt; <span class="fn">10</span>:
+                <span class="kw">return</span>                    <span class="cm"># 别人正在下，别抢</span>
+            <span class="kw">del</span> <span class="kw">self</span>.pending[url]         <span class="cm"># 超时未回话，当它挂了</span>
+        <span class="kw">if</span> <span class="kw">self</span>.db.<span class="fn">has</span>(url):
+            <span class="kw">return</span>                        <span class="cm"># 终态，爬过就跳过</span>
+        host = urlparse(url).netloc
+        <span class="kw">self</span>.waiting.<span class="fn">setdefault</span>(host, <span class="fn">set</span>()).<span class="fn">add</span>(url)
+
+    <span class="kw">def</span> <span class="fn">pop</span>(<span class="kw">self</span>, n, hub_ratio=<span class="fn">0.5</span>):
+        out, now = {}, time.<span class="fn">time</span>()
+        quota = <span class="fn">int</span>(n * hub_ratio)
+        <span class="kw">for</span> h, last <span class="kw">in</span> <span class="fn">list</span>(<span class="kw">self</span>.hub.<span class="fn">items</span>()):     <span class="cm"># ① 先取到期的 hub 页</span>
+            <span class="kw">if</span> quota &lt;= <span class="fn">0</span>:
+                <span class="kw">break</span>
+            <span class="kw">if</span> now - last &gt;= <span class="kw">self</span>.refresh_span:
+                out[h] = <span class="st">"hub"</span>
+                <span class="kw">self</span>.hub[h] = now
+                quota -= <span class="fn">1</span>
+        <span class="kw">for</span> host, urls <span class="kw">in</span> <span class="fn">list</span>(<span class="kw">self</span>.waiting.<span class="fn">items</span>()):  <span class="cm"># ② 各 host 轮着取一个</span>
+            <span class="kw">if</span> <span class="fn">len</span>(out) &gt;= n:
+                <span class="kw">break</span>
+            <span class="kw">if</span> <span class="kw">not</span> urls:
+                <span class="kw">self</span>.waiting.<span class="fn">pop</span>(host, <span class="kw">None</span>)
+                <span class="kw">continue</span>
+            url = urls.<span class="fn">pop</span>()
+            out[url] = <span class="st">"url"</span>
+            <span class="kw">self</span>.pending[url] = now              <span class="cm"># 标记"已取走"</span>
+        <span class="kw">return</span> out          <span class="cm"># {url: "hub" | "url"} —— 调用方靠它分流</span>
+
+    <span class="kw">def</span> <span class="fn">set_status</span>(<span class="kw">self</span>, url, status):
+        <span class="kw">self</span>.pending.<span class="fn">pop</span>(url, <span class="kw">None</span>)
+        <span class="kw">if</span> status == <span class="fn">200</span>:
+            <span class="kw">self</span>.db.<span class="fn">set_success</span>(url)
+        <span class="kw">elif</span> status == <span class="fn">404</span>:                    <span class="cm"># 资源真的不存在，重试也没用</span>
+            <span class="kw">self</span>.db.<span class="fn">set_failure</span>(url)
+        <span class="kw">else</span>:                                   <span class="cm"># 超时/500/连接重置：给它三次机会</span>
+            cnt = <span class="kw">self</span>.failure.<span class="fn">get</span>(url, <span class="fn">0</span>) + <span class="fn">1</span>
+            <span class="kw">if</span> cnt &gt;= <span class="fn">3</span>:
+                <span class="kw">self</span>.db.<span class="fn">set_failure</span>(url)
+                <span class="kw">self</span>.failure.<span class="fn">pop</span>(url, <span class="kw">None</span>)
+            <span class="kw">else</span>:
+                <span class="kw">self</span>.failure[url] = cnt
+                <span class="kw">self</span>.waiting.<span class="fn">setdefault</span>(urlparse(url).netloc, <span class="fn">set</span>()).<span class="fn">add</span>(url)</pre>
+      <p>爬虫主循环因此变得极简——它只需要关心两件事：<b>要任务</b>、<b>报结果</b>。</p>
+      <div class="code-title">爬虫侧：完全没有"去重"和"重试"的代码</div>
+<pre class="code"><span class="kw">while</span> <span class="kw">True</span>:
+    <span class="kw">for</span> url, kind <span class="kw">in</span> pool.<span class="fn">pop</span>(<span class="fn">5</span>).<span class="fn">items</span>():
+        status, html, _ = <span class="fn">download</span>(url)
+        <span class="kw">if</span> kind == <span class="st">"hub"</span> <span class="kw">and</span> status == <span class="fn">200</span>:
+            pool.<span class="fn">add_many</span>(<span class="fn">filter_good</span>(<span class="fn">extract_links</span>(html)))  <span class="cm"># hub 页只提取链接</span>
+        <span class="kw">elif</span> kind == <span class="st">"url"</span> <span class="kw">and</span> status == <span class="fn">200</span>:
+            db.<span class="fn">table_insert</span>(<span class="st">"html"</span>, {<span class="st">"url"</span>: url, <span class="st">"html"</span>: html})     <span class="cm"># 详情页存原文</span>
+        pool.<span class="fn">set_status</span>(url, status)                          <span class="cm"># 无论成败都要报</span></pre>
+      <p>注意 <code class="inline">filter_good()</code> 这一步不能省。一个新闻页能提出几百个链接，其中九成是导航、注册、登录、客户端下载、广告、意见反馈——<b>不过滤，爬虫三天内就会跑偏到整个互联网</b>。</p>
+
+      <h3>三个时间参数，别搞混</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>参数</th><th>典型值</th><th>管什么</th><th>调大的后果</th></tr>
+        <tr><td><code class="inline">pending 超时</code></td><td>10 秒</td><td>单个 URL 被取走后多久算失联</td><td>崩溃的 URL 卡更久才被回收</td></tr>
+        <tr><td><code class="inline">retry 上限</code></td><td>3 次</td><td>临时失败重试几次判死</td><td>无效 URL 反复占用额度</td></tr>
+        <tr><td><code class="inline">refresh_span</code></td><td>3~5 分钟</td><td>hub 页多久重抓一次</td><td>新闻时效性差，追不上新内容</td></tr>
+      </table></div>
+      <p>这三个数经常被混为一谈，其实跨度差了 30 倍：一个是"秒"级的<b>故障检测</b>，一个是"分钟"级的<b>刷新频率</b>。调错任何一个，表现都是"爬虫好像不太对劲"，但症状完全不同。</p>
+
+      <p>池造完了，但它只活在一个进程里。下一节解决<b>怎么让十台机器共用这一个池</b>：先看框架给的标准答案（Scrapy-Redis），再看不用框架时怎么自己拆。</p>
+
+      <!-- ============ 10.8 ============ -->
+      <h2>10.8 asyncio 并发爬虫：把等待变成并行 <span class="chip tnew">新 · 工程实现</span></h2>
+      <p>10.7 的池解决了"抓什么"，这一节解决"<b>怎么同时抓很多</b>"。同步爬虫下一百个页面要一百个响应时间相加；异步之后，总耗时约等于<b>最慢的那一个</b>——差几十倍。但这里有个坑：<b>语法写成异步、执行仍是串行</b>，是新手最常犯也最难自查的错误，因为代码不报错，只是不快。</p>
+
+      <h3>一、异步到底在等什么</h3>
+      <p>先把"IO 慢"这件事量化一下。CPU 做一次运算大约纳秒级，而一次网络请求要几十到几百<b>毫秒</b>——差了六七个数量级。同步爬虫在等这几百毫秒时，CPU 是<b>纯空闲</b>的，什么也没干。</p>
+      <p>异步的思路：<b>既然要等，就别干等着</b>。协程遇到 IO 就主动"报到"——"我要等 300 毫秒，你先去干别的"，然后把自己挂起；事件循环立刻切到下一个协程；IO 完成时内核发出事件，事件循环再把那个协程唤醒，从挂起处继续。</p>
+      <div class="flow">
+        <span class="fnode">协程 A 发起请求</span><span class="farrow">→</span>
+        <span class="fnode">遇到 await<br>挂起 A</span><span class="farrow">→</span>
+        <span class="fnode">事件循环切到 B、C…</span><span class="farrow">→</span>
+        <span class="fnode">A 的 IO 完成<br>发事件</span><span class="farrow">→</span>
+        <span class="fnode">唤醒 A 继续</span>
+      </div>
+      <p>所以异步不会让单个请求变快——<b>它只是不让 CPU 空等</b>。一百个请求同时挂着，谁先回来谁先处理，总时间就被压到了最慢那个。</p>
+
+      <h3>二、语法演进：为什么网上的老教程不能看</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>版本</th><th>写法</th><th>现在还能用吗</th></tr>
+        <tr><td>Python 3.4</td><td><code class="inline">@asyncio.coroutine</code> + <code class="inline">yield from</code></td><td><b>已废弃</b>。搜到这种代码的文章可以直接关掉</td></tr>
+        <tr><td>Python 3.5</td><td><code class="inline">async def</code> / <code class="inline">await</code> 两个关键字</td><td>✓ 现行标准</td></tr>
+        <tr><td>Python 3.7</td><td><code class="inline">asyncio.run(main())</code></td><td>✓ 入口统一成一行，替代 <code class="inline">get_event_loop()</code> + <code class="inline">run_until_complete()</code></td></tr>
+      </table></div>
+      <p>还有两个可选项：<b>uvloop</b> 是 libuv（C 写的）替换默认事件循环，切换只要三行，速度能快一截——但它<b>不支持 Windows</b>，装不上就注释掉，用内置的也能跑。另外 <code class="inline">asyncio</code> 在 3.7 之后把接口分了高层（写应用用）和底层（写框架用），写爬虫只碰高层，不用管底层那些。</p>
+
+      <h3>三、一个实验：4 个协程讲透并发</h3>
+      <p>别急着上爬虫，先用 4 个 <code class="inline">sleep</code> 把机制跑通。这段代码值得自己敲一遍：</p>
+      <div class="code-title">demo.py —— 4 个协程，分别睡 1/2/3/4 秒</div>
+<pre class="code"><span class="kw">import</span> asyncio, time
+
+<span class="kw">async def</span> <span class="fn">hi</span>(n, second):
+    <span class="fn">print</span>(<span class="st">f"</span>{time.<span class="fn">time</span>():.1f} hi{n} enter<span class="st">"</span>)
+    <span class="kw">await</span> asyncio.<span class="fn">sleep</span>(second)          <span class="cm"># ← 关键：在这里让出 CPU</span>
+    <span class="fn">print</span>(<span class="st">f"</span>{time.<span class="fn">time</span>():.1f} hi{n} exit<span class="st">"</span>)
+    <span class="kw">return</span> second
+
+<span class="kw">async def</span> <span class="fn">main</span>():
+    <span class="fn">print</span>(<span class="st">f"</span>{time.<span class="fn">time</span>():.1f} main enter<span class="st">"</span>)
+    tasks = [asyncio.<span class="fn">create_task</span>(<span class="fn">hi</span>(i, i)) <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">1</span>, <span class="fn">5</span>)]
+    <span class="kw">for</span> t <span class="kw">in</span> tasks:
+        r = <span class="kw">await</span> t
+        <span class="fn">print</span>(<span class="st">f"</span>{time.<span class="fn">time</span>():.1f} got {r}<span class="st">"</span>)
+    <span class="fn">print</span>(<span class="st">f"</span>{time.<span class="fn">time</span>():.1f} main exit<span class="st">"</span>)
+
+asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+      <p>跑出来是这样（时间戳做了简化）：</p>
+      <div class="code-title">实际输出</div>
+<pre class="code">50.0 main enter
+50.0 hi1 enter          ← 四行 enter 全在 50.0
+50.0 hi2 enter
+50.0 hi3 enter
+50.0 hi4 enter
+51.0 hi1 exit           ← hi1 睡完 1 秒
+51.0 got 1
+52.0 hi2 exit
+52.0 got 2
+53.0 hi3 exit
+53.0 got 3
+54.0 hi4 exit
+54.0 got 4
+54.0 main exit          ← 总共 4 秒，不是 1+2+3+4=10 秒</pre>
+      <p><b>四行 enter 是同一时刻打出来的</b>，这就是理解并发的钥匙。原因分两层：</p>
+      <p><b>① <code class="inline">create_task</code> 只是登记，不执行。</b>它把协程包装成一个 Task 交给事件循环排队，然后就返回了——快到几纳秒，所以 for 循环瞬间跑完。</p>
+      <p><b>② 真正执行发生在 main 的 <code class="inline">await</code> 处。</b>第一次 <code class="inline">await t</code> 时 main 挂起，事件循环看到队列里还有 4 个 Task，于是一口气把它们都推进到各自第一个 <code class="inline">await asyncio.sleep()</code>——四个协程都在这一刻"进入"，所以 enter 同一时刻打印。</p>
+      <p>之后就是排队：1 秒后 hi1 醒、2 秒后 hi2 醒……总耗时由最长的那个决定。</p>
+
+      <h3>四、四种错误写法（这一节最值钱的部分）</h3>
+      <p>异步爬虫"跑起来了但不快"，九成是下面四种之一。理解它们比记住正确写法更重要：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>写法</th><th>结果</th><th>为什么</th></tr>
+        <tr><td>① create_task 了，但<b>不 await</b></td><td>main 立刻结束，4 个协程全被"腰斩"，只有 enter 没有 exit</td><td><code class="inline">asyncio.run()</code> 只保证 main 跑完；main 一结束，事件循环就关，挂着的协程全被销毁</td></tr>
+        <tr><td>② 用 <code class="inline">sleep(2)</code> 代替 await</td><td>只跑完 hi1/hi2，hi3/hi4 腰斩</td><td>等的时间不够长。你不可能预知哪个请求最慢——这是拍脑袋做法</td></tr>
+        <tr><td>③ <b>循环里 create_task 后立刻 await</b></td><td><b>串行</b>，总耗时 10 秒</td><td>★★★ 最常见的错误。每 await 一个就等它跑完，等于排队</td></tr>
+        <tr><td>④ 直接 <code class="inline">await hi(i)</code>，不用 create_task</td><td>串行，且拿到的是 coroutine 对象而非返回值，还报 RuntimeWarning</td><td>没经过 <code class="inline">create_task</code>，协程没被登记进事件循环</td></tr>
+      </table></div>
+      <div class="callout warn"><b>第 ③ 种一定要认出来</b>：代码里明明写着 <code class="inline">async def</code>、明明有 <code class="inline">await</code>，跑起来却和同步一样慢——因为 <code class="inline">for ... : create_task(...); await task</code> 的语义就是"创建一个、等一个、再创建下一个"。<b>异步的语法，串行的执行。</b>判断标准很简单：<b>create_task 和 await 不能在同一个循环体里成对出现</b>，要么全部创建完再统一 await，要么用 <code class="inline">asyncio.gather()</code>。</div>
+
+      <h3>五、换 aiohttp：把 requests 变成可 await 的</h3>
+      <p><code class="inline">requests.get()</code> 一调用，整个线程堵在那儿。<code class="inline">aiohttp</code> 提供同语义的异步版本：</p>
+      <div class="code-title">fetch.py —— 一次请求里有两个 await</div>
+<pre class="code"><span class="kw">async def</span> <span class="fn">fetch</span>(session, url, timeout=<span class="fn">10</span>):
+    <span class="kw">try</span>:
+        <span class="kw">async</span> <span class="kw">with</span> session.<span class="fn">get</span>(url, timeout=timeout) <span class="kw">as</span> resp:
+            body = <span class="kw">await</span> resp.<span class="fn">read</span>()      <span class="cm"># ← 第二个 await：读响应体</span>
+            <span class="kw">return</span> resp.status, body
+    <span class="kw">except</span> <span class="fn">Exception</span>:
+        <span class="kw">return</span> -<span class="fn">1</span>, <span class="kw">b</span><span class="st">""</span></pre>
+      <p><b>两个 await 缺一不可</b>：<code class="inline">async with session.get()</code> 等到响应头回来（连接 + 首包），此时 body 还没到；必须再 <code class="inline">await resp.read()</code> 把正文读完。少写这一个 await，拿到的是未读的流，后面解码就出错或拿到空内容。</p>
+      <p>另外 <b>Session 要复用</b>：它内部维护连接池，每次新建 Session 等于每次重新握手，异步的收益会被抵消掉。整个爬虫一个 Session，从头用到尾。</p>
+
+      <h3>六、用计数器卡住并发数</h3>
+      <p>不能真的无限并发。协程数上千时，事件循环在它们之间来回切换，每次切换都要保存/恢复运行环境，<b>这个开销本身就开始吃 CPU</b>。讲者的实测：上限设 30，CPU 不到 10%；设 300，CPU 到 80%~90%。</p>
+      <p>他的做法很朴素——一个计数器：</p>
+      <div class="code-title">主循环：差多少补多少</div>
+<pre class="code"><span class="kw">async def</span> <span class="fn">loop_proc</span>(self):
+    <span class="kw">while</span> <span class="kw">True</span>:
+        self.<span class="fn">load_config</span>()                        <span class="cm"># 热更新上限（见下一节）</span>
+
+        <span class="kw">if</span> self.stop <span class="kw">and</span> self.workers == <span class="fn">0</span>:    <span class="cm"># 收到停止信号且手上没活了</span>
+            <span class="kw">break</span>
+        <span class="kw">if</span> self.stop:                             <span class="cm"># 还有活，等它们下完</span>
+            <span class="kw">await</span> asyncio.<span class="fn">sleep</span>(<span class="fn">1</span>)
+            <span class="kw">continue</span>
+
+        count = self.workers_max - self.workers   <span class="cm"># 只补差额</span>
+        <span class="kw">if</span> count &lt;= <span class="fn">0</span>:
+            <span class="kw">await</span> asyncio.<span class="fn">sleep</span>(<span class="fn">3</span>)            <span class="cm"># 满了，歇会儿</span>
+            <span class="kw">continue</span>
+
+        <span class="kw">for</span> url, kind <span class="kw">in</span> self.pool.<span class="fn">pop</span>(count).<span class="fn">items</span>():
+            asyncio.<span class="fn">create_task</span>(self.<span class="fn">process</span>(url, kind))
+            self.workers += <span class="fn">1</span>                 <span class="cm"># 在 process 的 finally 里减回去</span>
+
+        <span class="kw">await</span> asyncio.<span class="fn">sleep</span>(<span class="fn">3</span>)                <span class="cm"># 注意：这里没有 await task</span></pre>
+      <p>三个要点：</p>
+      <p><b>① 只补差额</b>（<code class="inline">max - workers</code>）。不要一次塞满，否则队列里堆着几百个 Task 却没在跑，URL 也会在池子的 pending 里超时。</p>
+      <p><b>② 计数器在 <code class="inline">process</code> 的 <code class="inline">finally</code> 里减</b>——无论成功、失败、异常，都必须减。写在 try 里而异常路径漏掉，<code class="inline">workers</code> 只增不减，几个小时后程序会卡在"满了"状态不再接活。</p>
+      <p><b>③ 主循环自己 <code class="inline">sleep(3)</code>，但从不 await 具体的 task</b>。这就是上一节第 ③ 种错误的反面教材——它只负责补货，不负责等货。</p>
+      <p><b>上限设多少</b>：没有公式。看两个指标——CPU 占用和带宽。都还很低就往上调（30 → 300 → 3000），跑到 CPU 打满或带宽跑满为止。</p>
+
+      <h3>七、多个组件必须共用一个事件循环</h3>
+      <p>一个程序里同时有 aiohttp（下网页）和 aiomysql（存数据库），它们各自会在内部创建协程。<b>这些协程必须由同一个事件循环调度</b>，否则会出现"任务挂起了但没人叫醒"的诡异卡死。</p>
+      <div class="code-title">初始化：把 loop 显式传下去</div>
+<pre class="code">loop = asyncio.<span class="fn">get_event_loop</span>()
+session = aiohttp.<span class="fn">ClientSession</span>(loop=loop)     <span class="cm"># aiohttp 自己也能找到，但显式更稳</span>
+db = <span class="fn">AsyncDB</span>(..., loop=loop)                  <span class="cm"># aiomysql 封装必须传，它不会自己找</span></pre>
+      <p>为什么数据库封装要显式传：<code class="inline">aiohttp</code> 内部会调 <code class="inline">get_event_loop()</code> 拿当前循环，而 <code class="inline">aiomysql</code> 的某些封装不会——不传就可能在另一个循环上跑，两边永远对不上。</p>
+
+      <h3>八、async 该加在哪个函数上</h3>
+      <p>判断标准只有一条，讲者说得很干脆：<b>函数内部有没有 IO 操作</b>。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>函数</th><th>做什么</th><th>有 IO 吗</th><th>要不要 async</th></tr>
+        <tr><td><code class="inline">load_hubs</code></td><td>从 MySQL 读 hub 列表</td><td>有（网络）</td><td>✓ 要</td></tr>
+        <tr><td><code class="inline">to_db</code></td><td>把 HTML 写进 MySQL</td><td>有（网络）</td><td>✓ 要</td></tr>
+        <tr><td><code class="inline">fetch</code></td><td>下载网页</td><td>有（网络）</td><td>✓ 要</td></tr>
+        <tr><td><code class="inline">filter_good</code></td><td>正则过滤 URL</td><td>无（纯 CPU）</td><td>✗ 不要</td></tr>
+        <tr><td>解析函数</td><td>lxml 提取字段</td><td>无（纯 CPU）</td><td>✗ 不要</td></tr>
+      </table></div>
+      <p>给纯 CPU 的函数硬加 <code class="inline">async</code>，除了让调用方多写一个 <code class="inline">await</code>，没有任何好处——它根本不会让出 CPU，反而多一层协程开销。</p>
+
+      <h3>九、热更新参数与优雅停止</h3>
+      <p>爬虫跑起来要调并发数、要停，<b>不能 Ctrl+C 直接杀</b>——那一瞬间可能有上百个协程正在下载，杀掉就全丢了，前面白跑。</p>
+      <p>做法是把控制参数放进配置文件（或 Redis / MySQL），主循环定时重读：</p>
+      <div class="code-title">config.json + 定时重载</div>
+<pre class="code"><span class="cm">// config.json</span>
+{<span class="st">"workers_max"</span>: <span class="fn">300</span>, <span class="st">"stop"</span>: <span class="fn">0</span>}
+
+<span class="cm"># 每 10 分钟或每轮循环重读一次</span>
+<span class="kw">def</span> <span class="fn">load_config</span>(<span class="kw">self</span>):
+    <span class="kw">if</span> time.<span class="fn">time</span>() - <span class="kw">self</span>.last_load &lt; <span class="fn">600</span>:
+        <span class="kw">return</span>
+    <span class="kw">with</span> <span class="fn">open</span>(<span class="st">"config.json"</span>) <span class="kw">as</span> f:
+        c = json.<span class="fn">load</span>(f)
+    <span class="kw">self</span>.workers_max = c[<span class="st">"workers_max"</span>]
+    <span class="kw">self</span>.stop = c[<span class="st">"stop"</span>]
+    <span class="kw">self</span>.last_load = time.<span class="fn">time</span>()</pre>
+      <p><b>优雅停止的三步</b>：① 把 <code class="inline">stop</code> 改成 1；② 主循环看到后<b>不再取新任务</b>，但手上已有的继续跑；③ 轮询 <code class="inline">workers == 0</code>，归零才 <code class="inline">break</code> 退出。<b>"不再接新活，但把手上的活干完"</b>——这就是优雅的全部含义。</p>
+      <p>参数存哪里可以升级：文件最简单（改完最多等一个重载周期）；放 Redis / MySQL 就能多个爬虫共享；再往上加个网页界面，改参数变成点按钮——讲者说的"外部界面配置"，本质上就是这三层的组合。</p>
+
+      <div class="callout ok"><b>验收标准：</b>写完异步爬虫，第一件事是<b>测速</b>。如果比同步版本快不了几倍，别急着加机器——先回头查第四节的四种错误写法，尤其是"循环里 await"。这个自查方法比读十篇文章都管用。</div>
+
+      <div class="pitfall"><b>六个坑：</b>① 循环里 <code class="inline">create_task</code> 后立刻 <code class="inline">await</code>——异步语法、串行执行，代码不报错但完全不加速；② <code class="inline">create_task</code> 的返回值不保存——Python 3.8+ 官方文档明确提醒，Task 只被弱引用持有，可能被 GC 提前回收，务必把 task 存进列表或集合；③ 只 <code class="inline">await session.get()</code> 不 <code class="inline">await resp.read()</code>——拿到的是未读流，内容是空的；④ 每请求新建一个 Session——连接池失效，异步收益归零；⑤ 多个事件循环并存——aiomysql 不传 loop 就可能另起一个，任务挂起后永远没人唤醒；⑥ 用 Ctrl+C 硬杀——正在下载的上百个协程全部丢弃。</div>
+
+      <!-- ============ 10.9 ============ -->
+      <h2>10.9 分布式 <span class="chip tbook">对齐教材 第 14 章</span></h2>
       <p>单机 Scrapy 有两个天花板：<b>并发上不去</b>（一台机器的带宽与 CPU）和<b>去重各自为政</b>（A 机爬过的 B 机不知道，重复劳动）。解法是 <b>Scrapy-Redis</b>——用 Redis 做两件共享的事：<b>共享请求队列</b>（所有机器从同一个队列取活）+ <b>共享指纹集合</b>（任何一台机器判过的重，全体生效）。这就是 408"共享内存"思想的工程化：机器多了，队列和指纹只有一份。</p>
       <div class="code-title">settings.py —— 三处改动，普通 Scrapy → 分布式</div>
 <pre class="code">SCHEDULER = <span class="st">"scrapy_redis.scheduler.Scheduler"</span>              <span class="cm"># ① 请求队列搬到 Redis</span>
@@ -437,6 +719,76 @@ DUPEFILTER_CLASS = <span class="st">"scrapy_redis_bloomfilter.dupefilter.RFPDupe
 BLOOMFILTER_HASH_NUMBER = <span class="fn">6</span>    <span class="cm"># 每个元素用几个哈希函数</span>
 BLOOMFILTER_BIT = <span class="fn">30</span>           <span class="cm"># 位数组 2^30 bit ≈ 128MB，亿级 URL 够用</span></pre>
 
+      <h3>换条路：不用框架，自己拆 server + client</h3>
+      <p>Scrapy-Redis 有个前提——你已经在用 Scrapy。如果手上是一堆自研的 <code class="inline">requests</code> / <code class="inline">aiohttp</code> 脚本呢？照样能分布式，而且原理比"改三行配置"清楚得多：<b>把 10.7 造的那个池放到一台机器上，包成 HTTP 接口，其他机器来取任务、报结果。</b></p>
+      <div class="flow">
+        <span class="fnode"><b>server</b>（只 1 个）<br>UrlPool + 持久库</span><span class="farrow">⇄</span>
+        <span class="fnode"><b>client 1</b><br>并发 100</span>
+        <span class="fnode"><b>client 2</b><br>并发 10</span>
+        <span class="fnode"><b>client N</b><br>任意机器</span>
+      </div>
+      <p><b>server 绝对不能起多个</b>。原因很硬：server 内部就是那个池，起两个 server 就有两个池，client A 连池 1、client B 连池 2，两边互不知情——<b>client A 抓过的 URL，client B 根本不知道，于是重复下载</b>。去重的前提是状态共享，而状态只有一份。</p>
+      <p>它为什么不怕单点：server 做的只是收发 URL 和改几个字典，<b>工作量极小</b>；真正吃 CPU 和带宽的下载全在 client。所以 client 可以无限加，server 一个就够。</p>
+      <div class="code-title">server.py —— 两个路由，40 行</div>
+<pre class="code"><span class="kw">from</span> flask <span class="kw">import</span> Flask, request, jsonify
+<span class="kw">from</span> urlpool <span class="kw">import</span> UrlPool, UrDB
+
+app = Flask(__name__)
+pool = <span class="fn">UrlPool</span>(<span class="fn">UrDB</span>(<span class="st">"url.db"</span>))
+pool.<span class="fn">set_hubs</span>([<span class="st">"http://news.sina.com.cn/"</span>], refresh_span=<span class="fn">300</span>)
+
+
+<span class="cm"># ① client 来要任务</span>
+<span class="fn">@app.get</span>(<span class="st">"/task"</span>)
+<span class="kw">def</span> <span class="fn">give_tasks</span>():
+    n = <span class="fn">int</span>(request.args.<span class="fn">get</span>(<span class="st">"count"</span>, <span class="fn">10</span>))
+    <span class="kw">return</span> <span class="fn">jsonify</span>(pool.<span class="fn">pop</span>(n))        <span class="cm"># {url: "hub" | "url"}</span>
+
+
+<span class="cm"># ② client 回报结果，顺手带回新发现的 URL</span>
+<span class="fn">@app.post</span>(<span class="st">"/task"</span>)
+<span class="kw">def</span> <span class="fn">take_result</span>():
+    d = request.<span class="fn">get_json</span>()
+    pool.<span class="fn">set_status</span>(d[<span class="st">"url"</span>], d[<span class="st">"status"</span>])
+    <span class="kw">if</span> d.<span class="fn">get</span>(<span class="st">"new_urls"</span>):
+        pool.<span class="fn">add_many</span>(d[<span class="st">"new_urls"</span>])
+    <span class="kw">return</span> {<span class="st">"ok"</span>: <span class="fn">1</span>}
+
+
+<span class="kw">if</span> __name__ == <span class="st">"__main__"</span>:
+    app.<span class="fn">run</span>(host=<span class="st">"0.0.0.0"</span>, port=<span class="fn">8080</span>)   <span class="cm"># ★ 不是 127.0.0.1</span></pre>
+      <p>client 侧只需要改三处：删掉本地的池、启动时问 server 要任务、下完 POST 回去。<b>核心逻辑一行没动</b>——这正是 10.7 把池抽象出来的回报。</p>
+      <div class="code-title">client.py —— 一个 worker 的样子</div>
+<pre class="code"><span class="kw">async def</span> <span class="fn">worker</span>(session, server):
+    <span class="kw">while</span> <span class="kw">True</span>:
+        <span class="kw">async</span> <span class="kw">with</span> session.<span class="fn">get</span>(<span class="st">f"</span>{server}<span class="st">/task"</span>, params={<span class="st">"count"</span>: <span class="fn">5</span>}) <span class="kw">as</span> r:
+            batch = <span class="kw">await</span> r.<span class="fn">json</span>()
+        <span class="kw">if</span> <span class="kw">not</span> batch:
+            <span class="kw">await</span> asyncio.<span class="fn">sleep</span>(<span class="fn">2</span>)              <span class="cm"># 池空了，等一会儿再问</span>
+            <span class="kw">continue</span>
+        <span class="kw">for</span> url, kind <span class="kw">in</span> batch.<span class="fn">items</span>():
+            status, html, _ = <span class="kw">await</span> <span class="fn">fetch</span>(session, url)
+            new_urls = <span class="fn">extract_links</span>(html) <span class="kw">if</span> kind == <span class="st">"hub"</span> <span class="kw">and</span> status == <span class="fn">200</span> <span class="kw">else</span> []
+            <span class="kw">await</span> session.<span class="fn">post</span>(<span class="st">f"</span>{server}<span class="st">/task"</span>, json={
+                <span class="st">"url"</span>: url, <span class="st">"status"</span>: status, <span class="st">"new_urls"</span>: new_urls})
+        <span class="kw">await</span> asyncio.<span class="fn">sleep</span>(<span class="fn">0.5</span>)                  <span class="cm"># 别把 server 打爆</span></pre>
+      <p>三个细节决定这套东西能不能真用起来：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>细节</th><th>做法</th><th>搞错的后果</th></tr>
+        <tr><td>监听地址</td><td><code class="inline">host="0.0.0.0"</code></td><td>写 <code class="inline">127.0.0.1</code> 只有本机能连，其他机器全超时</td></tr>
+        <tr><td>端口</td><td>8080 之类高位端口</td><td>用 80 会和系统服务抢，起不来</td></tr>
+        <tr><td>要多少任务</td><td><code class="inline">count = 并发上限 - 已排队数</code></td><td>一次囤 100 个却只跑 10 个——屯着的那些在 pending 里"假死"，10 秒后被判失联</td></tr>
+      </table></div>
+      <p>这套结构的实测数据（4 核 i5）：单 client 开 100 并发，CPU 只占 <b>30% 左右</b>，server 占 1%~3%。也就是说<b>瓶颈既不在 CPU 也不在 server，而在带宽和目标站</b>——想再快就加机器，而不是加线程。</p>
+      <div class="callout ok"><b>一个真实变体：</b>把 client 打包成带界面的小工具，分发给同事/同学装在自己电脑上跑。这些机器分布在学校、家里、各处，<b>都是真实住宅 IP</b>，比买代理池更难被识别——因为请求天然分散在几百个真实用户身上。这时候"分布式"的价值不只是算力，更是<b>分散身份</b>。</div>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>维度</th><th>Scrapy-Redis</th><th>手写 server + client</th></tr>
+        <tr><td>前提</td><td>项目已经是 Scrapy</td><td>任何爬虫都能接，甚至不限语言</td></tr>
+        <tr><td>改造量</td><td>改 3 行配置 + 换基类</td><td>自己写池和接口，约 100 行</td></tr>
+        <tr><td>去重与调度</td><td>框架负责，你不用管</td><td>全在池里，<b>每一行你都清楚</b></td></tr>
+        <tr><td>适合谁</td><td>想做业务、不想造轮子</td><td>想搞懂原理，或已有自研代码</td></tr>
+      </table></div>
+
       <div class="connect-box" style="border-left-color:#b45309">
         <div class="bx-title" style="color:#b45309">🌐 多源视角 · 夜幕团队：Crawlab vs Gerapy</div>
         <p>下一节的部署管理里会认识 Gerapy，但这块还有个更值得认识的现代选手。<b>Crawlab</b> 是夜幕团队出品的分布式爬虫管理平台：它<b>不绑定框架</b>——Scrapy、requests 脚本、Selenium/Playwright 乃至任意语言写的爬虫都能纳管，把"多机节点 + 定时调度 + 结果查看"做成一站式平台。与 Gerapy 放在一起对比：</p>
@@ -448,8 +800,8 @@ BLOOMFILTER_BIT = <span class="fn">30</span>           <span class="cm"># 位数
         <p><b>现代选型建议</b>：新项目优先了解 Crawlab——不限框架、功能闭环、社区活跃，是分布式管理的默认候选；如果团队已经是"纯 Scrapy + Scrapyd"技术栈、跑得很好，只缺一块顺手的管理面板，Gerapy 仍是接入成本最低的选择。两者是"轻量面板"与"通用平台"两种规模的选择，不是谁取代谁。</p>
       </div>
 
-      <!-- ============ 10.8 ============ -->
-      <h2>10.8 部署与管理 <span class="chip tbook">对齐教材 第 15 章</span></h2>
+      <!-- ============ 10.10 ============ -->
+      <h2>10.10 部署与管理 <span class="chip tbook">对齐教材 第 15 章</span></h2>
       <h3>Scrapyd：把爬虫当服务跑</h3>
       <p>Scrapyd 是官方的爬虫守护进程：爬虫代码打包成<b>版本</b>上传，之后通过 <b>HTTP API</b> 远程调度——启动、暂停、查状态，全是一行 curl 的事。机器上 <code class="inline">pip install scrapyd</code> 后执行 <code class="inline">scrapyd</code> 启动，默认监听 6800 端口：</p>
       <div class="code-title">终端 · 上传与调度</div>
@@ -474,8 +826,8 @@ CMD [<span class="st">"scrapyd"</span>]        <span class="cm"># 或换成运�
 
       <div class="pitfall"><b>Scrapy 五大坑：</b>① settings 里 USER_AGENT 忘改——默认 "Scrapy/x.y" 一秒被识别，新项目第一件事改 UA 或上中间件；② 下载中间件 process_response 漏 return response——响应凭空消失，Spider 永远收不到还不知道为什么；③ Pipeline 权重设错——入库管道比清洗先跑，脏数据直接落库，事后清洗成本翻倍；④ 默认调度器队列在<b>内存</b>里，爬大站几十万请求会 OOM——大任务换 Scrapy-Redis 落盘或配 JOBDIR 断点目录；⑤ ROBOTSTXT_OBEY 本地测试嫌麻烦关掉，上线忘了开——合规礼仪别丢（第 01 章的约定）。</div>
 
-      <!-- ============ 10.9 ============ -->
-      <h3>10.9 监控：让系统会"说话"</h3>
+      <!-- ============ 10.11 ============ -->
+      <h3>10.11 监控：让系统会"说话"</h3>
       <p>采集系统与一次性脚本的分水岭就在这一节：<b>你不在场时，它出事了你知不知道？</b>监控分三步：看得见（自带统计 + 日志落盘）、说得出（结束推送）、叫得醒（阈值告警）。第一步 Scrapy 已经替你做完了——每次爬虫结束，日志末尾都会 dump 一段 stats 字典：</p>
       <div class="code-title">跑完后日志末尾的 stats（节选）</div>
 <pre class="code">{<span class="st">'finish_reason'</span>: <span class="st">'finished'</span>,
@@ -524,7 +876,7 @@ FEISHU_WEBHOOK = <span class="st">"https://open.feishu.cn/open-apis/bot/v2/hook/
 
       <!-- ============ 动画课堂 ============ -->
       <h2 id="lesson">🎬 动画课堂 · 《从脚本到采集系统》 <span class="chip tanim">第 6 集</span></h2>
-      <p class="muted small">约 2.5 分钟 · 两种命运对比：一次性脚本之死 → Scrapy 闭环 → 七件套工程化（框架/异步/增量/调度/告警/分布式/合规），对应本章 10.1~10.8 主线。▶ 播放 / 空格暂停 / 进度条可拖 / ⏮⏭ 跳场景 / 可调速。</p>
+      <p class="muted small">约 2.5 分钟 · 两种命运对比：一次性脚本之死 → Scrapy 闭环 → 七件套工程化（框架/异步/增量/调度/告警/分布式/合规），对应本章 10.1~10.10 主线。▶ 播放 / 空格暂停 / 进度条可拖 / ⏮⏭ 跳场景 / 可调速。</p>
       <div class="lesson" id="lesson6">
         <div class="screen"><div class="theater" id="th6">
           <div class="row">
@@ -560,8 +912,8 @@ FEISHU_WEBHOOK = <span class="st">"https://open.feishu.cn/open-apis/bot/v2/hook/
         <label><input type="checkbox" id="c10-2" data-persist><span>quotes spider 跑通：yield Item 走管道 + yield Request 翻页，settings 常用项会配（10.2）</span></label>
         <label><input type="checkbox" id="c10-3" data-persist><span>下载中间件会写：随机 UA + 挂代理 + 403/429 重试，返回值纪律清楚（10.4）</span></label>
         <label><input type="checkbox" id="c10-4" data-persist><span>Pipeline 入库跑通：清洗 → 去重 → SQLite，权重顺序与 from_crawler 会用（10.5）</span></label>
-        <label><input type="checkbox" id="c10-5" data-persist><span>Scrapy-Redis 三处改动说得清：SCHEDULER / DUPEFILTER / REDIS_URL，Bloom Filter 原理（10.7）</span></label>
-        <label><input type="checkbox" id="c10-6" data-persist><span>部署三件套概念清楚：Scrapyd 版本与 API、Docker 要点、Gerapy 定位（10.8）</span></label>
+        <label><input type="checkbox" id="c10-5" data-persist><span>网址池的六种状态说得清（waiting 为什么按 host 分组、pending 的 10 秒在判什么），Scrapy-Redis 三处改动与 Bloom Filter 原理（10.7 / 10.9）</span></label>
+        <label><input type="checkbox" id="c10-6" data-persist><span>asyncio 并发不踩坑：create_task 只是登记不执行、总耗时取决于最长那个、循环里 await 会退化成串行；部署三件套 Scrapyd / Docker / Gerapy（10.8 / 10.10）</span></label>
       </div>
 
       <!-- ============ 练习 ============ -->
@@ -596,14 +948,14 @@ FEISHU_WEBHOOK = <span class="st">"https://open.feishu.cn/open-apis/bot/v2/hook/
 
       <details class="qa"><summary><span class="qno">Q3</span>分析：你的站点有 500 万条 Item，10.5 里用 set 去重的 DedupPipeline 会遇到什么问题？给出两种改进方案并比较取舍。<span class="lv badge b-amber">分析</span></summary>
         <div class="qa-body">
-          <p><b>考点：</b>10.5 去重设计与 10.7 Bloom Filter 的衔接。</p>
-          <div class="ans"><b>参考解析：</b>问题：Python set 存 500 万条指纹（如完整 text 或其哈希），内存要几百 MB 到 GB 级，且爬虫重启后 set 清零、去重失效。<b>方案一：指纹化 + 落盘</b>——不去重原文，改存 md5/sha1 短指纹，并搬到 SQLite/Redis 的 set 里持久化；优点是准确、可跨重启，代价是每次 IO 或 Redis 往返。dedup key 也可以放进 Redis set 复用分布式架构。<b>方案二：Bloom Filter</b>——位数组 + k 个哈希，内存降到百 MB 级且极快；代价是<b>可能误判</b>（把没见过的判成重复，少量丢数据）且不支持删除。取舍：数据绝不能丢（如商品价格入库）→ 方案一；允许极小误差、追求吞吐（如 URL 级去重）→ 方案二。工程上常见组合：URL 去重用 Bloom（10.7），Item 去重用指纹落库。</div>
+          <p><b>考点：</b>10.5 去重设计与 10.9 Bloom Filter 的衔接。</p>
+          <div class="ans"><b>参考解析：</b>问题：Python set 存 500 万条指纹（如完整 text 或其哈希），内存要几百 MB 到 GB 级，且爬虫重启后 set 清零、去重失效。<b>方案一：指纹化 + 落盘</b>——不去重原文，改存 md5/sha1 短指纹，并搬到 SQLite/Redis 的 set 里持久化；优点是准确、可跨重启，代价是每次 IO 或 Redis 往返。dedup key 也可以放进 Redis set 复用分布式架构。<b>方案二：Bloom Filter</b>——位数组 + k 个哈希，内存降到百 MB 级且极快；代价是<b>可能误判</b>（把没见过的判成重复，少量丢数据）且不支持删除。取舍：数据绝不能丢（如商品价格入库）→ 方案一；允许极小误差、追求吞吐（如 URL 级去重）→ 方案二。工程上常见组合：URL 去重用 Bloom（10.9），Item 去重用指纹落库。</div>
         </div>
       </details>
 
       <details class="qa"><summary><span class="qno">Q4</span>分析：Scrapy-Redis 的请求队列可以用 Redis 的 list 或 zset 实现，各自怎么工作？为什么默认用 zset（优先级队列）？什么场景可以退回 list？<span class="lv badge b-blue">分析</span></summary>
         <div class="qa-body">
-          <p><b>考点：</b>10.7 分布式队列选型 + 408 数据结构（优先队列）。</p>
+          <p><b>考点：</b>10.9 分布式队列选型 + 408 数据结构（优先队列）。</p>
           <div class="ans"><b>参考解析：</b>① <b>list</b>（如 SpiderQueue）：lpush 入队、rpop/brpoplprocess 出队，纯 FIFO（或 LIFO）；简单、吞吐略高，但<b>无法表达优先级</b>——深浅页、轻重任务一视同仁。② <b>zset</b>（PriorityQueue，默认）：以 Request 的 priority 为 score 入 zset，出队用 zrangebyscore 取最小 score——本质是<b>优先队列</b>（408 堆结构的 Redis 实现），Scrapy 的深度/广度混合调度策略依赖它。默认选 zset 的原因：Scrapy 的调度语义本来就是"按优先级出队"，单机调度器如此，分布式不应降级。可退回 list 的场景：所有请求同优先级、追求极致简单与吞吐的小规模采集。连接 SCHEDULER_QUEUE_CLASS 配置项切换；另注意出队要用原子命令（如 zpopmin / brpoplprocess）避免多机抢到同一条。</div>
         </div>
       </details>

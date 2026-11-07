@@ -490,6 +490,141 @@ TITLE_XPATHS = [
       </div>
 
       <!-- ============ 打卡 ============ -->
+      <!-- ============ 3.7 ============ -->
+      <h2>3.7 通用正文提取：文本密度算法 <span class="chip tnew">拓展 · 工程实战</span></h2>
+      <p>3.6 教你把选择器写得抗改版。但如果目标不是 1 个站，而是<b>上千个新闻站</b>呢？每个站写一套 XPath，工作量先不说，对方一改版就得回头一个个修——维护成本会吃掉所有收益。这一节讲另一种思路：<b>不定位，而是"称重"</b>。让算法自己判断哪块内容的文字最密集，那块就是正文。</p>
+
+      <h3>两种路线的分野</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>维度</th><th>选择器定向提取</th><th>文本密度算法</th></tr>
+        <tr><td>适用规模</td><td>1~10 个站，结构稳定</td><td>成百上千个站，结构各不相同</td></tr>
+        <tr><td>准确率</td><td><b>接近 100%</b>（写对了就是对的）</td><td>85%~95%，需要后续清洗</td></tr>
+        <tr><td>维护成本</td><td>改版即失效，一站一改</td><td>无需维护，改版自动适应</td></tr>
+        <tr><td>典型场景</td><td>自己产品的数据、长期监控的目标站</td><td>通用新闻/博客采集、内容聚合</td></tr>
+      </table></div>
+      <p>结论不是谁更好，而是<b>规模决定路线</b>。站点少就老老实实写 XPath，别为了通用性牺牲准确率；站点多到写不过来时，才请出密度算法。</p>
+
+      <h3>立足点：新闻和博客长得都一样</h3>
+      <p>剥掉皮肤，几乎所有文字类页面都是同一个骨架：</p>
+      <div class="flow">
+        <span class="fnode">导航栏（链接多，字少）</span><span class="farrow">→</span>
+        <span class="fnode"><b>标题 + 时间 + 来源</b></span><span class="farrow">→</span>
+        <span class="fnode"><b>正文（大段文字）</b></span><span class="farrow">→</span>
+        <span class="fnode">相关阅读（链接标题）</span>
+      </div>
+      <p>关键特征只有一条：<b>正文区的文字量，显著大于页面上任何一个其他区域</b>。导航栏再长也是几个词，侧栏全是链接标题，评论区虽然字多但都是短句。所以"谁的字最多，谁就是正文"——这就是全部的理论基础。</p>
+
+      <h3>四步实现</h3>
+      <p>把上面那句话翻译成代码，需要解决三个细节：<b>怎么量字</b>（text 和 tail 都算）、<b>怎么校正</b>（class 名字是重要线索）、<b>怎么防误判</b>（评论区字也多）。完整实现不到 60 行：</p>
+      <div class="code-title">main_block.py —— 文本密度核心</div>
+<pre class="code"><span class="kw">import</span> re
+<span class="kw">from</span> lxml <span class="kw">import</span> etree
+
+<span class="cm"># 类名/ID 里的语义线索：命中这些词说明更像正文</span>
+POS = re.<span class="fn">compile</span>(<span class="st">r"article|content|post|text|body|main|detail"</span>, re.I)
+<span class="cm"># 命中这些则相反：评论区、页脚、侧栏、广告</span>
+NEG = re.<span class="fn">compile</span>(<span class="st">r"comment|footer|copyright|sidebar|nav|menu|ad\b"</span>, re.I)
+
+
+<span class="kw">def</span> <span class="fn">text_len</span>(node):
+    <span class="st">"""节点及其全部子孙的可见文字量；&lt;p&gt; 段落额外加权"""</span>
+    total = <span class="fn">len</span>(node.text <span class="kw">or</span> <span class="st">""</span>)
+    <span class="kw">for</span> ch <span class="kw">in</span> node.<span class="fn">iterdescendants</span>():
+        total += <span class="fn">len</span>(ch.text <span class="kw">or</span> <span class="st">""</span>) + <span class="fn">len</span>(ch.tail <span class="kw">or</span> <span class="st">""</span>)
+        <span class="kw">if</span> ch.tag == <span class="st">"p"</span>:                 <span class="cm"># 正文几乎都是 p 分段</span>
+            total += <span class="fn">len</span>(ch.text <span class="kw">or</span> <span class="st">""</span>)   <span class="cm"># 再算一遍 = 加权</span>
+    <span class="kw">return</span> total
+
+
+<span class="kw">def</span> <span class="fn">weight</span>(node):
+    <span class="st">"""按 class / id 的语义给节点加减权重"""</span>
+    sig = <span class="st">" "</span>.<span class="fn">join</span>(<span class="fn">filter</span>(<span class="kw">None</span>, [node.get(<span class="st">"class"</span>), node.get(<span class="st">"id"</span>)]))
+    w = <span class="fn">1.0</span>
+    <span class="kw">if</span> POS.<span class="fn">search</span>(sig):
+        w += <span class="fn">1.0</span>                          <span class="cm"># class="article-content" → 加倍</span>
+    <span class="kw">if</span> NEG.<span class="fn">search</span>(sig):
+        w -= <span class="fn">0.5</span>                          <span class="cm"># class="comment-list" → 打折</span>
+    <span class="kw">return</span> w
+
+
+<span class="kw">def</span> <span class="fn">main_block</span>(html, min_len=<span class="fn">50</span>):
+    tree = etree.<span class="fn">HTML</span>(html)
+    body = tree.<span class="fn">find</span>(<span class="st">"body"</span>) <span class="kw">or</span> tree
+    best, best_score = body, <span class="fn">0</span>
+
+    stack = [body]                          <span class="cm"># 手动栈：避免递归爆栈</span>
+    <span class="kw">while</span> stack:
+        node = stack.<span class="fn">pop</span>()
+        n = <span class="fn">text_len</span>(node)
+        <span class="kw">if</span> n &gt;= min_len:                  <span class="cm"># 太短的不参与评选</span>
+            score = n * <span class="fn">weight</span>(node)
+            <span class="kw">if</span> score &gt; best_score:
+                best, best_score = node, score
+        stack.<span class="fn">extend</span>(node.<span class="fn">getchildren</span>())   <span class="cm"># 子节点继续下场</span>
+
+    <span class="kw">return</span> best</pre>
+      <p>三个参数的取值直接决定效果，值得单独说：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>参数</th><th>作用</th><th>建议值</th></tr>
+        <tr><td><code class="inline">min_len</code></td><td>文字量低于它的节点直接淘汰</td><td>新闻类 <b>50</b>；博客可设 30；设成 10 会把导航栏也算进来</td></tr>
+        <tr><td><code class="inline">p 加权</code></td><td>让"由多段落组成"的节点胜出</td><td>加权一份即可，加太重会让短句堆积的评论区反超</td></tr>
+        <tr><td><code class="inline">NEG 降权</code></td><td>压制评论区、页脚、侧栏</td><td>-0.5 起步；某个站评论区特别长就调到 -0.8</td></tr>
+      </table></div>
+
+      <h3>补丁一：命中代码块要往上爬</h3>
+      <p>技术博客会踩一个特定的坑：正文里贴了大段代码，<code class="inline">&lt;pre&gt;&lt;code&gt;</code> 里字符密集、还全是符号，密度算下来比正文本身还高——算法会把代码块当成"正文"，别的段落全丢了。修法是往上找容器：</p>
+      <div class="code-title">向上修正</div>
+<pre class="code"><span class="kw">def</span> <span class="fn">expand</span>(node, max_depth=<span class="fn">5</span>):
+    <span class="st">"""若命中的是代码块，向上找内容容器；遇到 div 即止"""</span>
+    depth = <span class="fn">0</span>
+    <span class="kw">while</span> node.tag <span class="kw">in</span> (<span class="st">"pre"</span>, <span class="st">"code"</span>) <span class="kw">and</span> depth &lt; max_depth:
+        parent = node.<span class="fn">getparent</span>()
+        <span class="kw">if</span> parent <span class="kw">is</span> <span class="kw">None</span>:
+            <span class="kw">break</span>
+        node, depth = parent, depth + <span class="fn">1</span>
+        <span class="kw">if</span> node.tag == <span class="st">"div"</span>:          <span class="cm"># div 通常就是内容容器，够了</span>
+            <span class="kw">break</span>
+    <span class="kw">return</span> node</pre>
+
+      <h3>补丁二：删掉"相关阅读"</h3>
+      <p>正文容器里常混着文末的相关阅读链接。这些链接的<b>标题文字有十几个字</b>，会被算进正文。后果很隐蔽：用户搜某关键词时，这篇其实不含该词的文章会被搜出来——因为"相关阅读"里另一篇的标题含了这个词。<b>这是业务方会直接投诉的 bug</b>，不是洁癖。</p>
+      <div class="code-title">clean.py —— 清洗与取文</div>
+<pre class="code"><span class="kw">def</span> <span class="fn">clean</span>(node):
+    <span class="cm"># 链接文字偏长（&gt;10 字）的多半是文章标题，不是正文里的行内链接</span>
+    <span class="kw">for</span> a <span class="kw">in</span> node.<span class="fn">xpath</span>(<span class="st">".//a"</span>):
+        <span class="kw">if</span> <span class="fn">len</span>(a.<span class="fn">text_content</span>().<span class="fn">strip</span>()) &gt; <span class="fn">10</span>:
+            a.<span class="fn">getparent</span>().<span class="fn">remove</span>(a)
+    <span class="kw">for</span> t <span class="kw">in</span> node.<span class="fn">xpath</span>(<span class="st">".//script | .//style | .//iframe"</span>):
+        t.<span class="fn">getparent</span>().<span class="fn">remove</span>(t)
+    <span class="kw">return</span> node
+
+
+<span class="kw">def</span> <span class="fn">to_text</span>(node):
+    <span class="st">"""取纯文本：保留段落感，用换行不用空格"""</span>
+    out = []
+    <span class="kw">for</span> el <span class="kw">in</span> node.<span class="fn">iter</span>():
+        <span class="kw">if</span> el.tag <span class="kw">in</span> (<span class="st">"p"</span>, <span class="st">"br"</span>, <span class="st">"div"</span>):
+            out.<span class="fn">append</span>(<span class="st">"\n"</span>)
+        <span class="kw">if</span> el.text:
+            out.<span class="fn">append</span>(el.text)
+        <span class="kw">if</span> el.tail:
+            out.<span class="fn">append</span>(el.tail)
+    <span class="kw">return</span> re.<span class="fn">sub</span>(<span class="st">r"\n{3,}"</span>, <span class="st">"\n\n"</span>, <span class="st">""</span>.<span class="fn">join</span>(out)).<span class="fn">strip</span>()</pre>
+      <p>调用起来只有一行：<code class="inline">text = to_text(clean(main_block(html)))</code>。标题和时间另算——标题可以从 <code class="inline">&lt;title&gt;</code> 按分隔符（<code class="inline">_ - |</code>）切开<b>取最长的一段</b>（标题一定比频道名、站名长），时间则只能堆正则，年月日、斜杠、缺年份、<code class="inline">3小时前</code> 各写一条。</p>
+
+      <h3>边界：什么时候别用它</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>页面类型</th><th>能不能用</th><th>原因</th></tr>
+        <tr><td>新闻 / 博客 / 公众号文章</td><td><b>最适合</b></td><td>正文集中在一个容器，文字量压倒性</td></tr>
+        <tr><td>商品详情页</td><td>不适合</td><td>要的是结构化字段（价格、库存），不是大段文字</td></tr>
+        <tr><td>论坛帖子、微博</td><td>不适合</td><td>短文本 + 列表结构，密度没有区分度</td></tr>
+        <tr><td>SPA 渲染页</td><td>先解决渲染</td><td>HTML 里根本没正文，密度算法无从下手（回第 05 章）</td></tr>
+      </table></div>
+
+      <div class="callout info"><b>一句话判断法：</b>打开页面，眯起眼睛看——正文区是不是一块明显更"黑"（字更多）的区域？是，密度算法就能work；不是，老老实实写选择器。</div>
+
+      <div class="pitfall"><b>三个坑：</b>① 只算 <code class="inline">text</code> 不算 <code class="inline">tail</code>——HTML 里大量文字挂在标签的 tail 上（<code class="inline">&lt;p&gt;第一段&lt;/p&gt;第二段</code> 的"第二段"就是 tail），漏了会丢掉近一半内容；② <code class="inline">min_len</code> 设太小——导航栏每个 <code class="inline">&lt;a&gt;</code> 都有几个字，累加起来也能过 10 的门槛，所以新闻类必须提到 50；③ 清洗只删 <code class="inline">script</code> 不删长链接——"相关阅读"污染搜索结果的问题，只有删链接才解决。</div>
+
       <h2>✅ 本章打卡清单</h2>
       <div class="checklist-card check">
         <label><input type="checkbox" id="c03-1" data-persist><span>XPath 大表掌握：/ 与 //、谓词、@属性、通配，说得清 text() 与 string() 的区别（3.1）</span></label>

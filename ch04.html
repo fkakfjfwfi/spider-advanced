@@ -377,6 +377,99 @@ r = redis.Redis(host=<span class="st">"127.0.0.1"</span>, port=<span class="fn">
       <div class="pitfall"><b>本章避坑清单：</b>① CSV 用 <code class="inline">utf-8</code> 写、Excel 打开全是乱码——Excel 不认无 BOM 的 UTF-8，写盘一律 <code class="inline">utf-8-sig</code>；② csv 写文件漏了 <code class="inline">newline=""</code>——Windows 下每行之间多一个空行，pandas 读回来全是 NaN；③ f-string 拼 SQL 是注入温床（<code class="inline">f"…'{value}'"</code>）——任何外部值只许走占位符 <code class="inline">? / %s</code>；④ 忘了 <code class="inline">commit</code>——SQLite/MySQL 默认走事务，程序跑完没提交，数据根本没落盘，"爬了一晚上库是空的"多半是它；⑤ MongoDB 的 <code class="inline">update_one</code> 修改器写错：不用 <code class="inline">$set</code> 会<b>整文档替换</b>；增量去重要记得 <code class="inline">upsert=True</code>，光用 insert_one 每天重爬只会堆积重复。</div>
 
       <!-- ============ 打卡 ============ -->
+      <!-- ============ 4.5 ============ -->
+      <h2>4.5 工程化：写一个能跑通宵的 MySQL 模块 <span class="chip tnew">新 · 工程实战</span></h2>
+      <p>4.2 的代码都是"跑一次就退出"的形态：连接、执行、关闭。但真实的采集任务是<b>连续跑几天</b>的，这时 pymysql 会撞上三个坑——一个让程序半夜静默死亡，一个让 emoji 存不进去，一个让异常处理写得很别扭。把它们一次性解决，封成一个模块，之后每个爬虫直接 import。</p>
+
+      <h3>坑一：8 小时静默断连</h3>
+      <p>MySQL 服务端有个参数 <code class="inline">wait_timeout</code>，默认 <b>28800 秒 = 8 小时</b>。含义是：一条连接闲置超过 8 小时没有任何读写，<b>服务端会单方面掐断它</b>，而客户端毫不知情——TCP 层甚至不会收到通知。</p>
+      <p>症状极其典型：晚上跑得好好的，第二天早上一看，所有插入都在报 <code class="inline">(2006, 'MySQL server has gone away')</code>，程序卡死。你会以为是网络问题，其实是连接早就死了，只是没人告诉 Python。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>参数</th><th>默认值</th><th>说明</th></tr>
+        <tr><td><code class="inline">wait_timeout</code></td><td>28800 秒（8 小时）</td><td><b>服务端</b>掐断空闲连接的阈值</td></tr>
+        <tr><td><code class="inline">interactive_timeout</code></td><td>28800 秒</td><td>同上，但只作用于交互式连接（命令行客户端）</td></tr>
+        <tr><td>客户端重连阈值</td><td>—</td><td><b>要自己实现</b>，必须小于 wait_timeout</td></tr>
+      </table></div>
+      <p>解法很直接：客户端主动在 <b>7 小时</b>时重连，比服务端早一小时收工，留足余量。判断依据不是"连接建立了多久"，而是"<b>距离上次使用过了多久</b>"——跑得勤的爬虫永远触发不了重连，只有真正闲下来才需要。</p>
+
+      <h3>坑二：utf8 存不下 emoji</h3>
+      <p>MySQL 的 <code class="inline">utf8</code> 是个<b>历史遗留的残缺实现</b>，最多只支持 3 字节；完整的 UTF-8 编码叫 <code class="inline">utf8mb4</code>，支持 4 字节。而 emoji（😀🎉）、部分生僻汉字，正好都是 4 字节。</p>
+      <p>用 <code class="inline">utf8</code> 存这些字符，结果只有两种：报 <code class="inline">Incorrect string value</code>，或者<b>更可怕的静默截断</b>——数据进去了，但缺了半个字。所以建库、建表、连接三处必须统一 <code class="inline">utf8mb4</code>，一处漏了就前功尽弃。</p>
+
+      <h3>坑三：重复插入的异常要说清楚</h3>
+      <p>爬虫重复抓到同一条数据是常态。表上有唯一索引时（比如 <code class="inline">url_hash</code>），第二次插入会抛 <code class="inline">1062 Duplicate entry</code>。4.2 练习里的 <code class="inline">INSERT OR IGNORE</code> 是 SQL 层的解法；换成 pymysql 后要在 Python 层处理——<b>吞掉 1062，其他异常照常抛</b>。全吞掉会把"字段名写错"这种真 bug 一起埋了，以后排查能把人逼疯。</p>
+
+      <h3>把三个坑包进一个类</h3>
+      <div class="code-title">ezmysql.py —— 60 行，覆盖 90% 的采集场景</div>
+<pre class="code"><span class="kw">import</span> time
+<span class="kw">import</span> traceback
+<span class="kw">import</span> pymysql
+
+
+<span class="kw">class</span> <span class="fn">Connection</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="kw">self</span>, host, database, user, password, port=<span class="fn">3306</span>):
+        <span class="kw">self</span>.kwargs = <span class="fn">dict</span>(
+            host=host, port=port, user=user, password=password,
+            database=database,
+            charset=<span class="st">"utf8mb4"</span>,      <span class="cm"># 坑二：不是 utf8</span>
+            autocommit=<span class="kw">True</span>,          <span class="cm"># 省掉每次手动 commit</span>
+        )
+        <span class="kw">self</span>.max_idle = <span class="fn">7</span> * <span class="fn">3600</span>     <span class="cm"># 坑一：比服务端 8 小时早 1 小时</span>
+        <span class="kw">self</span>._conn = <span class="kw">None</span>
+        <span class="kw">self</span>._last = <span class="fn">0</span>
+        <span class="kw">self</span>.<span class="fn">reconnect</span>()
+
+    <span class="kw">def</span> <span class="fn">reconnect</span>(<span class="kw">self</span>):
+        <span class="kw">if</span> <span class="kw">self</span>._conn:
+            <span class="kw">try</span>:
+                <span class="kw">self</span>._conn.<span class="fn">close</span>()
+            <span class="kw">except</span> <span class="fn">Exception</span>:
+                <span class="kw">pass</span>                    <span class="cm"># 旧连接可能已经死了，关不掉也无所谓</span>
+        <span class="kw">self</span>._conn = pymysql.<span class="fn">connect</span>(**<span class="kw">self</span>.kwargs)
+        <span class="kw">self</span>._last = time.<span class="fn">time</span>()
+
+    <span class="kw">def</span> <span class="fn">_cursor</span>(<span class="kw">self</span>):
+        <span class="kw">if</span> time.<span class="fn">time</span>() - <span class="kw">self</span>._last &gt; <span class="kw">self</span>.max_idle:
+            <span class="kw">self</span>.<span class="fn">reconnect</span>()         <span class="cm"># 闲太久，先重连再说</span>
+        <span class="kw">self</span>._last = time.<span class="fn">time</span>()
+        <span class="kw">return</span> <span class="kw">self</span>._conn.<span class="fn">cursor</span>()
+
+    <span class="kw">def</span> <span class="fn">get</span>(<span class="kw">self</span>, sql, *args):
+        cur = <span class="kw">self</span>.<span class="fn">_cursor</span>()
+        cur.<span class="fn">execute</span>(sql, args)
+        <span class="kw">return</span> cur.<span class="fn">fetchone</span>()       <span class="cm"># 单条 → dict 或 None</span>
+
+    <span class="kw">def</span> <span class="fn">query</span>(<span class="kw">self</span>, sql, *args):
+        cur = <span class="kw">self</span>.<span class="fn">_cursor</span>()
+        cur.<span class="fn">execute</span>(sql, args)
+        <span class="kw">return</span> cur.<span class="fn">fetchall</span>()       <span class="cm"># 多条 → list[dict]</span>
+
+    <span class="kw">def</span> <span class="fn">execute</span>(<span class="kw">self</span>, sql, *args):
+        cur = <span class="kw">self</span>.<span class="fn">_cursor</span>()
+        cur.<span class="fn">execute</span>(sql, args)
+        <span class="kw">return</span> cur.lastrowid      <span class="cm"># 插入后新行的主键</span></pre>
+      <p>在上面这层薄封装之上，再加一个<b>只对字典负责</b>的插入方法，是日常用得最多的：</p>
+      <div class="code-title">字典直插：省掉手拼 SQL</div>
+<pre class="code">    <span class="kw">def</span> <span class="fn">table_insert</span>(<span class="kw">self</span>, table, item):
+        <span class="st">"""item 的 key 必须与表字段名完全一致"""</span>
+        keys = <span class="st">","</span>.<span class="fn">join</span>(item.<span class="fn">keys</span>())
+        holders = <span class="st">","</span>.<span class="fn">join</span>([<span class="st">"%s"</span>] * <span class="fn">len</span>(item))
+        sql = <span class="st">"INSERT INTO %s(%s) VALUES(%s)"</span> % (table, keys, holders)
+        <span class="kw">try</span>:
+            <span class="kw">self</span>.<span class="fn">execute</span>(sql, *item.<span class="fn">values</span>())
+        <span class="kw">except</span> pymysql.err.<span class="fn">IntegrityError</span> <span class="kw">as</span> e:
+            <span class="kw">if</span> e.args[<span class="fn">0</span>] == <span class="fn">1062</span>:     <span class="cm"># 坑三：重复键，预期内，忽略</span>
+                <span class="kw">pass</span>
+            <span class="kw">else</span>:
+                <span class="kw">raise</span>                 <span class="cm"># 其他完整性错误是真 bug，必须冒泡</span>
+        <span class="kw">except</span> <span class="fn">Exception</span>:
+            traceback.<span class="fn">print_exc</span>()      <span class="cm"># 字段名写错、类型不符，打出来</span></pre>
+      <p>为什么值得这样封一层：提取函数天然返回字典（<code class="inline">{"title": ..., "url": ...}</code>），直接灌给 <code class="inline">table_insert</code> 就完事；而手写 <code class="inline">INSERT INTO t(a,b,c,d,e,f) VALUES(%s,%s,%s,%s,%s,%s)</code> 时，字段一多就容易错位——错位不报错，只是数据悄悄串列，这种 bug 最难查。</p>
+
+      <div class="callout info"><b>为什么用 pymysql 而不是其他客户端：</b>它是<b>纯 Python 实现</b>，跨平台零编译（Windows 上尤其省事），而且接口设计与后续要用的 <code class="inline">aiomysql</code> 一脉相承——第 05 章做异步渲染、第 10 章做分布式时，切过去几乎无痛。如果你更习惯 MongoDB，照样封一层，接口稳定比接口优雅重要得多。</div>
+
+      <div class="pitfall"><b>四个坑：</b>① <code class="inline">charset</code> 写成 <code class="inline">utf8</code>——emoji 静默丢字，跨章排查极其痛苦；② 重连阈值等于或大于 <code class="inline">wait_timeout</code>——等于没设，服务端先断你一步；③ <code class="inline">table_insert</code> 的字典 key 与字段名不一致——SQL 直接报错，且错误信息不会告诉你哪个 key 多余；④ 吞异常吞太宽——只该吞 1062，把 <code class="inline">except Exception: pass</code> 套在外层，字段拼错也照样"成功"。</div>
+
       <h2>✅ 本章打卡清单</h2>
       <div class="checklist-card check">
         <label><input type="checkbox" id="c04-1" data-persist><span>TXT 追加写、JSON(dumps ensure_ascii=False)/JSON Lines、CSV(DictWriter + utf-8-sig + newline="") 三种文件存储都会写（4.1）</span></label>
