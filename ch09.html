@@ -298,11 +298,552 @@ objection -g com.example.app explore        <span class="cm"># 注入目标 App�
 &gt; android hooking list classes              <span class="cm"># 枚举已加载的全部类</span>
 &gt; android hooking search classes Sign       <span class="cm"># 按关键词搜类，定位加密工具类</span>
 &gt; android sslpinning disable                <span class="cm"># 一条命令绕证书锁定（9.3 应对①）</span></pre>
-        <p><b>何时选谁</b>：快速摸底、不想写脚本 → objection；要 hook 特定函数拿明文、逻辑定制 → Frida 手写脚本（常见打法是先用 objection 枚举搜出类名，再回 Frida 精准 hook——两者是搭档不是对手）；要 7×24 常驻、设备早已 Root 刷机 → Xposed/LSPosed 模块。最后重申 9.6 的红线：以上工具<b>仅限自有设备与授权环境</b>使用。</p>
+        <p><b>何时选谁</b>：快速摸底、不想写脚本 → objection；要 hook 特定函数拿明文、逻辑定制 → Frida 手写脚本（常见打法是先用 objection 枚举搜出类名，再回 Frida 精准 hook——两者是搭档不是对手）；要 7×24 常驻、设备早已 Root 刷机 → Xposed/LSPosed 模块。最后重申 9.10 的红线：以上工具<b>仅限自有设备与授权环境</b>使用。</p>
       </div>
 
+      <h3>frida-server 部署：三个必须对齐</h3>
+      <p>Frida 由三块组成：手机端的 <code class="inline">frida-server</code>（二进制）、PC 端的 <code class="inline">frida</code> 模块、命令行工具 <code class="inline">frida-tools</code>。<b>三者的版本与架构必须互相匹配</b>，这是新手耗时最多的地方。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>要对齐的</th><th>怎么查</th><th>搞错的后果</th></tr>
+        <tr><td>CPU 架构</td><td><code class="inline">adb shell getprop ro.product.cpu.abi</code></td><td>真机是 arm64 却装了 x86 版：程序能起来，<b>一调 API 就闪崩</b>，且报错完全不提架构</td></tr>
+        <tr><td>安卓版本</td><td>设置 → 关于手机</td><td>Android 6 上装 14.x：部分 API 直接报错，spawn 模式必崩</td></tr>
+        <tr><td>PC 端版本</td><td><code class="inline">pip show frida</code></td><td>与手机端不一致，部分 API 报错</td></tr>
+      </table></div>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>手机安卓版本</th><th>frida-server 版本</th></tr>
+        <tr><td>Android 6</td><td><b>12.8.10</b>（别用 14.x，这是硬约束）</td></tr>
+        <tr><td>Android 8 及以上</td><td>14.x 新版</td></tr>
+      </table></div>
+      <div class="code-title">部署与验证</div>
+<pre class="code">adb push frida-server-12.8.10-android-arm64 /data/local/tmp/frida-server
+adb shell
+su
+cd /data/local/tmp
+<span class="fn">chmod</span> 755 frida-server        <span class="cm"># ★ 不做这一步，执行时报权限不足</span>
+./frida-server &amp;               <span class="cm"># 后台常驻；前台跑，一断开就停</span>
+
+<span class="cm"># 回到 PC 侧</span>
+adb forward tcp:27042 tcp:27042   <span class="cm"># ★ 不做转发会报"连不上 frida-server"</span>
+frida-ps -U                       <span class="cm"># 能列出手机进程 = 通信正常</span></pre>
+      <p><b>启动成功是没有任何输出的</b>——有输出基本就是错了。看到"连不上 frida-server"时，第一反应查端口转发，而不是重装。</p>
+
+      <h3>四个易错点，每个都能耗掉半天</h3>
+      <p><b>① 成员变量必须加 <code class="inline">.value</code></b></p>
+      <div class="code-title">字段与方法可能同名，.value 明确表示取字段</div>
+<pre class="code">console.<span class="fn">log</span>(<span class="kw">this</span>.m.value);   <span class="cm">// ✓ 对</span>
+console.<span class="fn">log</span>(<span class="kw">this</span>.m);         <span class="cm">// ✗ 错：打印的是方法对象</span></pre>
+      <p><b>② 打印时机决定你拿到的是哪个值</b>——这是最容易得出错误结论的一条。Hook 是在原方法<b>执行前</b>插入的，所以顺序反了就会永远拿到默认值或上一局的旧值：</p>
+      <div class="code-title">先跑原逻辑，再打印</div>
+<pre class="code">MainActivity.onClick.implementation = <span class="kw">function</span> (v) {
+    <span class="kw">this</span>.<span class="fn">onClick</span>(v);                    <span class="cm">// ← 先执行，m/n 在这一步被赋值</span>
+    console.<span class="fn">log</span>(<span class="st">"M = "</span> + <span class="kw">this</span>.m.value);   <span class="cm">// 再打印 → 当前这一局的值</span>
+    console.<span class="fn">log</span>(<span class="st">"N = "</span> + <span class="kw">this</span>.n.value);
+};</pre>
+      <p>先打印的典型症状：<b>"点石头永远打印 0"</b>，而且值总是滞后一局——因为打的是上一局留下的值。</p>
+      <p><b>③ 匿名类不在外部类里，要写 <code class="inline">$1</code></b>。<code class="inline">new Runnable(){...}</code> 这种匿名类编译后是独立类 <code class="inline">MainActivity$1</code>，去 <code class="inline">MainActivity</code> 里找 <code class="inline">run</code> 会报 <code class="inline">implementation undefined</code>：</p>
+      <div class="code-title">匿名类的正确写法</div>
+<pre class="code"><span class="kw">var</span> Inner = Java.<span class="fn">use</span>(<span class="st">"com.example.app.MainActivity$1"</span>);
+Inner.run.implementation = <span class="kw">function</span> () {
+    <span class="kw">this</span>.<span class="fn">run</span>();
+};</pre>
+      <p><b>怎么确定编号</b>：jadx 里能直接看到嵌套的类；或者反编译成 smali，在 <code class="inline">MainActivity.smali</code> 同级目录找 <code class="inline">MainActivity$1.smali</code>——一个 smali 文件就是一个类。</p>
+      <p><b>④ 内部类访问外部类字段要走 <code class="inline">this$0</code></b>。内部类持有外部类实例的引用，字段名就叫 <code class="inline">this$0</code>：</p>
+      <div class="code-title">通过 this$0 拿到外部类实例</div>
+<pre class="code"><span class="kw">var</span> Inner = Java.<span class="fn">use</span>(<span class="st">"com.example.app.MainActivity$1"</span>);
+Inner.run.implementation = <span class="kw">function</span> () {
+    <span class="kw">var</span> outer = <span class="kw">this</span>.this$0.value;   <span class="cm">// 外部类实例</span>
+    outer.n.value = <span class="fn">2</span>;               <span class="cm">// 篡改外部类字段</span>
+    outer.m.value = <span class="fn">1</span>;
+    <span class="kw">this</span>.<span class="fn">run</span>();
+};</pre>
+
+      <h3>Python 控制端：一个固定模板</h3>
+      <p>Python 这层几乎不用改，<b>只换包名和 JS 字符串</b>，其余照抄：</p>
+      <div class="code-title">run.py</div>
+<pre class="code"><span class="kw">import</span> frida, sys
+
+JS = <span class="st">"""
+Java.perform(function () {
+    var Act = Java.use("com.example.app.MainActivity");
+    Act.onClick.implementation = function (v) {
+        this.onClick(v);
+        console.log("M = " + this.m.value);
+    };
+});
+"""</span>
+
+<span class="cm"># 方式一：attach（App 已启动）</span>
+session = frida.<span class="fn">get_usb_device</span>().<span class="fn">attach</span>(<span class="st">"com.example.app"</span>)
+
+<span class="cm"># 方式二：spawn（frida 拉起，能 hook 启动阶段）</span>
+<span class="cm"># device = frida.get_usb_device()</span>
+<span class="cm"># pid = device.spawn(["com.example.app"])</span>
+<span class="cm"># session = device.attach(pid)</span>
+<span class="cm"># device.resume(pid)</span>
+
+script = session.<span class="fn">create_script</span>(JS)
+script.<span class="fn">load</span>()
+sys.stdin.<span class="fn">read</span>()      <span class="cm"># ★ 少了这行，脚本加载完立刻退出</span></pre>
+      <p><b>attach 与 spawn 的分界</b>：要 hook <code class="inline">Application.onCreate</code>、加固壳的动态加载、dex 解密，<b>只能用 spawn</b>——attach 时这些早就跑完了。代价是 App 会重启一次，而且低版本安卓配高版本 Frida 走 spawn 极易崩。</p>
+
       <!-- ============ 9.6 ============ -->
-      <h2>9.6 合规特别提醒 <span class="chip">红线</span></h2>
+      <h2>9.6 反编译与重打包：静态分析那条路 <span class="chip tnew">新 · 工程实战</span></h2>
+      <p>9.5 的 Frida 是<b>动态</b>的路：让 App 跑起来，在运行时看值。这一节讲<b>静态</b>的路：把安装包拆开，读它的代码和配置。两条路不是二选一——实际工作中永远是<b>静态定位候选、动态验证猜测</b>，来回切换。</p>
+
+      <h3>一、APK 就是一个 zip</h3>
+      <p>把 <code class="inline">xxx.apk</code> 改名成 <code class="inline">xxx.rar</code> 直接解压，看到的目录结构就是它的真身：</p>
+      <div class="code-title">解压后的目录</div>
+<pre class="code">app/
+├── AndroidManifest.xml     <span class="cm"># 二进制，直接打开是乱码</span>
+├── classes.dex             <span class="cm"># Java/Kotlin 编译产物，地位等于 Windows 的 exe</span>
+├── resources.arsc          <span class="cm"># 资源索引表：把 R.id.xxx 映射到实际文件</span>
+├── res/                    <span class="cm"># 编译后的资源，xml 已被压成二进制</span>
+├── assets/                 <span class="cm"># 原样存放的静态资源，不编译</span>
+└── lib/
+    ├── arm64-v8a/          <span class="cm"># 真机主流</span>
+    ├── armeabi-v7a/
+    ├── x86/                <span class="cm"># 模拟器</span>
+    └── x86_64/</pre>
+      <p>四个要点：</p>
+      <p><b>① <code class="inline">classes.dex</code> 是所有业务代码</b>，被 ART 虚拟机加载执行。Dalvik 是老安卓（4.x 及以前）的虚拟机，现在全是 ART。</p>
+      <p><b>② <code class="inline">assets/</code> 是最常藏东西的地方</b>——App 内置的证书（抓包找证书先翻这里）、动态加载的 dex（加固和插件化的常见落点）。它不参与编译，原样存放。</p>
+      <p><b>③ <code class="inline">lib/</code> 下的 so 不跨平台</b>，按 CPU 架构分别编译。分析 so 前先确认自己手机的架构（<code class="inline">getprop ro.product.cpu.abi</code>），否则会对着一份根本不会被加载的文件分析半天。</p>
+      <p><b>④ AndroidManifest.xml 是二进制的</b>，直接打开是乱码不代表文件坏了，<b>只是没反编译</b>。</p>
+
+      <h3>二、adb：和手机交互的唯一入口</h3>
+      <div class="code-title">日常就这几条</div>
+<pre class="code">adb devices                    <span class="cm"># 找不到设备先换 USB 线，比查驱动快</span>
+adb shell                      <span class="cm"># 进手机 shell；真机默认不是 root，要再 su（提示符变 #）</span>
+adb install -r app.apk         <span class="cm"># 覆盖安装</span>
+adb uninstall com.example.app  <span class="cm"># ★ 卸载用包名，不是 apk 文件名</span>
+adb push local.txt /sdcard/    <span class="cm"># ★ 统一放 /sdcard，权限宽松</span>
+adb pull /sdcard/x.txt .
+adb logcat                     <span class="cm"># 闪退、报错、证书问题基本都从这看出来</span></pre>
+      <p><code class="inline">adb push</code> 往 <code class="inline">/data</code>、<code class="inline">/</code> 这类目录写会被权限拒绝，读写都失败——<code class="inline">/sdcard</code>（或 <code class="inline">/sdcard/Download</code>）是通用落点。刷机还要在开发者选项里额外打开 <b>OEM unlocking</b>。</p>
+
+      <h3>三、反编译三件套，各有各的活</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>工具</th><th>形态</th><th>能干什么</th><th>独有能力</th></tr>
+        <tr><td><b>apktool</b></td><td>命令行</td><td>dex → smali，二进制 xml → 明文</td><td><b>唯一能重打包的</b></td></tr>
+        <tr><td><b>jadx</b></td><td>图形化</td><td>dex → Java 源码，全局搜索、方法跳转、导出 gradle 工程</td><td>日常主力，搜索最快</td></tr>
+        <tr><td><b>JEB</b></td><td>图形化</td><td>反编译 + 静态分析</td><td>能读 so 里的字符串、合并多个 dex、自动解 base64</td></tr>
+      </table></div>
+      <div class="code-title">apktool 三条命令</div>
+<pre class="code">apktool d app.apk          <span class="cm"># 反编译：dex 消失，多了 smali/ 目录</span>
+apktool d -s app.apk       <span class="cm"># 跳过 dex：assets 里有不规范 dex 报错时用</span>
+apktool b app目录           <span class="cm"># 改完 smali 重打包，产物在 dist/</span></pre>
+      <p><b>JEB 的三个补位场景很实用</b>：jadx 搜不到的字符串，JEB 可能搜得到（它会解静态编码）；脱壳后产出几十个 dex，JEB 能合并后一次搜索；so 里的静态字符串只有它能读。</p>
+      <div class="callout info"><b>三者都有 bug。</b>jadx 打不开就换 JEB，apktool 报错就换 jadx 看代码——<b>别花半天去修工具，那不是逆向工作</b>。apktool 只在需要重打包时才必须用。</div>
+
+      <h3>四、重打包、签名，以及为什么一启动就闪退</h3>
+      <div class="code-title">改包四步</div>
+<pre class="code">apktool b app_dir                    <span class="cm"># 1. 重打包 → app_dir/dist/app.apk</span>
+
+keytool -genkey -alias demo -keyalg RSA -keysize 2048 -validity 36500 \
+        -keystore demo.keystore -storepass 你的密码 -keypass 你的密码 \
+        -dname "CN=demo, OU=demo, O=demo, L=demo, ST=demo, C=CN"      <span class="cm"># 2. 生成自签名证书</span>
+
+jarsigner -verbose -keystore demo.keystore -storepass 你的密码 \
+          -signedjar app_signed.apk app_dir/dist/app.apk demo         <span class="cm"># 3. 签名</span>
+
+adb install -r app_signed.apk        <span class="cm"># 4. 安装</span></pre>
+      <p>两条硬规则：</p>
+      <p><b>① 未签名的 APK 装不上</b>——这是 Android 系统机制，不是可选步骤。</p>
+      <p><b>② 签名能装上 ≠ 能打开。</b>开发者在自己代码里内置了原签名的指纹（MD5 或 SHA），启动时比对；你重新签名后指纹对不上，App 直接闪退。这就是<b>签名校验</b>。</p>
+      <div class="callout warn"><b>所以改包的第一步不是改逻辑，是先判断它有没有签名校验、校验放在 Java 还是 so 里。</b>现在越来越多放在 so 层，过校验的难度在上升。判断依据看下一节的启动流程——<b>看不到任何界面就闪退 = 问题在启动阶段</b>，优先怀疑签名校验 / root 检测 / 反调试这三件事。</div>
+
+      <h3>五、AndroidManifest 与启动流程：一张排障地图</h3>
+      <p>App 一启动就读这个文件，文件名固定不能改。四项要记牢：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>节点</th><th>含义</th><th>为什么重要</th></tr>
+        <tr><td><code class="inline">&lt;uses-permission&gt;</code></td><td>声明的权限</td><td>没声明的权限，App 根本拿不到</td></tr>
+        <tr><td><code class="inline">package</code></td><td>包名 = 进程名</td><td><code class="inline">adb uninstall</code>、Frida attach 都用它</td></tr>
+        <tr><td><code class="inline">&lt;application android:name&gt;</code></td><td>自定义 Application 类</td><td><b>一个 App 只有一个</b>，是启动流程第一站</td></tr>
+        <tr><td><code class="inline">&lt;activity&gt;</code></td><td>一个界面一个</td><td>找 <code class="inline">MAIN</code> + <code class="inline">LAUNCHER</code> 那个就是启动页，顺着 <code class="inline">android:name</code> 直接跳到代码</td></tr>
+      </table></div>
+      <div class="code-title">启动顺序就是排障地图</div>
+<pre class="code">点图标 → 创建进程 → Application.onCreate() → 首个 Activity.onCreate()
+       → onResume()，界面可见 → 主界面</pre>
+      <p><b>一个界面都没看见就闪退</b> → 问题在 <code class="inline">Application</code> 或首个 <code class="inline">Activity</code> 的 <code class="inline">onCreate</code>（签名校验、root 检测、壳的初始化全在这一段）。<b>界面出来了再崩</b> → 往后找具体的 activity 或网络回调。</p>
+      <p>顺带一个技巧：activity 的命名通常能自解释——<code class="inline">MainActivity</code>、<code class="inline">ListActivity</code>、<code class="inline">WxPayActivity</code>、<code class="inline">FeedbackActivity</code>。顺着名字就能猜业务，这是快速建立代码地图的方法。</p>
+
+      <div class="pitfall"><b>六个坑：</b>① 用模拟器做 so 层分析——模拟器是 x86，而绝大多数 App 的 <code class="inline">lib/</code> 只提供 arm 的 so，装上直接跑不起来；② 用 jadx 反混淆后的名字写 hook——反混淆只是<b>显示</b>重命名，真实类名要按未反混淆的来；③ <code class="inline">apktool b</code> 后不签名就装，安装直接被拒；④ 重签名后闪退就以为打包出错——九成是签名校验；⑤ <code class="inline">adb uninstall</code> 用了 apk 文件名；⑥ 在非原生 ROM 上用 Frida——国内 ROM 裁剪了系统 API，表现为莫名死机甚至变砖。</div>
+
+      <!-- ============ 9.7 ============ -->
+      <h2>9.7 Frida 定位实战：三个案例 <span class="chip tnew">新 · 案例复盘</span></h2>
+      <p>9.5 给了模板，但真到现场，最难的从来不是写 hook，是<b>不知道该 hook 谁</b>。这一节把三个真实案例的定位过程走一遍：签名校验、请求签名、RSA 登录。三个案例用的是同一套流程，走熟一套就能通吃。</p>
+
+      <h3>一、定位总纲：五步法</h3>
+      <div class="flow">
+        <span class="fnode">抓包，找出<br>看不懂的参数</span><span class="farrow">→</span>
+        <span class="fnode">关键字搜索<br>sign / enc</span><span class="farrow">→</span>
+        <span class="fnode">搜不到就<br>hook 系统类</span><span class="farrow">→</span>
+        <span class="fnode">打调用堆栈<br>回溯业务帧</span><span class="farrow">→</span>
+        <span class="fnode">走两三步<br>复刻验证</span>
+      </div>
+      <p>搜得到关键字是最省事的情况，直接读代码。真正考验人的是<b>搜不到</b>——三种原因：被放到 native 层了、被加固了、被混淆手法藏起来了。下面第一个案例就是第三种。</p>
+      <div class="callout warn"><b>整节最重要的一条判断：业务代码的方法名可以随便改、可以被混淆成 <code class="inline">a.a.a</code>，但系统类的方法名一个字都不能改。</b><code class="inline">getPackageManager</code> 改了就调不到了。所以系统类是永远稳定的锚点——这是所有定位手法的物理基础。</div>
+
+      <h3>二、三种调用姿势</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>姿势</th><th>什么时候用</th><th>关键写法</th></tr>
+        <tr><td><b>被动 hook</b></td><td>程序自己执行到那行才触发</td><td><code class="inline">.implementation = function(){}</code></td></tr>
+        <tr><td><b>主动调用</b></td><td>不想读代码，直接调它拿返回值</td><td>静态方法 <code class="inline">类.方法()</code>；非静态 <code class="inline">类.$new().方法()</code></td></tr>
+        <tr><td><b>造对象</b></td><td>需要传对象进去</td><td><code class="inline">类.$new(参数)</code></td></tr>
+      </table></div>
+      <div class="code-title">被动 hook 的三个"必须"</div>
+<pre class="code">Java.<span class="fn">perform</span>(<span class="kw">function</span> () {
+    <span class="kw">var</span> DD = Java.<span class="fn">use</span>(<span class="st">"com.example.app.util.DD"</span>);
+
+    <span class="cm">// ① 有重载必须 overload，参数写完整类型名</span>
+    DD.a.<span class="fn">overload</span>(<span class="st">"java.lang.String"</span>, <span class="st">"java.lang.String"</span>).implementation = <span class="kw">function</span> (p1, p2) {
+        <span class="cm">// ② 第一行先打 enter —— 这是唯一的"有没有进来"判据</span>
+        console.<span class="fn">log</span>(<span class="st">"[enter] DD.a p1="</span> + p1);
+
+        <span class="kw">var</span> ret = <span class="kw">this</span>.<span class="fn">a</span>(p1, p2);
+        console.<span class="fn">log</span>(<span class="st">"[ret] "</span> + ret);
+
+        <span class="kw">return</span> ret;   <span class="cm">// ③ 有返回值必须 return，否则原逻辑被破坏</span>
+    };
+});</pre>
+      <p>只打 <code class="inline">ret</code> 不打 <code class="inline">enter</code> 是最常见的坏习惯：没打印时你分不清是"没进这个方法"还是"进了但打印失败"，等于白跑。</p>
+
+      <h3>三、通用武器：打调用堆栈</h3>
+      <p>这段代码整组课出现频率最高，复制即用：</p>
+      <div class="code-title">showStacks() —— 借系统类现成的能力打堆栈</div>
+<pre class="code"><span class="kw">function</span> <span class="fn">showStacks</span>() {
+    console.<span class="fn">log</span>(
+        Java.<span class="fn">use</span>(<span class="st">"android.util.Log"</span>).<span class="fn">getStackTraceString</span>(
+            Java.<span class="fn">use</span>(<span class="st">"java.lang.Throwable"</span>).<span class="fn">$new</span>()
+        )
+    );
+}</pre>
+      <p><b>怎么读</b>：从上往下扫，跳过 <code class="inline">java.*</code>、<code class="inline">android.*</code>、<code class="inline">com.android.*</code> 这些系统帧，<b>第一个 <code class="inline">com.&lt;目标包名&gt;.*</code> 的帧就是调用点</b>。</p>
+
+      <h3>四、案例一：签名校验藏在哪</h3>
+      <p><b>现象</b>：只重打包、不改任何代码，装上去启动就弹"检测到软件被修改"，点确定退出。回 jadx 搜 <code class="inline">signatures</code>——<b>一条都搜不到</b>。</p>
+      <p><b>必修的前提知识：Java 层的签名校验是一串固定写法</b>，任何实现都绕不开这三个方法：</p>
+      <div class="code-title">原始形态，一共就这几行</div>
+<pre class="code">PackageManager pm = ctx.<span class="fn">getPackageManager</span>();          <span class="cm">// Context → PackageManager</span>
+PackageInfo pi = pm.<span class="fn">getPackageInfo</span>(ctx.<span class="fn">getPackageName</span>(), <span class="fn">64</span>);
+Signature[] sigs = pi.signatures;                     <span class="cm">// → Signature[]</span>
+<span class="kw">int</span> cur = sigs[<span class="fn">0</span>].<span class="fn">hashCode</span>();                       <span class="cm">// 或 toByteArray()</span>
+<span class="kw">if</span> (cur != <span class="fn">0x1a2b3c4d</span>) {                             <span class="cm">// 与写死的值比对</span>
+    android.os.Process.<span class="fn">killProcess</span>(android.os.Process.<span class="fn">myPid</span>());
+}</pre>
+      <p>所以反过来，<b>这三个方法名就是 hook 锚点</b>。</p>
+      <p><b>第一枪打偏了</b>：hook <code class="inline">Signature.hashCode()</code>，用 spawn 启动（校验在启动阶段），结果毫无打印。这里有个极易误判的点——<b>没打印 ≠ 没做校验</b>。获取签名值的方式不止一种，还有 <code class="inline">toByteArray()</code>、<code class="inline">toCharsString()</code>。<b>hook 系统类时要把同族方法都 hook 一遍</b>。</p>
+      <div class="code-title">第二枪命中</div>
+<pre class="code">Java.<span class="fn">perform</span>(<span class="kw">function</span> () {
+    <span class="kw">var</span> Signature = Java.<span class="fn">use</span>(<span class="st">"android.content.pm.Signature"</span>);
+
+    Signature.toByteArray.implementation = <span class="kw">function</span> () {
+        <span class="kw">var</span> ret = <span class="kw">this</span>.<span class="fn">toByteArray</span>();
+        console.<span class="fn">log</span>(<span class="st">"[toByteArray] len="</span> + ret.length);
+        <span class="fn">showStacks</span>();        <span class="cm">// ← 打完这一枪，定位成功</span>
+        <span class="kw">return</span> ret;
+    };
+});</pre>
+      <p>堆栈里只有一个业务帧，直接指到 <code class="inline">com.controller.text.widget.a.a</code>。</p>
+      <p><b>但进去一看，整个类里没有任何一处出现 <code class="inline">toByteArray</code> 字样</b>。只有一堆长得像 Base64 的常量：</p>
+      <div class="code-title">方法名被 Base64 编码后藏起来了</div>
+<pre class="code"><span class="fn">a</span>(<span class="st">"c2lnbmF0dXJl"</span>)              <span class="cm">// = "signature"</span>
+<span class="fn">a</span>(<span class="st">"Z2V0UGFja2FnZU1hbmFnZXI="</span>)  <span class="cm">// = "getPackageManager"</span>
+<span class="fn">a</span>(<span class="st">"dG9CeXRlQXJyYXk="</span>)         <span class="cm">// = "toByteArray"</span>
+
+<span class="kw">static</span> String <span class="fn">a</span>(String s) {
+    <span class="kw">return</span> <span class="kw">new</span> <span class="fn">String</span>(Base64.<span class="fn">decode</span>(s, <span class="fn">0</span>));   <span class="cm">// 只做解码</span>
+}</pre>
+      <p>然后通过<b>反射</b>调用。还原时的固定套路：</p>
+      <p><b>① <code class="inline">getMethod</code> 是取方法，<code class="inline">getField</code> 是取成员变量</b>——<code class="inline">signatures</code> 是字段不是方法，所以走 <code class="inline">getField</code>。<b>② 从最内层括号往外还原</b>，因为代码是里面先执行，找最深一层括号拆开、展开、再上一层。<b>③ 全靠括号对齐</b>，少一个括号整段就串了。</p>
+      <p><b>落地</b>：要脱机永久生效只能改 smali。注意三个坑——smali 不能直接 <code class="inline">return true</code>，必须先 <code class="inline">const/4 v0, 0x1</code> 再 <code class="inline">return v0</code>；<code class="inline">.registers</code> 的数量要和实际用的寄存器对得上；改完<b>必须保存</b>再编译。</p>
+
+      <h3>五、案例二：请求里的 sign 怎么来的</h3>
+      <p><b>先分两堆</b>：看得懂的（<code class="inline">User-Agent</code>、<code class="inline">Accept</code>、<code class="inline">Cookie</code>）原样抄；看不懂的（<code class="inline">sign</code>、<code class="inline">enc</code>、<code class="inline">udid</code>）逐个还原。已知字段还能反推量级：13 位数字 = 毫秒时间戳。</p>
+      <div class="callout ok"><b>本节最实用的一个小技巧：搜关键字时只搜左边的引号。</b><br>
+      不要搜 <code class="inline">"sign"</code>（带右引号），只搜 <code class="inline">"sign</code>。因为拼接有两种写法：<code class="inline">sb.append("sign=")</code> 带右引号能搜到，但 <code class="inline">sb.append("sign" + "=")</code> <b>带右引号就搜不到了</b>。只搜左引号，两种都能命中。</div>
+      <p>搜完还要过滤：<b>包名要和目标 App 一致</b>。搜出来一堆 <code class="inline">com.alipay.*</code>、<code class="inline">com.baidu.*</code> 的全是第三方 SDK，跳过。</p>
+      <p><b>读代码的方向</b>：短代码正着读，<b>代码一长必须从 <code class="inline">return</code> 往回读</b>。本例顺出来是这样一条链：</p>
+      <div class="code-title">从 return 往回倒推</div>
+<pre class="code">sign = <span class="fn">a</span>(String.<span class="fn">format</span>(<span class="st">"%s##%s##%s"</span>, A, B, C))   <span class="cm">// ← 先看最外层</span>
+         ↓
+      MessageDigest.<span class="fn">getInstance</span>(<span class="st">"MD5"</span>)
+         ↓
+      md.<span class="fn">update</span>(src.<span class="fn">getBytes</span>())  →  byte[] digest = md.<span class="fn">digest</span>()
+         ↓
+      <span class="kw">for</span> (byte b : digest) { 高位 &amp; 低位各转一个十六进制字符 }   <span class="cm">// → 32 位小写</span></pre>
+      <p><code class="inline">##</code> 这种分隔符是逆向时的<b>强特征</b>——一旦看到，基本就锁定了签名原文的拼装点。</p>
+      <div class="callout warn"><b>整组课最该记住的工作习惯：每走两三步就复刻一次。</b><br>
+      不要一口气分析到底。每分析两三个方法就复刻一次、打印一次、跟抓包值比对一次。<b>分析太远之后一旦走偏，你回头根本不知道错在哪一步。</b>第一次复刻只做两件事：打印入参（验证拼接分析对不对）、打印返回值（验证是不是抓包里的那个 sign）。两串一致 → 分析成立，可以往下推。</div>
+
+      <h3>六、frida-rpc：不还原，直接调</h3>
+      <p>前面所有脚本只能"看"，不能跟 Python 交互。<b>RPC 让 Python 直接调用 App 里的方法</b>——像 <code class="inline">enc</code> 那种要手写一大段字节处理的，用 RPC 拿真值成本低得多。</p>
+      <p>代价也要清楚：<b>依赖手机在线、单线程、慢</b>。所以原则是：<b>能离线还原就离线还原，RPC 是兜底方案。</b></p>
+      <div class="code-title">JS 侧</div>
+<pre class="code">rpc.exports = {
+    <span class="cm">// 方法名别用大写开头，会报找不到方法</span>
+    getenc: <span class="kw">function</span> (plain) {
+        <span class="kw">var</span> result = <span class="st">""</span>;              <span class="cm">// ★ 必须声明在 Java.perform 外面</span>
+        Java.<span class="fn">perform</span>(<span class="kw">function</span> () {
+            result = Java.<span class="fn">use</span>(<span class="st">"com.example.app.util.E"</span>).<span class="fn">d</span>(plain);
+        });
+        <span class="kw">return</span> result;
+    }
+};</pre>
+      <div class="code-title">Python 侧</div>
+<pre class="code"><span class="kw">import</span> frida
+
+JS = <span class="fn">open</span>(<span class="st">"rpc.js"</span>, encoding=<span class="st">"utf-8"</span>).<span class="fn">read</span>()
+device  = frida.<span class="fn">get_usb_device</span>()
+session = device.<span class="fn">attach</span>(<span class="st">"com.example.app"</span>)
+script  = session.<span class="fn">create_script</span>(JS)
+script.<span class="fn">load</span>()
+
+api = script.exports_sync          <span class="cm"># frida >= 12.7 的写法</span>
+<span class="fn">print</span>(api.<span class="fn">getenc</span>(<span class="st">"password123"</span>))</pre>
+      <p><b>四个必须注意的点</b>：① <code class="inline">rpc.exports</code> 是固定关键字；② 参数只能是基本类型或 JSON 字符串，复杂对象跨语言传不了；③ <b>返回值变量必须声明在 <code class="inline">Java.perform</code> 外面</b>，写在里面就是局部变量，return 出去是 undefined；④ <b>用 RPC 时要去掉脚本尾部的保活代码</b>（<code class="inline">setInterval</code> 那句），否则会卡住不返回。</p>
+      <p><b>稳定性</b>：RPC 和爬虫一个道理——不做容错一定活不长。请求卡住要加超时重试，手机跑久了无响应要定时重启 App，ADB 断了要 <code class="inline">adb reconnect</code>。另外，本地 USB 直连只是开发态，<b>爬虫最终跑在云服务器上、手机在本地</b>，中间要靠内网穿透把 ADB 端口暴露出去。</p>
+
+      <div class="pitfall"><b>五个坑：</b>① hook 系统类只 hook 一个方法就下结论——同族方法（<code class="inline">hashCode</code> / <code class="inline">toByteArray</code> / <code class="inline">toCharsString</code>）要全试；② 搜关键字带右引号，漏掉字符串拼接的写法；③ 一口气分析到底，走偏了不知道错在哪一步；④ RPC 里把返回值变量声明在 <code class="inline">Java.perform</code> 内部，拿不到值；⑤ 用 <code class="inline">frida-rpc</code> 时忘了注释掉 <code class="inline">setInterval</code> 保活代码，脚本卡死不返回。</div>
+
+      <!-- ============ 9.8 ============ -->
+      <h2>9.8 加密还原：RSA 与响应解密 <span class="chip tnew">新 · 原理 + 实战</span></h2>
+      <p>9.7 讲的是"怎么找到它"，这一节讲"找到之后怎么在 Python 里复现"。核心只有两块：<b>RSA 的那几个必知参数</b>，以及<b>响应加密为什么比请求加密难找</b>。</p>
+
+      <h3>一、RSA：我们只需要用到其中一小块</h3>
+      <p><b>为什么客户端能用公钥加密，我们也能复现</b>：非对称加密是一对密钥，客户端只放<b>公钥</b>，服务端留<b>私钥</b>。公钥是公开的、写在 App 里的——所以"用公钥加密"这一侧，我们完全能自己复现，不需要私钥。</p>
+      <div class="callout info"><b>这一句决定了难度分布</b>：逆向 RSA <b>请求参数容易</b>（公钥在手，照着加密就行），逆向 RSA <b>响应解密难</b>（那需要私钥，而私钥永远不会下发到客户端）。所以看到 App 用 RSA 加密请求，说明设计者只防了"篡改"，没防"抓包复现"。</div>
+      <p>数学上：私钥是 <code class="inline">(N, D)</code>，公钥是 <code class="inline">(N, E)</code>，<code class="inline">N = p × q</code>（两个超大素数之积），<code class="inline">E</code> 几乎永远是 <code class="inline">65537</code>。<b>两者都含 N，区别只在 E 和 D</b>——D 不泄露，私钥就安全。安全性来自大数分解的算力壁垒，不是算法保密。</p>
+
+      <h3>二、padding：为什么同一个密码每次密文都不同</h3>
+      <p>这是一个让很多人困惑的现象：抓包看登录请求，同样的密码，每次的密文完全不一样。**不是加密算法变了，是 padding 在变。**</p>
+      <p>padding 有两个作用，第二个是后来演化的：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>作用</th><th>为什么需要</th></tr>
+        <tr><td><b>对齐</b></td><td>RSA 的数学公式要求明文长度是固定块的整数倍，业务数据不可能刚好凑上，要补字节</td></tr>
+        <tr><td><b>随机化</b></td><td>如果只补固定的 0，同一明文 + 同一公钥，加密 100 次结果完全一样——攻击者可以逐字节试探。所以演化为每次填随机值</td></tr>
+      </table></div>
+      <p>只要填充模式一致，服务端用私钥依然能正确解出。<b>跨语言解密失败，90% 是填充模式对不上</b>：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>模式</th><th>说明</th></tr>
+        <tr><td><code class="inline">NoPadding</code></td><td>补 0，密文固定不变（不安全，很多新库已不支持）</td></tr>
+        <tr><td><code class="inline">PKCS#1 v1.5</code></td><td>代码里常写 <code class="inline">PKCS1Padding</code> / <code class="inline">PKCS1v15</code>，现在最常用</td></tr>
+        <tr><td><code class="inline">OAEP</code></td><td>更安全，安卓少见</td></tr>
+      </table></div>
+
+      <h3>三、两个能一眼认出 RSA 的特征</h3>
+      <p><b>特征一：<code class="inline">MIG</code> 开头的长字符串。</b>RSA 公钥在代码里不是两个数字，而是一段 <code class="inline">MIGfMA0GCSq...</code>。三层关系是：</p>
+      <div class="flow">
+        <span class="fnode">N, E</span><span class="farrow">→</span>
+        <span class="fnode">ASN.1 结构</span><span class="farrow">→</span>
+        <span class="fnode">DER（二进制）</span><span class="farrow">→</span>
+        <span class="fnode">base64</span><span class="farrow">→</span>
+        <span class="fnode">PEM<br>带 BEGIN/END</span>
+      </div>
+      <p>所以"代码里有一段 MIG 开头的长字符串 + 一段 base64 解码逻辑"≈ 这里在做 RSA 公钥处理。想验证：把 PEM 中间那段丢进任意 base64 解码器，出来的二进制就是 DER。</p>
+      <p><b>特征二：<code class="inline">−11</code> 这个数字。</b>RSA 不能加密任意长度的数据，超了直接抛 <code class="inline">Plaintext is too long</code>：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>密钥长度</th><th>密文长度</th><th>明文最大长度</th></tr>
+        <tr><td>1024 位</td><td>128 字节</td><td><b>117</b> 字节（128 − 11）</td></tr>
+        <tr><td>2048 位</td><td>256 字节</td><td><b>245</b> 字节（256 − 11）</td></tr>
+      </table></div>
+      <p>那 11 个字节是给 padding 预留的。<b>这个数字是反推的强依据</b>：so 里方法名被混淆成 <code class="inline">a.b.c</code> 看不出来，但如果代码里出现 <code class="inline">128 - 11</code>、<code class="inline">key_len - 11</code>、或者常量 <code class="inline">117</code> / <code class="inline">245</code>，基本可以钉死是 RSA。</p>
+      <p>明文超过上限怎么办？两条路：分组加密（少见）、<b>混合加密</b>（最常见）——先用 AES 把长明文压成 100 多字节，再用 RSA 加密那把 AES 密钥。<b>看到"先 AES 再 RSA"不要奇怪，是被长度逼的。</b></p>
+
+      <h3>四、安卓的 NoPadding 坑（整个第二章最隐蔽的坑）</h3>
+      <p><b>现象</b>：Python 用标准 <code class="inline">PKCS1_v1_5</code> 加密，密文长度或结果跟 App 对不上，服务端解不开，也不告诉你为什么。</p>
+      <p><b>根因</b>：<code class="inline">Cipher.getInstance("RSA")</code> 这个"最普通"的写法，在安卓和标准 JDK 上默认填充<b>不一样</b>：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>运行环境</th><th><code class="inline">Cipher.getInstance("RSA")</code> 的默认</th></tr>
+        <tr><td>标准 JDK / 大多数语言</td><td><code class="inline">RSA/ECB/PKCS1Padding</code></td></tr>
+        <tr><td><b>Android（Conscrypt / OpenSSL 实现）</b></td><td><b><code class="inline">RSA/ECB/NoPadding</code></b></td></tr>
+      </table></div>
+      <p>也就是说，App 里那行看起来最普通的 RSA 调用，在安卓上其实是<b>不填充</b>的。Python 侧要手搓：</p>
+      <div class="code-title">NoPadding 的裸 RSA</div>
+<pre class="code"><span class="kw">def</span> <span class="fn">rsa_encrypt_nopadding</span>(plain: str, n: int, e: int) -&gt; bytes:
+    k = (n.<span class="fn">bit_length</span>() + <span class="fn">7</span>) // <span class="fn">8</span>          <span class="cm"># 密钥字节长度</span>
+    m = <span class="fn">int</span>.<span class="fn">from_bytes</span>(plain.<span class="fn">encode</span>(), <span class="st">"big"</span>)
+    c = <span class="fn">pow</span>(m, e, n)                       <span class="cm"># 就这一行是 RSA 本体</span>
+    <span class="kw">return</span> c.<span class="fn">to_bytes</span>(k, <span class="st">"big"</span>)          <span class="cm"># 左补 0 到密钥长度</span></pre>
+      <p><b>一秒判定的方法</b>：拿同一个明文加密两次——<b>密文相同 = NoPadding</b>，密文不同 = 有随机填充。这个测试比读代码快。</p>
+
+      <h3>五、响应加密：为什么搜不到，怎么找</h3>
+      <p><b>请求参数加密</b>好定位：<code class="inline">sign</code>、<code class="inline">token</code> 这些关键字就在代码里，jadx 直接搜。</p>
+      <p><b>响应解密</b>难：响应是服务器下发的，<b>App 里根本没有这个字符串</b>，搜不到。</p>
+      <div class="callout ok"><b>突破口：安卓的网络请求是回调式的。</b><code class="inline">request</code> 发出时必然同时注册了回调（<code class="inline">onSuccess</code> / <code class="inline">onResponse</code>）。所以<b>找到发请求的地方，下面紧跟的就是处理响应的地方</b>。request 和 response 是成对的。</div>
+      <p>三个可搜的锚点，按可靠性排序：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>锚点</th><th>说明</th></tr>
+        <tr><td><b>URL</b>（最稳）</td><td>URL 必须被提交，一定在代码里。搜的时候<b>越短越好</b>，先搜 host 的一部分——太长容易被字符串拼接断开</td></tr>
+        <tr><td>路径关键字</td><td><code class="inline">sendcode</code>、<code class="inline">login</code> 这类</td></tr>
+        <tr><td>请求头的固定字段</td><td>—</td></tr>
+      </table></div>
+      <p><b>搜 URL 还是搜不到？</b>先怀疑三条路：字符串藏在 <code class="inline">res/values/strings.xml</code>（加固不加密资源）、反射 + 自定义 base64 编码、或者拼在 so 里。strings.xml 那条最好解决——jadx 里看到 <code class="inline">getString(2131886xxx)</code>，把十进制 ID 转成十六进制，然后对解包目录 <code class="inline">grep -rin "转成的hex" ./res --include=*.xml</code>。</p>
+
+      <h3>六、通用武器：复刻一个类的所有方法</h3>
+      <p>这是整章最有价值的通用技能。思路：既然定位到某个类专管网络请求，那就把它<b>所有方法</b>都 hook 一遍，打印所有入参和返回值，靠打印反推。不用猜、不用逐个读。</p>
+      <div class="code-title">replicateClass —— 五步法</div>
+<pre class="code"><span class="kw">function</span> <span class="fn">replicateClass</span>(className) {
+    <span class="kw">var</span> Cls = Java.<span class="fn">use</span>(className);
+    <span class="kw">var</span> methods = Cls.class.<span class="fn">getDeclaredMethods</span>();   <span class="cm">// ① 拿 Method[]</span>
+
+    methods.<span class="fn">forEach</span>(<span class="kw">function</span> (m) {
+        <span class="kw">var</span> name = m.<span class="fn">getName</span>();                    <span class="cm">// ② 方法名</span>
+        <span class="kw">var</span> overloads = Cls[name].overloads;          <span class="cm">// ③ 拿该名全部重载</span>
+
+        overloads.<span class="fn">forEach</span>(<span class="kw">function</span> (ov) {
+            ov.implementation = <span class="kw">function</span> () {          <span class="cm">// ④ 逐个替换实现</span>
+                <span class="cm">// 组装 "类名.方法名(参数类型)"，重载靠类型区分</span>
+                <span class="kw">var</span> sig = className + <span class="st">"."</span> + name + <span class="st">"("</span>;
+                <span class="kw">for</span> (<span class="kw">var</span> i = <span class="fn">0</span>; i &lt; ov.argumentTypes.length; i++) {
+                    sig += ov.argumentTypes[i].className;
+                    <span class="kw">if</span> (i &lt; ov.argumentTypes.length - <span class="fn">1</span>) sig += <span class="st">","</span>;
+                }
+                console.<span class="fn">log</span>(sig + <span class="st">")"</span>);
+
+                <span class="kw">for</span> (<span class="kw">var</span> i = <span class="fn">0</span>; i &lt; arguments.length; i++) {
+                    console.<span class="fn">log</span>(<span class="st">"  arg["</span> + i + <span class="st">"] = "</span> + arguments[i]);
+                }
+
+                <span class="cm">// ⑤ 免写形参列表地调原方法</span>
+                <span class="kw">var</span> ret = <span class="kw">this</span>[name].<span class="fn">apply</span>(<span class="kw">this</span>, arguments);
+                console.<span class="fn">log</span>(<span class="st">"  return = "</span> + ret);
+                <span class="kw">return</span> ret;
+            };
+        });
+    });
+}</pre>
+      <p>关键在最后那句 <code class="inline">this[name].apply(this, arguments)</code>——<b>不用写形参列表</b>就能调用原方法，所以同一段代码能适配任意方法签名。</p>
+
+      <h3>七、盲狙：不脱壳也能拿到 Key 和 IV</h3>
+      <p>如果目标用的是<b>安卓或 Java 系统自带的加密 API</b>（绝大多数情况），还有一个更粗暴但极其有效的办法：把这些系统类全部 hook 一遍。</p>
+      <p><b>为什么这个办法成立</b>：App 自己实现加密很难，通常直接调 JDK 类；而这些类的<b>类名和方法名无法混淆</b>（混淆了就调不到）。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>类</th><th>方法</th><th>能抓到什么</th></tr>
+        <tr><td><code class="inline">javax.crypto.Cipher</code></td><td><code class="inline">getInstance</code> / <code class="inline">init</code> / <code class="inline">doFinal</code></td><td>AES / DES / RSA 加解密总入口</td></tr>
+        <tr><td><code class="inline">java.security.MessageDigest</code></td><td><code class="inline">getInstance</code> / <code class="inline">update</code> / <code class="inline">digest</code></td><td>MD5 / SHA 摘要</td></tr>
+        <tr><td><code class="inline">javax.crypto.spec.SecretKeySpec</code></td><td>构造方法</td><td><b>Key 明文</b></td></tr>
+        <tr><td><code class="inline">javax.crypto.spec.IvParameterSpec</code></td><td>构造方法</td><td><b>IV 明文</b></td></tr>
+      </table></div>
+      <p><b>优势</b>：不需要脱壳、不需要读 so、甚至不需要反编译——命中后直接拿 Key / IV / 明文 / 密文，用 Python 就能复现。<b>缺点</b>：打印量巨大（第三方 SDK 也在调同一个 API），要靠抓包值比对筛选；如果加密是自己实现的或写在 so 里，就什么都 hook 不到。</p>
+      <div class="callout warn"><b>两个打印技巧：</b>① <code class="inline">byte[]</code> 直接打是乱码，<b>必须先转 base64 或 hex</b> 才能跟抓包里的字符串对上；② 打印顺序是<b>先调用栈 → 再方法签名 → 再参数值 → 最后返回值</b>，否则你不知道每个返回值属于哪个方法。</div>
+
+      <h3>八、AES 三要素与那个 unpad 坑</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>要素</th><th>要求</th></tr>
+        <tr><td>Key</td><td>16 / 24 / 32 字节（对应 128 / 192 / 256 位）</td></tr>
+        <tr><td>IV</td><td>CBC 模式必需，长度必须等于 block size（<b>16 字节</b>）</td></tr>
+        <tr><td>Mode</td><td>CBC / ECB 等，两端必须一致</td></tr>
+      </table></div>
+      <div class="code-title">Python 复现</div>
+<pre class="code"><span class="kw">import</span> base64
+<span class="kw">from</span> Crypto.Cipher <span class="kw">import</span> AES
+<span class="kw">from</span> Crypto.Util.Padding <span class="kw">import</span> unpad
+
+key = <span class="kw">b</span><span class="st">"................"</span>      <span class="cm"># 16 字节</span>
+iv  = <span class="kw">b</span><span class="st">"................"</span>      <span class="cm"># 16 字节</span>
+
+cipher = AES.<span class="fn">new</span>(key, AES.MODE_CBC, iv)
+raw = cipher.<span class="fn">decrypt</span>(base64.<span class="fn">b64decode</span>(cipher_text))
+plain = <span class="fn">unpad</span>(raw, <span class="fn">16</span>)             <span class="cm"># ★ 必须去补齐</span>
+<span class="fn">print</span>(plain.<span class="fn">decode</span>(<span class="st">"unicode_escape"</span>))</pre>
+      <p><b>漏了 unpad 会导致后续解析报错</b>——明文长度必须是 16 的倍数，不足补 0，解密后要还原。<b>这是下一节 protobuf 解析失败的头号原因</b>：解密后末尾带着一堆 <code class="inline">\x00</code>，protobuf 解析器会在那里崩掉。</p>
+      <p><code class="inline">unicode_escape</code> 那一步也很实用：很多 App 把中文以 <code class="inline">\u4e2d\u6587</code> 形式存进 JSON 再加密，直接 decode 出来还是转义串，要再 unescape 一次。</p>
+
+      <div class="pitfall"><b>五个坑：</b>① 安卓 <code class="inline">Cipher.getInstance("RSA")</code> 默认 <code class="inline">NoPadding</code>，照抄 JDK 的 PKCS1 必失败；② 明文超过 <code class="inline">密钥长度−11</code> 直接抛错，要改用混合加密；③ AES 解密后忘了 <code class="inline">unpad</code>，导致后续 protobuf 解析崩；④ 盲狙打印 <code class="inline">byte[]</code> 不转 base64/hex，看到的全是乱码，无法跟抓包比对；⑤ 搜 URL 用了完整路径——太长容易被字符串拼接断开，先搜 host。</div>
+
+      <!-- ============ 9.9 ============ -->
+      <h2>9.9 协议层：protobuf 与 native so <span class="chip tnew">新 · 进阶</span></h2>
+      <p>当 App 的接口既不是 JSON、也不是表单，而是一坨二进制时，多数人第一反应是"加密了"。<b>但很可能根本没有加密</b>——只是换了一种序列化方式。这一节讲两种情况：<b>protobuf</b>（不是加密，是序列化）和 <b>.so</b>（真的把逻辑藏到 C 层了）。</p>
+
+      <h3>一、protobuf 不是加密，是序列化</h3>
+      <p>protobuf（Protocol Buffers）是 Google 的数据序列化协议，<b>和 JSON 是同一层级的东西</b>，只是输出为二进制。因为没有密钥，<b>只要有结构定义（或者猜出结构），谁都能解</b>。</p>
+      <p>它体积只有 JSON 的 <b>1/10</b> 左右，原因很简单：JSON 每个字段都要重复写 <code class="inline">"phoneNumber":</code>，protobuf 只写<b>字段编号</b>，字段名完全不传——靠两端约定好的 <code class="inline">.proto</code> 对齐。</p>
+
+      <h3>二、四个特征，一眼认出是 protobuf</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>特征</th><th>怎么看</th></tr>
+        <tr><td><b>① 首字节 <code class="inline">0x0a</code></b></td><td>十六进制视图里以 <code class="inline">0A</code> 开头，基本可以怀疑（field 1, wire type 2）</td></tr>
+        <tr><td><b>② <code class="inline">\x0a</code> 分隔的"面条"</b></td><td>文本视图里大量"<code class="inline">\x0a</code> + 一个长度字节 + 内容"的片段；纯 ASCII 部分能看到英文数字</td></tr>
+        <tr><td><b>③ 字段只有编号没有名字</b></td><td>这就是它小的原因，也是解出来"字段名居然不存在"的原因</td></tr>
+        <tr><td><b>④ 代码痕迹</b></td><td>jadx 里看到 <code class="inline">Proto</code>、<code class="inline">ParseFrom</code>、<code class="inline">SerializeToString</code>、<code class="inline">CodedInputStream</code>，或 import 里有 <code class="inline">com.google.protobuf.*</code></td></tr>
+      </table></div>
+      <div class="callout info"><b>抓包时的第一判断</b>：看响应头。如果是 <code class="inline">Content-Type: application/octet-stream</code>，意思是"二进制，格式未知"——这时候先试 base64 解一次，还是乱的再考虑 protobuf 或加密。<b>别一上来就往加密上想。</b></div>
+
+      <h3>三、没有 .proto 怎么办（实战最常遇到）</h3>
+      <p>逆向场景里，你既没有 <code class="inline">.proto</code>，也没有编译好的 <code class="inline">_pb2.py</code>。两条路。</p>
+      <p><b>路线 A：<code class="inline">protoc --decode_raw</code></b>——先把结构看出来，再手工还原 <code class="inline">.proto</code>。</p>
+      <div class="code-title">不需要 .proto 就能看结构</div>
+<pre class="code">protoc --decode_raw &lt; response.bin</pre>
+      <div class="code-title">输出长这样</div>
+<pre class="code">1 {
+  1: "张三"
+  2: 1001
+  3: "a@b.com"
+}
+1 {
+  1: "李四"
+  ...
+}
+4 {
+  1: "13800138000"
+  2: 1
+}</pre>
+      <p><b>能解出所有值和层级，但解不出字段名</b>——因为字段名压根不在数据里。还原规则：缩进层级 = message 嵌套；同一编号出现多次 = <code class="inline">repeated</code>；像可读字符串 → <code class="inline">string</code>，纯数字 → <code class="inline">int32</code>。<b>字段名随便起</b>（叫 <code class="inline">name</code> 还是 <code class="inline">a1</code> 都无所谓），只要<b>编号和层级对</b>，解析结果就一样。</p>
+      <p>缺点很实在：<b>字段一多（二三十个）就非常痛苦</b>，错一个类型或层级要排查很久，纯体力活。</p>
+
+      <p><b>路线 B：<code class="inline">blackboxprotobuf</code></b>（首选）——不需要 .proto、不需要 protoc、不需要编译，直接硬解。</p>
+      <div class="code-title">装一个库，省掉手工还原的全过程</div>
+<pre class="code">pip install blackboxprotobuf</pre>
+<pre class="code"><span class="kw">import</span> blackboxprotobuf <span class="kw">as</span> bbpb
+
+<span class="cm"># ① 直接解成 dict（msg）+ 自动推断的类型定义（typedef）</span>
+msg, typedef = bbpb.<span class="fn">decode</span>(proto_bytes)
+<span class="fn">print</span>(msg)
+
+<span class="cm"># ② 或者直接输出 JSON</span>
+<span class="fn">print</span>(bbpb.<span class="fn">decode_message_to_json</span>(proto_bytes))
+
+<span class="cm"># ③ 改完之后编码回去（发请求时必须）</span>
+new_data = bbpb.<span class="fn">encode_message</span>(msg, typedef)</pre>
+      <p><b>两个注意</b>：改 dict 之后必须<b>带着 <code class="inline">typedef</code> 一起</b>编码回去，否则类型信息丢失、编不回去；字段名是数字编号（<code class="inline">{'1': {...}}</code>），这不影响使用——<b>层级关系才是关键</b>。</p>
+      <div class="code-title">完整链路</div>
+<pre class="code">抓包拿到 hex
+  → bytes.<span class="fn">fromhex</span>()              <span class="cm"># 16 进制转 bytes</span>
+  → AES-CBC 解密 + <span class="fn">unpad</span>        <span class="cm"># 见 9.8 第八节</span>
+  → 得到 protobuf 二进制
+  → bbpb.<span class="fn">decode</span>()              <span class="cm"># 或者 protoc --decode_raw</span>
+  → dict / JSON，可读</pre>
+      <p>发请求是反着来：<code class="inline">encode_message</code> → AES 加密 → base64 → 发出。<b>注意请求体常常是 <code class="inline">base64(AES(protobuf))</code> 三层套娃</b>，少剥一层都解不出来。</p>
+
+      <h3>四、.so：当逻辑被藏到 C 层</h3>
+      <p>jadx 里看到方法体是空的、前面带 <code class="inline">native</code> 关键字，就是这种情况：</p>
+      <pre class="code"><span class="kw">public native</span> byte[] <span class="fn">decodeTwo</span>(<span class="kw">byte</span>[] data);</pre>
+      <p><code class="inline">native</code> 表示实现在 C/C++ 里，被编译成了 <code class="inline">.so</code>，放在 <code class="inline">lib/&lt;架构&gt;/</code> 下。<b>先确认架构</b>（<code class="inline">getprop ro.product.cpu.abi</code>），否则会对着一份根本不会被加载的文件分析半天。</p>
+      <p><b>静态看</b>：用 IDA Pro 打开 <code class="inline">.so</code>。JNI 导出函数的命名是有规律的——<code class="inline">Java_包名_类名_方法名</code>（包名里的点变下划线），所以能在函数列表里直接搜到对应 Java native 方法的实现。按 <b>F5</b> 反编译成伪 C 代码。</p>
+      <p><b>动态看</b>：Frida 也能 hook native 函数，用 <code class="inline">Interceptor.attach</code>：</p>
+      <div class="code-title">hook 一个 so 里的导出函数</div>
+<pre class="code"><span class="kw">var</span> addr = Module.<span class="fn">getExportByName</span>(<span class="st">"libnative.so"</span>, <span class="st">"Java_com_example_App_decode"</span>);
+
+<span class="fn">Interceptor.attach</span>(addr, {
+    onEnter: <span class="kw">function</span> (args) {
+        <span class="cm">// args[0] = JNIEnv*，args[1] = jobject/jclass</span>
+        <span class="cm">// ★ 真正的 Java 参数从 args[2] 开始</span>
+        console.<span class="fn">log</span>(<span class="st">"[enter] arg="</span> + args[<span class="fn">2</span>]);
+        <span class="cm">// 读一段内存（长度按需：AES 的 IV 是 16 字节）</span>
+        console.<span class="fn">log</span>(<span class="fn">hexdump</span>(args[<span class="fn">2</span>], { length: <span class="fn">16</span> }));
+    },
+    onLeave: <span class="kw">function</span> (retval) {
+        console.<span class="fn">log</span>(<span class="st">"[leave] ret="</span> + retval);
+    }
+});</pre>
+      <div class="callout warn"><b>最容易卡住的地方</b>：hook 了但什么都不打印。三个原因按概率排——函数名拼错（导出名要和 <code class="inline">nm -D</code> 或 IDA 导出表里的一字不差）、so 还没加载（要等 <code class="inline">dlopen</code>，或改用 <code class="inline">Module.load</code> 之后再加 hook）、参数偏移搞错（JNI 的 <code class="inline">args[0]</code>/<code class="inline">args[1]</code> 是环境指针，不是你的第一个参数）。</div>
+      <p><b><code class="inline">readByteArray(16)</code> 里的 16 是哪来的</b>：AES 的 IV 和 block 长度都是 16 字节，Key 是 16/24/32。看到代码里读 16 字节，基本就是在拿 IV。<b>常量本身就是线索</b>——和 9.8 里 <code class="inline">−11</code> 是同一个思路。</p>
+
+      <div class="pitfall"><b>五个坑：</b>① 看到二进制就认定"加密了"——很可能只是 protobuf，先 base64 解一次再判断；② 解密后忘了 <code class="inline">unpad</code>，末尾一堆 <code class="inline">\x00</code> 让 protobuf 解析器直接崩；③ 手工还原 .proto 时内层 message 沿用了外层编号——<b>内层编号从 1 重新开始</b>；④ <code class="inline">blackboxprotobuf</code> 编码回去时丢了 <code class="inline">typedef</code>，类型信息没了；⑤ hook native 时从 <code class="inline">args[0]</code> 开始读参数，其实前两个是 <code class="inline">JNIEnv*</code> 和 <code class="inline">jobject</code>。</div>
+
+      <!-- ============ 9.10 ============ -->
+      <h2>9.10 合规特别提醒 <span class="chip">红线</span></h2>
       <p>App 爬取直接运行在真实设备与真实账号环境上，触碰的敏感面比网页爬虫大得多。以下红线不是"建议"，是"底线"：</p>
       <div class="callout warn"><b>⚠️ 合规红线：</b>① 只在<b>自有设备</b>与<b>授权环境</b>（自己的测试机、公司明确授权的项目）上操作，不动他人设备与账号；② <b>不破解付费内容</b>、不绕过版权保护；③ <b>不碰支付、账号隐私、个人通信数据</b>——这类数据看一眼都可能构成违法；④ 抓到的数据同样要遵守第 01 章合规自查：公开数据、频率礼仪、用途合法；⑤ 《刑法》第 285、286 条对非法获取计算机信息系统数据、破坏计算机信息系统有明确规定——技术无罪，用法有界。</div>
 
@@ -315,8 +856,8 @@ objection -g com.example.app explore        <span class="cm"># 注入目标 App�
         <label><input type="checkbox" id="c09-2" data-persist><span>mitmdump addon 脚本会写：def request/def response 过滤目标域名并保存 JSONL（9.2）</span></label>
         <label><input type="checkbox" id="c09-3" data-persist><span>能讲清 SSL Pinning 的原理、表现与应对思路，知道 so 层加密的边界（9.3）</span></label>
         <label><input type="checkbox" id="c09-4" data-persist><span>Appium 环境四件套装好，Capabilities Demo 跑通，会 id/xpath 定位与显式等待（9.4）</span></label>
-        <label><input type="checkbox" id="c09-5" data-persist><span>Frida 最小 hook 跑通：attach/spawn 概念清楚，Java.perform 模板能用（9.5）</span></label>
-        <label><input type="checkbox" id="c09-6" data-persist><span>合规边界清晰：自有设备、授权环境、不碰付费/支付/隐私（9.6）</span></label>
+        <label><input type="checkbox" id="c09-5" data-persist><span>Frida 从入门到实战：版本/架构三方对齐、四个易错点（.value / 打印时机 / 匿名类 $1 / this$0）、五步定位法与打堆栈、能用 replicateClass 复刻整类、知道安卓 RSA 默认 NoPadding（9.5–9.9）</span></label>
+        <label><input type="checkbox" id="c09-6" data-persist><span>合规边界清晰：自有设备、授权环境、不碰付费/支付/隐私（9.10）</span></label>
       </div>
 
       <!-- ============ 练习 ============ -->
