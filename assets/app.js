@@ -1,7 +1,7 @@
 /* 爬虫进阶 · 共享脚本：侧边章节高亮 + 打卡进度持久化（localStorage） */
 (function () {
   var KEY = 'spiderAdvancedProgress';
-  var TOTALS = { c01: 6, c02: 6, c03: 6, c04: 6, c05: 6, c06: 6, c07: 6, c08: 6, c09: 6, c10: 6 }; // 每章 6 个打卡点，共 60
+  var TOTALS = { c01: 6, c02: 6, c03: 6, c04: 6, c05: 6, c06: 6, c07: 6, c08: 6, c09: 7, c10: 6 }; // c09 共 14 节，多给一个打卡点；全站合计 61
 
   function load() {
     try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
