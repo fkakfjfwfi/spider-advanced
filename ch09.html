@@ -474,7 +474,7 @@ objection -g com.example.app explore        <span class="cm"># 注入目标 App�
 &gt; android hooking list classes              <span class="cm"># 枚举已加载的全部类</span>
 &gt; android hooking search classes Sign       <span class="cm"># 按关键词搜类，定位加密工具类</span>
 &gt; android sslpinning disable                <span class="cm"># 一条命令绕证书锁定（9.3 应对①）</span></pre>
-        <p><b>何时选谁</b>：快速摸底、不想写脚本 → objection；要 hook 特定函数拿明文、逻辑定制 → Frida 手写脚本（常见打法是先用 objection 枚举搜出类名，再回 Frida 精准 hook——两者是搭档不是对手）；要 7×24 常驻、设备早已 Root 刷机 → Xposed/LSPosed 模块。最后重申 9.14 的红线：以上工具<b>仅限自有设备与授权环境</b>使用。</p>
+        <p><b>何时选谁</b>：快速摸底、不想写脚本 → objection；要 hook 特定函数拿明文、逻辑定制 → Frida 手写脚本（常见打法是先用 objection 枚举搜出类名，再回 Frida 精准 hook——两者是搭档不是对手）；要 7×24 常驻、设备早已 Root 刷机 → Xposed/LSPosed 模块。最后重申 9.15 的红线：以上工具<b>仅限自有设备与授权环境</b>使用。</p>
       </div>
 
       <h3>frida-server 部署：三个必须对齐</h3>
@@ -1404,7 +1404,164 @@ r = requests.<span class="fn">post</span>(<span class="st">"http://127.0.0.1:562
       </div>
 
       <!-- ============ 9.14 ============ -->
-      <h2>9.14 合规特别提醒 <span class="chip">红线</span></h2>
+      <h2>9.14 2026 年的反爬环境：这套课没讲的三件事 <span class="chip tnew">新 · 时效补丁</span></h2>
+
+      <p>前面 13 节的方法论来自 2020–2022 年录的课。<b>那部分没过时</b>——断点回溯、hook 定位、AST 还原，这三年没人改写过它们。</p>
+      <p>但这三年长出了三道新墙，课里一个字没提。它们不是替换旧知识，是<b>补上旧知识够不到的地方</b>：</p>
+
+      <table>
+        <thead><tr><th>新墙</th><th>一句话</th><th>旧方法为什么失效</th></tr></thead>
+        <tbody>
+          <tr><td><b>TLS 指纹</b></td><td>请求还没出门，你就暴露了</td><td>它不看你发了什么，看你<b>怎么握手</b></td></tr>
+          <tr><td><b>WASM 加密</b></td><td>加密逻辑不在 JS 里了</td><td>Sources 里搜不到，因为没有 JS 可搜</td></tr>
+          <tr><td><b>行为验证</b></td><td>参数全对也过不去</td><td>它判断的不是参数，是<b>操作像不像人</b></td></tr>
+        </tbody>
+      </table>
+
+      <h3>一、TLS 指纹：请求还没出门，你就暴露了</h3>
+
+      <p><b>现象</b>：headers 全对、cookie 全对、IP 也干净，代码里每个参数都和浏览器抓的一模一样，但就是 403。同一个接口，手动在浏览器里点一下——通了。</p>
+      <p>这时候你该怀疑的不是参数，是<b>握手</b>。</p>
+
+      <p><b>原理</b>：TLS 握手第一步，客户端先发一个 ClientHello，里面除了 SNI 还有一堆字段——</p>
+      <ul>
+        <li>TLS 版本、支持的<b>加密套件列表（有顺序）</b></li>
+        <li>支持的<b>扩展列表（有顺序）</b>、椭圆曲线、签名算法</li>
+        <li>ALPN（协商用 h2 还是 http/1.1）</li>
+        <li>GREASE 随机填充值（Chrome 特有）</li>
+      </ul>
+      <p>这堆字段的组合方式，<b>每个 TLS 库都不一样</b>：Chrome 有 Chrome 的顺序，Python 的 <code class="inline">ssl</code> 模块（底层 OpenSSL）有自己的一套。把这些字段拼起来做哈希，就是 <b>JA3</b>；后来升级的更细版本叫 <b>JA4</b>。</p>
+      <p>关键在于：<b>服务端不需要解密你的流量，握手阶段就能算出这个指纹</b>，然后判断"你是不是真的 Chrome"。</p>
+
+      <div class="callout warn"><b>为什么 <code class="inline">requests</code> 几乎必露：</b>它用的 OpenSSL 默认套件顺序和 Chrome 完全不同，没有 GREASE 值，ALPN 顺序也不一样。所以哪怕你把 User-Agent、Sec-CH-UA、Accept-Language 抄到分毫不差，<b>指纹层面还是"一个 Python 脚本"</b>。这解释了那个经典困惑：为什么改了 UA 还是被拦。</div>
+
+      <p><b>三条路，按成本从低到高</b>：</p>
+
+      <p><b>① 换客户端（首选）</b>。<code class="inline">curl_cffi</code> 内置了各大浏览器的真实握手参数，一行搞定：</p>
+
+<pre class="code"><span class="cm"># pip install curl_cffi</span>
+<span class="kw">from</span> curl_cffi <span class="kw">import</span> requests
+
+<span class="cm"># impersonate 指定模仿哪个浏览器：chrome / chrome110 / safari / firefox ...</span>
+r = requests.<span class="fn">get</span>(<span class="st">"https://example.com/api"</span>, impersonate=<span class="st">"chrome"</span>)
+<span class="fn">print</span>(r.status_code, r.text[:<span class="fn">200</span>])</pre>
+
+      <p>接口是 <code class="inline">requests</code> 的子集，迁移成本几乎为零。同一个 URL，用 <code class="inline">requests</code> 403、用 <code class="inline">curl_cffi</code> 200，那基本就是 TLS 指纹的证据。</p>
+
+      <p><b>② 上浏览器</b>。Playwright / 真实 Chrome，握手天然是真的。代价是慢、吃资源，而且适合"少量、要过复杂校验"的场景，不适合大批量。</p>
+
+      <p><b>③ TLS 隧道</b>。本地起一个转发层，把请求交给真实浏览器去握手。工程量大，一般不作为第一选择。</p>
+
+      <p><b>怎么验证自己的指纹</b>：网上有公开的 TLS 指纹检测服务（搜 "JA3 fingerprint check"），用 <code class="inline">requests</code> 和浏览器各访问一次，对比返回的 JA3 字符串——<b>不一样，就是它</b>。这个判断做一次，能省掉几小时的瞎改 header。</p>
+
+      <h3>二、WASM：加密逻辑不在 JS 里了</h3>
+
+      <p><b>现象</b>：Sources 里全局搜 <code class="inline">sign</code> / <code class="inline">encrypt</code> 什么都搜不到，但抓包里的参数确实被加密了。打开 Network，看到一个 <code class="inline">.wasm</code> 文件。</p>
+
+      <p><b>为什么上 wasm</b>：三个理由，第三个才是主要的——</p>
+      <ol>
+        <li><b>性能</b>：比 JS 快，适合大计算量的加密</li>
+        <li><b>跨语言</b>：C / Rust / Go 写的算法直接编译过来</li>
+        <li><b>防逆向</b>：wasm 是字节码，没有 JS 那么好读；而且要还原它，你得先懂 wasm 指令集——<b>这道门槛挡住了大多数人</b></li>
+      </ol>
+
+      <p><b>怎么确认是 wasm</b>：</p>
+      <ul>
+        <li>Network 面板的 Filter 里能看到 <code class="inline">.wasm</code> 请求</li>
+        <li>Sources 里能打开 wasm，Chrome 会显示反编译的伪代码（可读性一般，但能认个大概）</li>
+        <li>JS 里搜 <code class="inline">WebAssembly.instantiate</code> 或 <code class="inline">instantiateStreaming</code></li>
+      </ul>
+
+      <p><b>三条路，顺序很重要</b>：</p>
+
+      <div class="callout ok"><b>首选不是"还原算法"，是"当黑盒调用"。</b>这是思维方式的转变——你不需要知道 wasm 里怎么算的，只需要知道<b>它的输入输出是什么</b>，然后把它当成一个函数库直接调。这比读汇编便宜一个数量级。</div>
+
+      <p><b>① 黑盒调用（推荐）</b>。Node 能直接加载 wasm 并调它的导出函数：</p>
+
+<pre class="code"><span class="cm">// 先把 .wasm 从浏览器 Network 里下载下来</span>
+<span class="kw">const</span> fs = <span class="fn">require</span>(<span class="st">'fs'</span>);
+
+(<span class="kw">async</span> () =&gt; {
+    <span class="kw">const</span> buf = fs.<span class="fn">readFileSync</span>(<span class="st">'encrypt.wasm'</span>);
+
+    <span class="cm">// 第二个参数是 imports —— wasm 需要的外部函数/内存，缺什么报什么，照着补</span>
+    <span class="kw">const</span> { instance } = <span class="kw">await</span> WebAssembly.<span class="fn">instantiate</span>(buf, { env: {} });
+
+    <span class="cm">// 先看它导出了什么，函数名一般不会被混淆得太狠</span>
+    console.<span class="fn">log</span>(Object.<span class="fn">keys</span>(instance.exports));
+
+    <span class="cm">// 直接调 —— 参数类型按导出签名给（i32 / i64 / f64 是数字，指针要配合 memory）</span>
+    console.<span class="fn">log</span>(instance.exports.<span class="fn">encrypt</span>(<span class="st">'123456'</span>));
+})();</pre>
+
+      <p>难点只在 <code class="inline">imports</code>（通常要给 <code class="inline">env</code> 补一些函数和 <code class="inline">memory</code>）。缺什么，wasm 会抛 <code class="inline">LinkError</code> 并告诉你要什么名字，照着补就行——<b>这是有明确反馈的试错，比读汇编友好得多</b>。</p>
+
+      <p><b>② 插桩看调用</b>。如果不确定哪个导出函数是加密入口，hook 一下 instantiate 看全部导出：</p>
+
+<pre class="code"><span class="cm">// 在浏览器 Console 里执行，然后刷新页面</span>
+<span class="kw">const</span> orig = WebAssembly.instantiate;
+WebAssembly.instantiate = <span class="kw">async function</span> (bytes, imports) {
+    <span class="kw">const</span> r = <span class="kw">await</span> orig.<span class="fn">call</span>(<span class="kw">this</span>, bytes, imports);
+    console.<span class="fn">log</span>(<span class="st">'[wasm] imports='</span>, Object.<span class="fn">keys</span>(imports || {}));
+    console.<span class="fn">log</span>(<span class="st">'[wasm] exports='</span>, Object.<span class="fn">keys</span>(r.instance.exports));
+    <span class="kw">return</span> r;
+};</pre>
+
+      <p><b>③ 动态调试</b>。Chrome DevTools 能单步调试 wasm（断点打在导出函数上，能看到参数和局部变量）。可读性不如 JS，但比纯静态读汇编强。这条路放在最后，因为前两条能解决大部分情况。</p>
+
+      <h3>三、行为验证：参数全对也过不去</h3>
+
+      <p><b>现象</b>：sign 算对了、TLS 指纹也过了，请求发出去返回"环境异常"或"操作过于频繁"。换个真人操作，同样的参数，过了。</p>
+
+      <p>因为这一层判断的<b>根本不是参数</b>。前端 SDK 采集的是"人怎么操作"：</p>
+
+      <table>
+        <thead><tr><th>采集面</th><th>具体内容</th><th>为什么难伪造</th></tr></thead>
+        <tbody>
+          <tr><td>鼠标轨迹</td><td>移动路径、加速度、停顿、微抖动</td><td>真人轨迹有固定统计特征：先快后慢、接近目标减速、带修正</td></tr>
+          <tr><td>点击</td><td>落点分布、按下到抬起的时长</td><td>机器人的点击落点过于精准、时长过于一致</td></tr>
+          <tr><td>键盘</td><td>按键间隔、每个键的按下时长</td><td>真人打字有节奏波动，脚本是等间隔</td></tr>
+          <tr><td>页面行为</td><td>滚动曲线、停留时间、焦点切换</td><td>脚本常常"直达目标"，没有浏览过程</td></tr>
+          <tr><td>传感器（移动端）</td><td>陀螺仪、加速度计的微小噪声</td><td>模拟器的传感器数据完全静止</td></tr>
+        </tbody>
+      </table>
+
+      <p>这些数据一般加密后随请求一起提交，服务端跑模型判断"像不像人"。注意两个反直觉的点：</p>
+      <ul>
+        <li><b>回放会被抓</b>：完全相同的轨迹出现两次，本身就是"机器人"的铁证。所以"录制一遍再重放"这条路是死的。</li>
+        <li><b>随机生成也会被抓</b>：真人轨迹不是均匀随机，是<b>有偏分布</b>（贝塞尔曲线式的加速减速）。用 <code class="inline">random()</code> 拼出来的轨迹，统计特征一眼假。</li>
+      </ul>
+
+      <div class="callout warn"><b>这一层基本没有"技术绕过"，只有三条路：</b>① <b>降低频率</b>，让行为回到正常区间——最有效，也最常被忽略；② <b>真人操作</b>，RPA 到关键步骤转人工；③ <b>换数据源</b>。硬刚行为验证的投入产出比，通常是负的。<b>判断"这条路值不值"，比学会怎么绕更重要。</b></div>
+
+      <h3>四、遇到新反爬，按什么顺序排查</h3>
+
+      <p>这三道墙的症状容易混，下面这张表能省掉大量试错：</p>
+
+      <table>
+        <thead><tr><th>现象</th><th>先查</th><th>大概方向</th></tr></thead>
+        <tbody>
+          <tr><td>403，但浏览器访问正常</td><td><b>TLS 指纹</b></td><td>换 <code class="inline">curl_cffi</code> 试一次，最快验证</td></tr>
+          <tr><td>200，但数据是空的 / 是假的</td><td>参数被识别</td><td>hook 被检测（蜜罐）、或签名算法算错了</td></tr>
+          <tr><td>返回"环境异常" / "操作频繁"</td><td>行为验证或深指纹</td><td>降频、上浏览器、看有没有 SDK 上报</td></tr>
+          <tr><td>Network 里有 <code class="inline">.wasm</code></td><td>WASM 加密</td><td>黑盒调用，别急着还原</td></tr>
+          <tr><td>一直要验证码</td><td>频率 / IP / 账号</td><td>降频最有效，其次换 IP、换号</td></tr>
+          <tr><td>握手就断了，连响应都没有</td><td>证书 / 协议</td><td>SSL Pinning（9.3）、或 TLS 版本被拒</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout info"><b>这三件事的共同点，值得单独说一句：</b>它们都从"<b>算参数</b>"转向了"<b>证明你是人</b>"。相应地，对抗的重心也从"逆向算法"转向"模拟真实环境"。这个转向是这三年最大的变化——它意味着纯靠算法能力的时代过去了，现在拼的是<b>整条链路的真实性</b>：TLS 握手的真实性、运行环境的真实性、操作行为的真实性。<b>漏一环，全盘皆输。</b></div>
+
+      <h3>五、边界：这些技术是中性的</h3>
+      <p>上面讲的一切，用在<b>自己的系统、授权的测试、公开数据</b>上是正当的技术能力；用在绕过他人系统的访问控制、抓取非公开数据、干扰服务上，性质和后果完全不同。三条底线：</p>
+      <ul>
+        <li><b>只碰公开数据</b>——不需要登录就能看到的，和登录后才有的，法律上是两件事</li>
+        <li><b>控制频率</b>——你的采集不该让对方加机器。这一条既是道德，也是"活得久"的前提</li>
+        <li><b>看条款与 robots</b>——不是法律义务，但是最便宜的风险规避</li>
+      </ul>
+
+      <!-- ============ 9.15 ============ -->
+      <h2>9.15 合规特别提醒 <span class="chip">红线</span></h2>
       <p>App 爬取直接运行在真实设备与真实账号环境上，触碰的敏感面比网页爬虫大得多。以下红线不是"建议"，是"底线"：</p>
       <div class="callout warn"><b>⚠️ 合规红线：</b>① 只在<b>自有设备</b>与<b>授权环境</b>（自己的测试机、公司明确授权的项目）上操作，不动他人设备与账号；② <b>不破解付费内容</b>、不绕过版权保护；③ <b>不碰支付、账号隐私、个人通信数据</b>——这类数据看一眼都可能构成违法；④ 抓到的数据同样要遵守第 01 章合规自查：公开数据、频率礼仪、用途合法；⑤ 《刑法》第 285、286 条对非法获取计算机信息系统数据、破坏计算机信息系统有明确规定——技术无罪，用法有界。</div>
 
@@ -1419,7 +1576,8 @@ r = requests.<span class="fn">post</span>(<span class="st">"http://127.0.0.1:562
         <label><input type="checkbox" id="c09-4" data-persist><span>Appium 环境四件套装好，Capabilities Demo 跑通，会 id/xpath 定位与显式等待（9.5）</span></label>
         <label><input type="checkbox" id="c09-5" data-persist><span>Frida 从入门到实战：版本/架构三方对齐、四个易错点（.value / 打印时机 / 匿名类 $1 / this$0）、五步定位法与打堆栈、能用 replicateClass 复刻整类、知道安卓 RSA 默认 NoPadding（9.6–9.10）</span></label>
         <label><input type="checkbox" id="c09-6" data-persist><span>框架级方案说得清：ratel 免 root 靠重打包感染、before 里 setResult 会短路原方法、六个 JCE 锚点做通用加密 hook、一机多号本质是 Android 多用户（不换硬件指纹）、调度忘调 finish 会永久卡死；Sekiro 与 ratel 的选型边界、dumpWebView 必须传 webview=true（9.11–9.13）</span></label>
-        <label><input type="checkbox" id="c09-7" data-persist><span>合规边界清晰：自有设备、授权环境、不碰付费/支付/隐私（9.14）</span></label>
+        <label><input type="checkbox" id="c09-7" data-persist><span>2026 三道新墙认得清：TLS 指纹（JA3/JA4 看的是握手不是 header）、WASM 加密（优先黑盒调用而非还原）、行为验证（有偏分布，回放和随机都假）；能按症状表快速分流（9.14）</span></label>
+        <label><input type="checkbox" id="c09-8" data-persist><span>合规边界清晰：自有设备、授权环境、不碰付费/支付/隐私（9.15）</span></label>
       </div>
 
       <!-- ============ 练习 ============ -->
