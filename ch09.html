@@ -90,6 +90,25 @@
       <p>装好证书只是第一步，Charles 还要<b>开启 HTTPS 解密</b>：Proxy → SSL Proxying Settings → 勾选 Enable SSL Proxying → 在 include 列表添加 <code class="inline">*:443</code>（或只加目标域名）。之后 App 的 HTTPS 响应在 Charles 里才是明文 JSON。验证方法：手机随便打开一个 App，Charles 里能看到请求列表且 Response 可读，基础设施就算搭好了。</p>
       <div class="callout info"><b>搭好了还抓不到？</b>先分两种情况：① Charles 里<b>有这条请求但内容乱码/显示 SSL 错误</b> → 大概率是 9.3 的 SSL Pinning 证书锁定，不是你操作错了；② Charles 里<b>连请求都没有</b> → 检查手机与电脑是否同一网段、防火墙是否放行 8888 端口。</div>
 
+      <h3>代理还是 VPN：两条路线，差一个层级</h3>
+      <p>几乎所有抓包教程都从"设置 WiFi 代理"开始，但在移动端这条路越来越不好走。原因不在于代理本身不行，而在于<b>它站得太高</b>。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>方案</th><th>工作层级</th><th>能捕获什么</th><th>致命弱点</th></tr>
+        <tr><td>HTTP 代理（Charles 默认）</td><td>应用层</td><td>只认 HTTP/HTTPS</td><td>容易检测、容易绕过</td></tr>
+        <tr><td>SOCKS5 代理</td><td>会话层</td><td>更多上层协议</td><td>仍可被检测</td></tr>
+        <tr><td><b>VPN</b>（Postern 等）</td><td><b>网络层</b></td><td><b>整机流量</b>，改路由表</td><td>可检测（<code class="inline">tun0</code> 网卡）</td></tr>
+      </table></div>
+      <p><b>为什么越底层越好</b>：抓包的目标是应用层的数据，但要"看见"它，你的钩子必须挂在它下游的某一层。挂得越低，能覆盖的上层协议就越多——这是 VPN 相对代理的根本优势。</p>
+      <p><b>代理的两个具体弱点</b>（这就是它越来越不够用的原因）：</p>
+      <p><b>① 可检测</b>：App 直接读系统属性就能知道你在用代理——<code class="inline">System.getProperty("http.proxyHost")</code> / <code class="inline">proxyPort</code>，拿到不为空就说明环境异常。检测到了可以不发包、或者故意发错包。</p>
+      <p><b>② 可绕过</b>：更狠的做法是不检测，直接不走。OkHttp 里一行就够：</p>
+      <div class="code-title">这一行让系统代理彻底失效</div>
+<pre class="code">OkHttpClient client = <span class="kw">new</span> OkHttpClient.<span class="fn">Builder</span>()
+        .<span class="fn">proxy</span>(Proxy.NO_PROXY)      <span class="cm">// ★ 明着说：我不走代理</span>
+        .<span class="fn">build</span>();</pre>
+      <p>这种情况下抓包工具里<b>一条相关请求都看不到</b>，但 App 业务完全正常——这是判断 noProxy 的最直接依据（9.4 第一节的对照表）。</p>
+      <div class="callout info"><b>所以移动端的推荐路线是 VPN + 中间人</b>：Postern 之类的 VPN App 把整机流量接管，再转发给你的 Charles/mitmproxy。App 检测不到代理、也绕不过去。<b>注意</b>：Postern 配代理服务器时要选 <b>SOCKS5</b> 而不是 HTTP——同样是因为层级，SOCKS 更底层，能带走更多协议。</div>
+
       <!-- ============ 9.2 ============ -->
       <h2>9.2 mitmproxy <span class="chip tbook">对齐教材 11.2~11.3</span></h2>
       <p>Charles 适合人肉翻看，但爬虫工程师真正的主力是 <b>mitmproxy</b>：它开源、跨平台，最重要的是支持<b>命令行与脚本化</b>——抓包过程可以写成 Python 代码自动落库，这才叫"采集"而不是"查看"。它有三种运行模式，对应三种场景：</p>
@@ -184,7 +203,121 @@ db.<span class="fn">execute</span>(<span class="st">"CREATE TABLE IF NOT EXISTS 
       <div class="callout info"><b>成本排序（从低到高）：</b>直连接口 &lt; 浏览器自动化（05 章）&lt; Appium（9.4）&lt; Frida Hook（9.5）&lt; so 层逆向。永远先从最左边试起，每上一级之前问一句：这个数据值不值这个价。</div>
 
       <!-- ============ 9.4 ============ -->
-      <h2>9.4 Appium 自动化 <span class="chip tbook">对齐教材 11.4~11.6</span></h2>
+      <h2>9.4 抓包攻防：当中间人失效之后 <span class="chip tnew">新 · 进阶</span></h2>
+      <p>9.1 教了怎么装代理、9.3 讲了 SSL Pinning 的概念。但真到现场，最常见的处境是：<b>代理装好了、证书也进了系统目录，App 一打开还是抓不到</b>。这一节讲三件事：怎么判断是哪一种阻碍、绕过方案失效后往哪走、以及为什么"越底层越通杀"。</p>
+
+      <h3>一、先做一个判断：三种阻碍，三种现象</h3>
+      <p>这一步能省掉大量瞎试。三种阻碍在抓包工具里的<b>表现完全不同</b>：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>阻碍</th><th>抓包工具的表现</th><th>App 的表现</th><th>根因</th></tr>
+        <tr><td><b>noProxy</b>（不走代理）</td><td><b>一条相关请求都没有</b>，但工具本身正常</td><td>业务正常，数据能加载</td><td>OkHttp 的 <code class="inline">.proxy(Proxy.NO_PROXY)</code> 绕过了系统代理</td></tr>
+        <tr><td><b>VPN 检测</b></td><td><b>一个包都看不到</b></td><td>"网络不给力"、加载失败</td><td>检测到 <code class="inline">tun0</code> 虚拟网卡，<b>还没发包就先拦了</b></td></tr>
+        <tr><td><b>证书校验</b></td><td>能看到请求，但报 <code class="inline">SSL handshake failed</code> / <code class="inline">certificate unknown</code></td><td>业务失败，但请求已经发出去了</td><td>证书被比对出不一致，握手阶段断开</td></tr>
+      </table></div>
+      <div class="callout ok"><b>这个表的价值在于"看到现象就知道往哪下手"：</b>一个包都没有 → 先怀疑 noProxy 或 VPN 检测，换 VPN 抓包方式试试；有包但证书报错 → 直奔 SSL Pinning；<b>两种都别的情况才是协议层加密</b>（回 9.9/9.10）。</div>
+      <p><b>为什么 VPN 抓包能解决 noProxy</b>：VPN 工作在网络层，改的是路由表——它不是在"告诉 App 走代理"，而是<b>把整台手机的流量都接管了</b>。App 想不走代理也没用，因为它根本不知道流量被接管了。这也是为什么 VPN 比代理更底层、能捕获更多上层流量。</p>
+
+      <h3>二、源码级溯源：为什么 hook 点要选在那一层</h3>
+      <p>r0capture 这类脚本能通杀，是因为它的 hook 点选得足够低。这个位置不是拍脑袋定的，是把调用链一路跟到系统调用跟出来的。</p>
+      <div class="code-title">TCP / HTTP 的调用链（Java → native → 系统调用）</div>
+<pre class="code">SocketOutputStream.<span class="fn">write</span>()
+  → Socket.<span class="fn">socketWrite0</span>()              <span class="cm">// 开始进入 native</span>
+    → JNI: <span class="fn">socketWrite0</span>
+      → libc <span class="fn">send</span>()
+        → libc <span class="fn">sendto</span>()               <span class="cm">// ★ 最终都是这个系统调用</span></pre>
+      <div class="code-title">HTTPS 的调用链（多了一层 SSL 套接字）</div>
+<pre class="code">SSLSocketOutputStream.<span class="fn">write</span>()
+  → SSLSocket.<span class="fn">write</span>()
+    → NativeCrypto.<span class="fn">SSL_write</span>()       <span class="cm">// native 方法</span>
+      → BoringSSL <span class="fn">SSL_write_impl</span>()
+        → <span class="fn">ssl3_write_bytes</span>()
+          → <span class="fn">do_tls_write</span>            <span class="cm">// ★ 明文终点，往后就是密文</span></pre>
+      <p><b>关键认知：<code class="inline">do_tls_write</code> 是明文和密文的分界线。</b>在这个函数<b>之前</b> hook，拿到的是明文；在它<b>之后</b> hook，拿到的是密文。所有 SSL 抓包脚本都在这一层附近下钩子。</p>
+      <div class="callout warn"><b>一个必须理解的取舍：hook 点越低越通杀，但能拿到的上下文越少。</b><br>
+      <code class="inline">SSL_write</code> 能抓所有 HTTPS 明文，但它拿不到"发给哪个 IP、哪个端口"——因为再往下才是 socket。<br>
+      所以实际选择是看调用链上<b>哪个点既能拿到数据、又能拿到 socket 信息</b>。r0capture 选的是 <code class="inline">SSLSocketOutputStream</code> ——因为它的父类 <code class="inline">OutputStream</code> 里挂着 socket，能取到对端 IP 和端口。</div>
+
+      <h3>三、r0capture：通杀的原理</h3>
+      <p>它的思路一句话：<b>所有应用层协议最终都是 socket</b>。HTTP 基于 TCP，TCP 基于 socket 编程；HTTPS 是在 TCP 上加了 SSL 套接字——所以只要把 socket 层和 SSL 层都 hook 住，应用层用什么框架、什么协议，都逃不掉。</p>
+      <div class="code-title">用法（frida 15 及以上有变化）</div>
+<pre class="code"><span class="cm"># frida 12.x：用包名</span>
+python r0capture.py -U -f com.example.app
+
+<span class="cm"># frida 15+：-f 要跟 APK 名字，不再是包名</span>
+python r0capture.py -U -f app-release.apk
+
+<span class="cm"># attach 模式（App 已在运行）</span>
+python r0capture.py -U com.example.app
+
+<span class="cm"># 输出太大时重定向到文件，事后再搜</span>
+python r0capture.py -U -f app.apk &gt; ssl.log</pre>
+      <p><b>两种模式的区别</b>：<code class="inline">-f</code>（spawn）由脚本拉起 App，注入得早，连启动阶段的请求都能抓；attach 只能抓注入之后的。代价是 spawn 会让 App 重启一次——如果 App 有启动校验，可能反而抓不到。</p>
+      <p><b>为什么它能无视证书校验</b>：它<b>根本没有做中间人</b>。没有伪造证书、没有代理，只是在 App 自己的进程里读它<b>即将发出去</b>和<b>刚收进来</b>的字节流。所以"证书比对"这件事在它面前不存在。</p>
+
+      <h3>四、调用栈断了怎么办：hook Thread</h3>
+      <p>用 r0capture 抓包会附带回溯调用栈，但经常只能追到 <code class="inline">Thread.run</code>，看不到 App 自己的代码——这样就不知道去反编译的哪个类里找。</p>
+      <p><b>原因</b>：网络请求几乎都在子线程里发。Java 层新起一个线程，最终走到 native 的 <code class="inline">pthread_create</code>，回调回来调 <code class="inline">Thread.run</code>——<b>子线程的调用栈是从这里"重新开始"的</b>，往上就断了。这不是脚本的问题，是线程模型决定的。</p>
+      <p><b>解法</b>：在<b>创建线程的那一刻</b>把调用栈打下来，因为那里还在主线程的上下文里。</p>
+      <div class="code-title">hook Thread 的构造，记下是谁创建了它</div>
+<pre class="code">Java.<span class="fn">perform</span>(<span class="kw">function</span> () {
+    <span class="kw">var</span> Thread = Java.<span class="fn">use</span>(<span class="st">"java.lang.Thread"</span>);
+
+    Thread.$init.<span class="fn">overload</span>(<span class="st">"java.lang.Runnable"</span>).implementation = <span class="kw">function</span> (r) {
+        console.<span class="fn">log</span>(<span class="st">"[new thread] runnable = "</span> + r.$className);
+        console.<span class="fn">log</span>(Java.<span class="fn">use</span>(<span class="st">"android.util.Log"</span>).<span class="fn">getStackTraceString</span>(
+            Java.<span class="fn">use</span>(<span class="st">"java.lang.Throwable"</span>).<span class="fn">$new</span>()));
+        <span class="kw">this</span>.$init(r);
+    };
+});</pre>
+      <p>两种创建方式的区别：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>写法</th><th>Thread 的 target 字段</th><th>实际执行的是</th></tr>
+        <tr><td><code class="inline">new Thread(runnable)</code></td><td>那个 Runnable 对象</td><td><code class="inline">target.run()</code> → 进入 Runnable</td></tr>
+        <tr><td><code class="inline">class MyThread extends Thread</code></td><td><b>null</b></td><td>子类重写的 <code class="inline">run()</code></td></tr>
+      </table></div>
+      <p>所以 hook 里要先判断 <code class="inline">target</code> 是否为 null：非空说明是 Runnable 方式，取 <code class="inline">r.$className</code>；为空说明是继承方式，直接取线程对象自己的类名。</p>
+
+      <h3>五、抓包的第二条路：tcpdump + Wireshark</h3>
+      <p>如果连进程注入都做不了（比如壳太硬），还有一条更底层的路：<b>直接在网卡层面抓包，再用会话密钥解密</b>。</p>
+      <div class="code-title">三步走</div>
+<pre class="code"><span class="cm"># ① 手机端跑 tcpdump，把包转发到端口（需要 root + busybox 提供 nc）</span>
+./tcpdump -i any -s 0 -w - | nc -l -p 12345
+
+<span class="cm"># ② PC 端把手机端口映射过来，喂给 Wireshark</span>
+adb forward tcp:12345 tcp:12345
+
+<span class="cm"># ③ 用 Frida 拿到 TLS 会话密钥（SSLKEYLOGFILE 格式），导入 Wireshark</span>
+<span class="cm">#    Wireshark → 首选项 → Protocols → TLS → (Pre)-Master-Secret log filename</span>
+python get_sslkey.py -U -f com.example.app</pre>
+      <p><b>原理</b>：TLS 的握手阶段会协商出一个"会话密钥"，之后所有数据都用它对称加密。Wireshark 本身解不开，但<b>只要拿到这个密钥，就能把整段流量还原成明文</b>。</p>
+      <p><b>代价很实在</b>：连握手包、ACK 包、重传包全都抓下来了，数据量巨大，搜索都要等几秒。而且它只对<b>走了 TLS 的流量</b>有效——纯 HTTP 和纯 TCP 本来就没加密，不需要密钥。</p>
+      <div class="callout info"><b>什么时候值得用这条路：</b>App 有强壳注入不进去、或者加密逻辑写在自定义 .so 里、或者需要看 TLS 握手本身（比如排查证书链问题）。日常抓包优先用 r0capture，它的输出干净得多。</div>
+
+      <h3>六、UDP 是 r0capture 的盲区</h3>
+      <p>实测会发现：<b>TCP 和 HTTPS 都抓到了，UDP 一个包都没有</b>。原因不是脚本写漏了，是 UDP 的 Java 层实现不一样：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>协议</th><th>Java 层入口</th><th>native 层</th></tr>
+        <tr><td>TCP</td><td><code class="inline">SocketOutputStream.write</code></td><td><code class="inline">send</code> / <code class="inline">sendto</code></td></tr>
+        <tr><td>SSL</td><td><code class="inline">SSLSocketOutputStream.write</code></td><td><code class="inline">SSL_write</code></td></tr>
+        <tr><td><b>UDP</b></td><td>走 <code class="inline">IoBridge</code> / <code class="inline">Libcore.os</code>，<b>类名不同</b></td><td><code class="inline">sendto</code> / <code class="inline">recvfrom</code>（和 TCP 共用）</td></tr>
+      </table></div>
+      <p>也就是说：<b>native 层 hook <code class="inline">sendto</code> 能抓到 UDP，但 Java 层要另找入口</b>。而且 UDP 在 native 层传的是一个 <code class="inline">sockaddr</code> 结构体指针，IP 和端口要手动解析（前 2 字节是端口，后面 4 字节是 IP），Frida 现成的封装对它不管用。</p>
+
+      <h3>七、一个偏门但好用的技巧：把 HTTPS 改成 HTTP</h3>
+      <p>如果目标只做了<b>单向的 SSL Pinning</b>（客户端校验服务端），还有一个思路绕开它：<b>让 App 以为自己在发 HTTP</b>。</p>
+      <div class="flow">
+        <span class="fnode">App 发 HTTP<br>（无证书校验）</span><span class="farrow">→</span>
+        <span class="fnode">中间人收到<br>明文包</span><span class="farrow">→</span>
+        <span class="fnode">映射规则<br>改成 HTTPS</span><span class="farrow">→</span>
+        <span class="fnode">服务端收到<br>正常 HTTPS</span>
+      </div>
+      <p>做法：用 Frida hook 把请求 URL 里的 <code class="inline">https://</code> 改成 <code class="inline">http://</code>；再在 Charles/Postern 里配一条映射规则，把 <code class="inline">http</code> 的目标端口映射回 <code class="inline">https</code> 的 443。</p>
+      <p><b>限制</b>：服务端要同时支持两种协议；而且如果 App 代码里根本没有 HTTP 分支，改完之后请求可能走不通。所以这是个<b>碰运气</b>的手段，排在正式方案之后。</p>
+
+      <div class="pitfall"><b>六个坑：</b>① 看到"抓不到包"就去装证书——先分清是 noProxy、VPN 检测还是证书校验，三种解法完全不同；② 在 Android 7+ 把证书装在用户目录，系统不信任，必须移到 <code class="inline">/system/etc/security/cacerts</code>；③ frida 15+ 用 <code class="inline">-f</code> 要传 APK 文件名，传包名会报"没有这个进程"；④ 追溯调用栈只追到 <code class="inline">Thread.run</code> 就以为线索断了——要在创建线程时 hook；⑤ 用 r0capture 抓 UDP，一个包都不会有，Java 层入口不一样；⑥ Wireshark 没导入 SSLKEYLOG，看到的就是密文，不会自动解密。</div>
+
+      <!-- ============ 9.5 ============ -->
+      <h2>9.5 Appium 自动化 <span class="chip tbook">对齐教材 11.4~11.6</span></h2>
       <p>当接口加密太深、还原成本过高时，有一条"降维"路线：<b>让 App 自己跑</b>。Appium 用代码模拟人点屏幕、读屏幕上的控件数据（UI 自动化）——请求是 App 自己发出的，签名自然是合法的，参数加密问题<b>整个被绕开</b>。代价是速度慢、脚本脆（UI 改版就要修），所以它是"接口打不动时"的选择，而不是第一选择。</p>
       <h3>环境四件套</h3>
       <div class="tbl-wrap"><table class="tbl">
@@ -256,8 +389,8 @@ driver.<span class="fn">find_element</span>(AppiumBy.ID, <span class="st">"com.e
                       r<span class="st">"C:\tools\chromedriver\chromedriver.exe"</span>)</pre>
       <div class="callout info"><b>判断该不该切 context：</b>用 Appium Inspector 看页面源码——满屏 android.webkit.WebView 包着一个巨大节点、内部元素全看不到 → 该切了。也可以在 Capabilities 里设 <code class="inline">"appium:autoWebview": True</code>，会话启动后自动切进检测到的 WebView，但页面中途跳转仍要手动切。</div>
 
-      <!-- ============ 9.5 ============ -->
-      <h2>9.5 Frida 入门 <span class="chip tnew">拓展</span></h2>
+      <!-- ============ 9.6 ============ -->
+      <h2>9.6 Frida 入门 <span class="chip tnew">拓展</span></h2>
       <p>Frida 是<b>动态插桩框架</b>：把一段 JS 注入目标进程，在运行时改写任意函数的行为。对爬虫的意义有两点：<b>hook 加密函数</b>——明文输入和密文输出直接打印出来，还原算法变成"抄答案"；<b>绕证书锁定</b>——hook 住校验点让它永远通过（9.3 的应对①）。它站在比 Appium 更深的一层：不看 UI，直接看函数调用。</p>
       <h3>attach 与 spawn</h3>
       <div class="tbl-wrap"><table class="tbl">
@@ -298,7 +431,7 @@ objection -g com.example.app explore        <span class="cm"># 注入目标 App�
 &gt; android hooking list classes              <span class="cm"># 枚举已加载的全部类</span>
 &gt; android hooking search classes Sign       <span class="cm"># 按关键词搜类，定位加密工具类</span>
 &gt; android sslpinning disable                <span class="cm"># 一条命令绕证书锁定（9.3 应对①）</span></pre>
-        <p><b>何时选谁</b>：快速摸底、不想写脚本 → objection；要 hook 特定函数拿明文、逻辑定制 → Frida 手写脚本（常见打法是先用 objection 枚举搜出类名，再回 Frida 精准 hook——两者是搭档不是对手）；要 7×24 常驻、设备早已 Root 刷机 → Xposed/LSPosed 模块。最后重申 9.10 的红线：以上工具<b>仅限自有设备与授权环境</b>使用。</p>
+        <p><b>何时选谁</b>：快速摸底、不想写脚本 → objection；要 hook 特定函数拿明文、逻辑定制 → Frida 手写脚本（常见打法是先用 objection 枚举搜出类名，再回 Frida 精准 hook——两者是搭档不是对手）；要 7×24 常驻、设备早已 Root 刷机 → Xposed/LSPosed 模块。最后重申 9.11 的红线：以上工具<b>仅限自有设备与授权环境</b>使用。</p>
       </div>
 
       <h3>frida-server 部署：三个必须对齐</h3>
@@ -386,8 +519,8 @@ script.<span class="fn">load</span>()
 sys.stdin.<span class="fn">read</span>()      <span class="cm"># ★ 少了这行，脚本加载完立刻退出</span></pre>
       <p><b>attach 与 spawn 的分界</b>：要 hook <code class="inline">Application.onCreate</code>、加固壳的动态加载、dex 解密，<b>只能用 spawn</b>——attach 时这些早就跑完了。代价是 App 会重启一次，而且低版本安卓配高版本 Frida 走 spawn 极易崩。</p>
 
-      <!-- ============ 9.6 ============ -->
-      <h2>9.6 反编译与重打包：静态分析那条路 <span class="chip tnew">新 · 工程实战</span></h2>
+      <!-- ============ 9.7 ============ -->
+      <h2>9.7 反编译与重打包：静态分析那条路 <span class="chip tnew">新 · 工程实战</span></h2>
       <p>9.5 的 Frida 是<b>动态</b>的路：让 App 跑起来，在运行时看值。这一节讲<b>静态</b>的路：把安装包拆开，读它的代码和配置。两条路不是二选一——实际工作中永远是<b>静态定位候选、动态验证猜测</b>，来回切换。</p>
 
       <h3>一、APK 就是一个 zip</h3>
@@ -469,8 +602,8 @@ adb install -r app_signed.apk        <span class="cm"># 4. 安装</span></pre>
 
       <div class="pitfall"><b>六个坑：</b>① 用模拟器做 so 层分析——模拟器是 x86，而绝大多数 App 的 <code class="inline">lib/</code> 只提供 arm 的 so，装上直接跑不起来；② 用 jadx 反混淆后的名字写 hook——反混淆只是<b>显示</b>重命名，真实类名要按未反混淆的来；③ <code class="inline">apktool b</code> 后不签名就装，安装直接被拒；④ 重签名后闪退就以为打包出错——九成是签名校验；⑤ <code class="inline">adb uninstall</code> 用了 apk 文件名；⑥ 在非原生 ROM 上用 Frida——国内 ROM 裁剪了系统 API，表现为莫名死机甚至变砖。</div>
 
-      <!-- ============ 9.7 ============ -->
-      <h2>9.7 Frida 定位实战：三个案例 <span class="chip tnew">新 · 案例复盘</span></h2>
+      <!-- ============ 9.8 ============ -->
+      <h2>9.8 Frida 定位实战：三个案例 <span class="chip tnew">新 · 案例复盘</span></h2>
       <p>9.5 给了模板，但真到现场，最难的从来不是写 hook，是<b>不知道该 hook 谁</b>。这一节把三个真实案例的定位过程走一遍：签名校验、请求签名、RSA 登录。三个案例用的是同一套流程，走熟一套就能通吃。</p>
 
       <h3>一、定位总纲：五步法</h3>
@@ -606,8 +739,8 @@ api = script.exports_sync          <span class="cm"># frida >= 12.7 的写法</s
 
       <div class="pitfall"><b>五个坑：</b>① hook 系统类只 hook 一个方法就下结论——同族方法（<code class="inline">hashCode</code> / <code class="inline">toByteArray</code> / <code class="inline">toCharsString</code>）要全试；② 搜关键字带右引号，漏掉字符串拼接的写法；③ 一口气分析到底，走偏了不知道错在哪一步；④ RPC 里把返回值变量声明在 <code class="inline">Java.perform</code> 内部，拿不到值；⑤ 用 <code class="inline">frida-rpc</code> 时忘了注释掉 <code class="inline">setInterval</code> 保活代码，脚本卡死不返回。</div>
 
-      <!-- ============ 9.8 ============ -->
-      <h2>9.8 加密还原：RSA 与响应解密 <span class="chip tnew">新 · 原理 + 实战</span></h2>
+      <!-- ============ 9.9 ============ -->
+      <h2>9.9 加密还原：RSA 与响应解密 <span class="chip tnew">新 · 原理 + 实战</span></h2>
       <p>9.7 讲的是"怎么找到它"，这一节讲"找到之后怎么在 Python 里复现"。核心只有两块：<b>RSA 的那几个必知参数</b>，以及<b>响应加密为什么比请求加密难找</b>。</p>
 
       <h3>一、RSA：我们只需要用到其中一小块</h3>
@@ -752,8 +885,8 @@ plain = <span class="fn">unpad</span>(raw, <span class="fn">16</span>)          
 
       <div class="pitfall"><b>五个坑：</b>① 安卓 <code class="inline">Cipher.getInstance("RSA")</code> 默认 <code class="inline">NoPadding</code>，照抄 JDK 的 PKCS1 必失败；② 明文超过 <code class="inline">密钥长度−11</code> 直接抛错，要改用混合加密；③ AES 解密后忘了 <code class="inline">unpad</code>，导致后续 protobuf 解析崩；④ 盲狙打印 <code class="inline">byte[]</code> 不转 base64/hex，看到的全是乱码，无法跟抓包比对；⑤ 搜 URL 用了完整路径——太长容易被字符串拼接断开，先搜 host。</div>
 
-      <!-- ============ 9.9 ============ -->
-      <h2>9.9 协议层：protobuf 与 native so <span class="chip tnew">新 · 进阶</span></h2>
+      <!-- ============ 9.10 ============ -->
+      <h2>9.10 协议层：protobuf 与 native so <span class="chip tnew">新 · 进阶</span></h2>
       <p>当 App 的接口既不是 JSON、也不是表单，而是一坨二进制时，多数人第一反应是"加密了"。<b>但很可能根本没有加密</b>——只是换了一种序列化方式。这一节讲两种情况：<b>protobuf</b>（不是加密，是序列化）和 <b>.so</b>（真的把逻辑藏到 C 层了）。</p>
 
       <h3>一、protobuf 不是加密，是序列化</h3>
@@ -810,7 +943,7 @@ new_data = bbpb.<span class="fn">encode_message</span>(msg, typedef)</pre>
       <div class="code-title">完整链路</div>
 <pre class="code">抓包拿到 hex
   → bytes.<span class="fn">fromhex</span>()              <span class="cm"># 16 进制转 bytes</span>
-  → AES-CBC 解密 + <span class="fn">unpad</span>        <span class="cm"># 见 9.8 第八节</span>
+  → AES-CBC 解密 + <span class="fn">unpad</span>        <span class="cm"># 见 9.9 第八节</span>
   → 得到 protobuf 二进制
   → bbpb.<span class="fn">decode</span>()              <span class="cm"># 或者 protoc --decode_raw</span>
   → dict / JSON，可读</pre>
@@ -842,8 +975,8 @@ new_data = bbpb.<span class="fn">encode_message</span>(msg, typedef)</pre>
 
       <div class="pitfall"><b>五个坑：</b>① 看到二进制就认定"加密了"——很可能只是 protobuf，先 base64 解一次再判断；② 解密后忘了 <code class="inline">unpad</code>，末尾一堆 <code class="inline">\x00</code> 让 protobuf 解析器直接崩；③ 手工还原 .proto 时内层 message 沿用了外层编号——<b>内层编号从 1 重新开始</b>；④ <code class="inline">blackboxprotobuf</code> 编码回去时丢了 <code class="inline">typedef</code>，类型信息没了；⑤ hook native 时从 <code class="inline">args[0]</code> 开始读参数，其实前两个是 <code class="inline">JNIEnv*</code> 和 <code class="inline">jobject</code>。</div>
 
-      <!-- ============ 9.10 ============ -->
-      <h2>9.10 合规特别提醒 <span class="chip">红线</span></h2>
+      <!-- ============ 9.11 ============ -->
+      <h2>9.11 合规特别提醒 <span class="chip">红线</span></h2>
       <p>App 爬取直接运行在真实设备与真实账号环境上，触碰的敏感面比网页爬虫大得多。以下红线不是"建议"，是"底线"：</p>
       <div class="callout warn"><b>⚠️ 合规红线：</b>① 只在<b>自有设备</b>与<b>授权环境</b>（自己的测试机、公司明确授权的项目）上操作，不动他人设备与账号；② <b>不破解付费内容</b>、不绕过版权保护；③ <b>不碰支付、账号隐私、个人通信数据</b>——这类数据看一眼都可能构成违法；④ 抓到的数据同样要遵守第 01 章合规自查：公开数据、频率礼仪、用途合法；⑤ 《刑法》第 285、286 条对非法获取计算机信息系统数据、破坏计算机信息系统有明确规定——技术无罪，用法有界。</div>
 
@@ -854,10 +987,10 @@ new_data = bbpb.<span class="fn">encode_message</span>(msg, typedef)</pre>
       <div class="checklist-card check">
         <label><input type="checkbox" id="c09-1" data-persist><span>证书两步装会做：Android（系统证书/Magisk）与 iOS（描述文件+完全信任），代理指向与 HTTPS 解密开关（9.1）</span></label>
         <label><input type="checkbox" id="c09-2" data-persist><span>mitmdump addon 脚本会写：def request/def response 过滤目标域名并保存 JSONL（9.2）</span></label>
-        <label><input type="checkbox" id="c09-3" data-persist><span>能讲清 SSL Pinning 的原理、表现与应对思路，知道 so 层加密的边界（9.3）</span></label>
+        <label><input type="checkbox" id="c09-3" data-persist><span>能讲清三种抓包阻碍的现象区别（noProxy / VPN 检测 / 证书校验）、SSL Pinning 的应对思路，知道 r0capture 为什么能通杀、tcpdump + SSLKEYLOG 怎么解 TLS（9.3 / 9.4）</span></label>
         <label><input type="checkbox" id="c09-4" data-persist><span>Appium 环境四件套装好，Capabilities Demo 跑通，会 id/xpath 定位与显式等待（9.4）</span></label>
-        <label><input type="checkbox" id="c09-5" data-persist><span>Frida 从入门到实战：版本/架构三方对齐、四个易错点（.value / 打印时机 / 匿名类 $1 / this$0）、五步定位法与打堆栈、能用 replicateClass 复刻整类、知道安卓 RSA 默认 NoPadding（9.5–9.9）</span></label>
-        <label><input type="checkbox" id="c09-6" data-persist><span>合规边界清晰：自有设备、授权环境、不碰付费/支付/隐私（9.10）</span></label>
+        <label><input type="checkbox" id="c09-5" data-persist><span>Frida 从入门到实战：版本/架构三方对齐、四个易错点（.value / 打印时机 / 匿名类 $1 / this$0）、五步定位法与打堆栈、能用 replicateClass 复刻整类、知道安卓 RSA 默认 NoPadding（9.6–9.10）</span></label>
+        <label><input type="checkbox" id="c09-6" data-persist><span>合规边界清晰：自有设备、授权环境、不碰付费/支付/隐私（9.11）</span></label>
       </div>
 
       <!-- ============ 练习 ============ -->
