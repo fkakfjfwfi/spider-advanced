@@ -349,7 +349,7 @@ model.<span class="fn">eval</span>()
 
       <div class="pitfall"><b>五个坑：</b>① 魔改 ResNet 时忘了砍 <code class="inline">avgpool</code>，时间步被压到 7，长验证码永远识别不全；② 形状转换直接 <code class="inline">view</code> 不 <code class="inline">permute</code>——训练能跑、精度上不去；③ <code class="inline">target_lengths</code> 填了补齐长度，loss 不降；④ YOLO 的 <code class="inline">nc</code> 要在三处一致（yaml、names、模型头），不一致会冒出置信度极低的异常小框；⑤ 把模型加载写在路由函数里，响应慢到不可用。</div>
 
-      <!-- ============ 6.2 ============ -->
+      <!-- ============ 6.4 ============ -->
       <h2>6.4 滑动验证码 <span class="chip tbook">对齐教材 8.2</span></h2>
       <p>滑动验证码把"拖动滑块到缺口"包装成小游戏，实际上是一道<b>两步合成题</b>：第一步知道<b>缺口在哪</b>（视觉问题），第二步让滑块<b>像人一样滑过去</b>（行为问题）。两步都要对，缺一不可。</p>
 
@@ -444,7 +444,7 @@ ActionChains(driver).<span class="fn">click_and_hold</span>(slider).<span class=
 ActionChains(driver).<span class="fn">release</span>().<span class="fn">perform</span>()</pre>
       <div class="callout warn"><b>标注：</b>缺口匹配是纯视觉技术，<b>轨迹模拟属于行为对抗</b>——它专门用于绕过"判断你是不是人"的检测。这类代码请务必<b>只在授权平台（Scrape Center / 猿人学）或自己搭的练习站上运行</b>，对真实站点使用可能违反其服务条款与相关法律。</div>
 
-      <!-- ============ 6.3 ============ -->
+      <!-- ============ 6.5 ============ -->
       <h2>6.5 点触 / 宫格验证码 <span class="chip tbook">对齐教材 8.3 / 8.4</span></h2>
       <p>点触（按语序点击图中的文字）和宫格（点击符合描述的图标）把难度从"看得清"升级到了"看得懂"——需要语义理解，OCR 搞不定，自研模型性价比极低。<b>现实的标准答案只有一个：打码平台</b>——你把截图传上去，平台的真人/AI 混合队列把坐标传回来，按条计费。</p>
       <h3>打码平台接入思路</h3>
@@ -489,7 +489,7 @@ ActionChains(driver).<span class="fn">release</span>().<span class="fn">perform<
         <p>这张表还有一层用法：<b>对方突然换了更强的验证码，往往说明你的行为已经先暴露了</b>——先回去检查频率、请求头和 IP（第 07 章），比换更贵的打码方案更对症。</p>
       </div>
 
-      <!-- ============ 6.4 ============ -->
+      <!-- ============ 6.6 ============ -->
       <h2>6.6 模拟登录 GitHub：方法论 <span class="chip tbook">对齐教材 10.1</span></h2>
       <p>模拟登录的通用方法论是五步，<b>核心动作是"字段溯源"——载荷里的每个字段，都要能在登录页里找到出处</b>。拿 GitHub 演示（方法论对任何站点通用）：</p>
 
@@ -548,7 +548,7 @@ me = s.<span class="fn">get</span>(<span class="st">"https://github.com/settings
       </table></div>
       <div class="callout info"><b>方法论不变，难度在变：</b>从最老套的表单提交到最现代的加密接口，"抓包 → 字段溯源 → 复刻请求"这五步永远成立——变的只是"溯源"的深度。字段全在 HTML 里（本节）→ 复刻请求即可；字段藏在 JS 加密里 → 第 08 章；字段靠扫码/短信 → 人工登录 + 6.5。另外 GitHub 对自动登录风控较强，本节代码用于理解方法论，练手请用授权练习站（如 Scrape Center login 系列）或自己的小号。</div>
 
-      <!-- ============ 6.5 ============ -->
+      <!-- ============ 6.7 ============ -->
       <h2>6.7 Cookie 复用：本章最实用技 <span class="chip tnew">必会</span></h2>
       <p>回头看 6.1~6.6 的成本表，你会发现一个事实：<b>绝大多数验证码困境，最优解是"根本不再遇到它"</b>。登录一次（无论人肉还是自动化）拿到的登录态就是一枚 Cookie，只要不主动退出、Cookie 不过期，之后的采集根本不需要再登录——这就是第 01 章 1.4 那句"保命技"的完整展开：</p>
       <div class="tbl-wrap"><table class="tbl">
@@ -582,7 +582,7 @@ resp = s.<span class="fn">get</span>(<span class="st">"https://target.site/user/
       <h3>有效期管理：让"抄"变成一套机制</h3>
       <p>Cookie 是有寿命的（<code class="inline">Expires/Max-Age</code>，第 01 章的属性表），工程上要把它当资源管理：<b>探活前置</b>——每次任务开始先访问特征页判断登录态；<b>失效告警</b>——探测失败立即通知补货，别让爬虫带着死 Cookie 空跑两小时；<b>记录失效时间</b>——多观察几次就能总结出"这个站 Cookie 大约活 7 天"的规律，到期前主动更换；<b>多账号轮换</b>——单账号 Cookie 撑不起采集量时，就该上 6.8 的 Cookies 池了。</p>
 
-      <!-- ============ 6.6 ============ -->
+      <!-- ============ 6.8 ============ -->
       <h2>6.8 Cookies 池搭建 <span class="chip tbook">对齐教材 10.2</span></h2>
       <p>当采集量需要多个账号分摊、单个 Cookie 又会过期时，把 6.1~6.7 的全部零件组装起来，就是 <b>Cookies 池</b>——一个"自动登录、自动验活、按需分发登录态"的小型生产系统。数据流一句话：<b>账号队列喂给登录器，登录器产出 Cookie 存进 Redis，检测器定期验活，调度接口对外吐活 Cookie</b>：</p>
       <div class="flow">

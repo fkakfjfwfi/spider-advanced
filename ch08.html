@@ -930,7 +930,7 @@ console.<span class="fn">log</span>(x);                   <span class="cm">// �
         </div>
       </details>
 
-      <details class="qa"><summary><span class="qno">Q3</span>动手：服务器 token = MD5('page=' + page + '&ts=' + ts + 'SALT')，ts 为秒级时间戳。请先用 execjs + Node 实现（写 encrypt.js 与 Python 调用），再写纯 Python 版本对照，两者输出必须一致。<span class="lv badge b-orange">动手</span></summary>
+      <details class="qa"><summary><span class="qno">Q3</span>动手：服务器 token = MD5('page=' + page + '&amp;ts=' + ts + 'SALT')，ts 为秒级时间戳。请先用 execjs + Node 实现（写 encrypt.js 与 Python 调用），再写纯 Python 版本对照，两者输出必须一致。<span class="lv badge b-orange">动手</span></summary>
         <div class="qa-body">
           <p><b>考点：</b>8.4 扣代码标准流程：抠 JS → execjs.compile → ctx.call。</p>
           <div class="ans"><b>参考解析：</b>Node 侧 encrypt.js：<code class="inline">var crypto = require('crypto'); function getToken(p, ts){ var raw = 'page=' + p + '&amp;ts=' + ts + 'SALT'; return crypto.createHash('md5').update(raw).digest('hex'); }</code>。Python 侧：<code class="inline">import execjs; ctx = execjs.compile(open('encrypt.js', encoding='utf-8').read()); token = ctx.call('getToken', 1, str(int(time.time())))</code>。纯 Python 版：<code class="inline">import hashlib, time; raw = f"page=1&amp;ts={int(time.time())}SALT"; hashlib.md5(raw.encode()).hexdigest()</code>。注意两点：同一 ts 下两者输出逐字符一致才算通；真实请求里 ts 要用<b>当下</b>的秒级时间戳并同步传给接口。</div>

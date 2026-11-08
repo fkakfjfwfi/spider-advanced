@@ -409,7 +409,7 @@ resp = <span class="fn">fetch_with_backoff</span>(<span class="st">"https://http
       <details class="acc">
         <summary>字体反爬 / 文本假字符</summary>
         <div class="acc-body">
-          <p><b>原理：</b>自定义字体文件把 Unicode 映射打乱——页面上渲染出"8"，HTML 里其实是"&#xe3f4"。点评、招聘网站爱用。</p>
+          <p><b>原理：</b>自定义字体文件把 Unicode 映射打乱——页面上渲染出"8"，HTML 里其实是"&amp;#xe3f4"。点评、招聘网站爱用。</p>
           <p><b>识别：</b>复制页面文字到别处变乱码；HTML 里出现大量 <code class="inline">&amp;#x</code> 开头的实体。</p>
           <p><b>破解：</b>下载 woff 文件用 fontTools 解析字形，和标准字形比对建映射表；或 OCR 识别渲染后的字符。</p>
         </div>
