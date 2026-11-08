@@ -93,6 +93,20 @@
       <p>三招判断法，30 秒出结论：① <b>刷新三次看变化</b>——每次请求都变，基本是加密参数（注意区分"时间戳"这种每次都变但不校验的伪加密）；② <b>删掉重发</b>——Copy as cURL 后删掉该参数重放，返回 403/自定义错误码即坐实；③ <b>固定值重放</b>——把上一次的完整参数原样重放，若提示过期，说明参数绑定了时间戳或一次性随机数。三招都命中，才值得进入 8.2 的定位流程。</p>
       <div class="callout info"><b>先想后做：</b>遇到加密参数，第一反应不是"这好难"，而是按流程走：定位（8.2）→ 识别（8.3）→ 还原（8.4~8.6）。90% 的站倒在 8.3 这一步就结束了——因为大部分站用的就是 MD5 拼接这种简单组合。</div>
 
+      <h3>前置：读懂混淆代码要掌握的六个 JS 机制</h3>
+      <p>很多人卡在"代码每个字都认识，连起来看不懂"。真正的原因是<b>JS 的几个特性被混淆器拿来当武器了</b>。这六个机制不搞懂，后面所有技巧都是空中楼阁。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>机制</th><th>混淆器怎么用</th><th>你该看什么</th></tr>
+        <tr><td><b>闭包</b></td><td>把所有变量藏进一个立即执行函数的作用域里，外部断点看不见</td><td>断点打在 IIFE 内部，作用域链里翻</td></tr>
+        <tr><td><b>IIFE</b></td><td><code class="inline">(function(a,b){...})(x,y)</code> 形成独立作用域，还能靠形参"洗白"变量名</td><td>形参就是实参的别名，值在调用处</td></tr>
+        <tr><td><b>原型链</b></td><td>在<b>中间层</b>覆写同名原生方法（如 <code class="inline">valueOf</code>），让你的判断拿到假值</td><td>用 <code class="inline">hasOwnProperty</code> 确认是不是自有属性，断点里看清来自哪一层</td></tr>
+        <tr><td><b>this 指向</b></td><td>五种绑定 + 隐式丢失，改一个调用方式结果就变</td><td>别猜，断点里直接看 <code class="inline">this</code></td></tr>
+        <tr><td><b>call / apply / bind</b></td><td>强制改 this 指向，把函数"借"给别的对象用</td><td>看到这三个就说明 this 被换过了</td></tr>
+        <tr><td><b><code class="inline">charCodeAt</code> + 偏移</b></td><td>字符串拆成数字数组 + 统一偏移量，肉眼完全读不出</td><td>先找到字符串表，还原后再看代码</td></tr>
+      </table></div>
+      <div class="callout warn"><b>最容易被骗的是"原型链中间层覆写"。</b><code class="inline">obj.valueOf()</code> 返回的结果可能是假的——因为混淆器在原型链的某一层塞了个同名函数。判断方法：用 <code class="inline">obj.hasOwnProperty('valueOf')</code> 看是不是自有属性；不是的话，断点里顺着 <code class="inline">__proto__</code> 一层层看到底在哪一层被换掉的。</div>
+      <div class="callout ok"><b>还有一个直接能用的判据</b>：如果你看到"页面卡顿 + 同一个接口被请求两次 + 首次响应返回一段诡异的 JS"，<b>三个信号同时出现，基本可以断定有前置 cookie 加密</b>（刷新型反爬）。反过来，如果"重放成功但模拟请求失败"，那不是加密问题，是<b>指纹或 TLS</b>问题——两条完全不同的排查路线。</div>
+
       <!-- ============ 8.2 ============ -->
       <h2>8.2 浏览器调试三板斧（核心一） <span class="chip tnew">核心一 · 定位</span></h2>
       <p>逆向的第一步永远是<b>定位</b>：在几万行被打包、压缩、混淆过的 JS 里，找到"生成这个参数"的那几行代码。所有高手用的都是同一套动作，我们叫它<b>三板斧</b>——按命中率从高到低，每一斧都值得练成肌肉记忆。</p>
@@ -130,6 +144,40 @@
   };
 })();
 <span class="cm">// 补充姿势：给 debugger 行下"条件断点"填 false；或临时用 Ctrl+F8 全局禁用断点</span></pre>
+
+      <h3>断点不只有 XHR：七种断点与它们的优先级</h3>
+      <p>第二斧只讲了 XHR 断点，但它只是七种里的一种。知道全部，才知道什么时候该换：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>断点</th><th>怎么下</th><th>什么时候用</th></tr>
+        <tr><td>行断点</td><td>左键点行号</td><td>已经知道位置</td></tr>
+        <tr><td>条件断点</td><td>右键行号 → <code class="inline">Add conditional breakpoint</code></td><td>循环里只想停某一次（比如 <code class="inline">i === 500</code>）</td></tr>
+        <tr><td>日志断点</td><td>右键 → <code class="inline">Add logpoint</code></td><td>只想打印不想停，避免反复 F8</td></tr>
+        <tr><td><b>script 断点</b></td><td>Sources → <code class="inline">Event Listener Breakpoints</code> → Script → <code class="inline">Script First Statement</code></td><td><b>动态注入的 JS，Network 里根本看不到</b>——这个必用</td></tr>
+        <tr><td>XHR/fetch</td><td>右侧 XHR/fetch Breakpoints</td><td>JSON 接口找加密入口（8.2 第二斧）</td></tr>
+        <tr><td>DOM 断点</td><td>元素右键 → Break on</td><td>找"是谁在改这个节点"</td></tr>
+        <tr><td>异常断点</td><td><code class="inline">Pause on exceptions</code></td><td>报错位置不明时</td></tr>
+      </table></div>
+      <div class="callout info"><b>script 断点为什么关键：</b>刷新型 cookie 的站（瑞数、加速乐那一类）第二次请求会把第一次加载的 JS <b>覆盖掉</b>，Network 面板里翻不到那段代码。打 script 断点后刷新，就能在它执行的第一行停住并拿到源码。同理，勾上 Network 的 <code class="inline">Preserve log</code> 也能保住记录。</div>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>快捷键</th><th>行为</th></tr>
+        <tr><td><b>F8</b></td><td>跳到下一个断点</td></tr>
+        <tr><td><b>F10</b></td><td>单步，<b>不进</b>子函数</td></tr>
+        <tr><td><b>F11</b></td><td>单步，<b>进入</b>子函数</td></tr>
+        <tr><td><b>Shift+F11</b></td><td>跳出当前函数（出栈一层）</td></tr>
+        <tr><td><b>Ctrl+F8</b></td><td>临时禁用所有断点（对付一堆干扰断点很有用）</td></tr>
+      </table></div>
+      <p><b>Overrides（本地映射）</b>是很多人不知道的一招：对着 Sources 左侧资源树右键 → <code class="inline">Override content</code> → 选本地文件夹授权 → 改完 <code class="inline">Ctrl+S</code> 刷新生效。<b>相当于浏览器内置的 AutoResponder</b>——在 Fiddler 抓不到包（http2/QUIC、证书锁定）时，这是唯一应急方案。</p>
+
+      <h3>Fiddler：改包比抓包更有用</h3>
+      <p>抓包只是第一步，真正省时间的是改包。三个动作：</p>
+      <p><b>① AutoResponder（替换响应）</b>——勾 <code class="inline">Enable rules</code> + <code class="inline">Unmatched requests passthrough</code>（不勾会把所有流量拦死），<code class="inline">Add Rule</code> 上行填匹配、下行指向本地文件。</p>
+      <div class="callout warn"><b>规则一定要加 <code class="inline">regex:</code> 前缀</b>，否则会误伤同域的其他请求，表现为"页面越改越坏、整个站都打不开"。这是最常见的翻车点。</div>
+      <p>三种用法：整包替换（抓下来改完回注）、<b>直接删掉反调试代码</b>（把含 <code class="inline">debugger</code> 的 JS 替换成空文件，无限 debugger 当场消失——这也是过反调试最顺手的一招）、改响应体验证前端逻辑。</p>
+      <p><b>② 响应后断点改包</b>——<code class="inline">Rules → Automatic Breakpoints → After Responses</code>。<b>必须选 After</b>：选 Before 的话你改完的内容会被真实响应覆盖回去。</p>
+      <p><b>③ Composer / Replay</b>——把请求拖进 Composer 改参数重发，验证服务端到底强校验了哪个字段；Replay 可以批量发 N 次，测频控和幂等。</p>
+      <div class="callout ok"><b>抓包排障的定式：先重放，再对比。</b><br>
+      重放成功 → 直接照抄 cURL 构造请求；重放失败 → 对比"浏览器的成功请求"和"你的失败请求"：<b>请求头</b>（数量/顺序/UA/自定义字段）、<b>cookie</b>（有没有 Set-Cookie、哪个 cookie 是关键）、<b>参数</b>（有没有动态值）、<b>顺序</b>（是否依赖前置请求）。<br>
+      讲者遇到过的两个真实案例：① 单独重放数据接口返回 403，把<b>前置接口 + 数据接口一起重放</b>就成功——服务端在建立状态；② 重放返回一段 JS 烟雾弹，最后发现服务端校验<b>请求头的排列顺序</b>，Python 侧要用 <code class="inline">session.headers = headers</code> 整体赋值才能保住顺序（传 <code class="inline">headers=</code> 参数会被 requests 重排）。</div>
 
       <!-- ============ 8.3 ============ -->
       <h2>8.3 加密算法指纹识别（核心二） <span class="chip tnew">核心二 · 识别</span></h2>
@@ -189,6 +237,41 @@ CryptoJS.AES.encrypt(data, key, {
       <!-- ============ 8.4 ============ -->
       <h2>8.4 扣代码与补环境（核心三） <span class="chip tnew">核心三 · 还原</span></h2>
       <p>验证闭环后到了还原环节。算法简单（如 MD5 拼接）用 Python 的 hashlib 几行就复刻了；但遇到 AES 带盐加密、自研魔改算法、多层嵌套拼接，用 Python 手写复刻的成本急剧上升——这时更聪明的做法是<b>扣代码</b>：把浏览器里那段加密 JS <b>原样拷出来</b>，在本地用 Node 执行。核心逻辑一句话：<b>浏览器能算的，Node 就能算</b>。</p>
+
+      <h3>hook：两个公式 + 一条铁律</h3>
+      <p>抠代码之前通常要先 hook 一次找到入口。<b>hook 一定生效</b>——JS 的最终解释权在客户端，服务端只能提高你被发现的成本，挡不住你改写任何可写属性。</p>
+      <p>所有 hook 都是同一个三步：<b>找 hook 点</b>（我要观察什么）→ <b>写 hook 逻辑</b>（打印/断住/改值）→ <b>在 hook 里往上追栈</b>。落成代码只有两个公式。</p>
+      <div class="code-title">公式一：函数 hook（备份 → 重写 → 伪装）</div>
+<pre class="code"><span class="cm">// ① 备份</span>
+<span class="kw">var</span> eval_bk = eval;
+
+<span class="cm">// ② 重写，保持原逻辑</span>
+eval = <span class="kw">function</span> (code) {
+    console.<span class="fn">log</span>(<span class="st">'[hook eval]'</span>, code);   <span class="cm">// 或 debugger;</span>
+    <span class="kw">return</span> <span class="fn">eval_bk</span>(code);
+};
+
+<span class="cm">// ③ 伪装原生 —— 不做这步会被反爬识别</span>
+eval.toString = <span class="kw">function</span> () {
+    <span class="kw">return</span> <span class="st">'function eval() { [native code] }'</span>;
+};</pre>
+      <div class="callout warn"><b>第 ③ 步不能省。</b>重写后 <code class="inline">eval.toString()</code> 返回的是你的源码，而原生函数返回 <code class="inline">"function eval() { [native code] }"</code>。反爬只要判断 <code class="inline">toString().indexOf('native code') === -1</code> 就知道被 hook 了，然后走蜜罐分支——<b>给你一份"能算出结果但结果是错的"参数</b>。表现是请求 200、格式完全正确、服务端就是不认。<b>遇到"参数看着对但过不了"，先怀疑 hook 被识别。</b></div>
+      <div class="code-title">公式二：对象属性 hook（以 document.cookie 为例）</div>
+<pre class="code"><span class="kw">var</span> desc = Object.<span class="fn">getOwnPropertyDescriptor</span>(Document.prototype, <span class="st">'cookie'</span>)
+        || Object.<span class="fn">getOwnPropertyDescriptor</span>(document, <span class="st">'cookie'</span>);
+<span class="kw">var</span> cookie_bk = desc.get.<span class="fn">call</span>(document);
+
+Object.<span class="fn">defineProperty</span>(document, <span class="st">'cookie'</span>, {
+    configurable: <span class="kw">true</span>,        <span class="cm">// ★ 不给 true，二次 hook 必抛错</span>
+    get: <span class="kw">function</span> () { <span class="kw">return</span> cookie_bk; },
+    set: <span class="kw">function</span> (val) {
+        <span class="kw">debugger</span>;                <span class="cm">// ★ 在这断住 → 往上翻栈 = 加密入口</span>
+        cookie_bk = val;
+    }
+});</pre>
+      <p><b>属性 hook 的两个高频错误</b>：① 只写 <code class="inline">get</code> 不写 <code class="inline">set</code>——网站写 cookie 时静默失败，页面逻辑崩了，你还以为是 hook 没生效；② 不写 <code class="inline">configurable: true</code>——默认 false，之后任何 <code class="inline">defineProperty</code> 都抛 <code class="inline">Cannot redefine property</code>。</p>
+      <p><b>很多站是两层壳</b>：第一层 JS 只是外壳，真正的逻辑在 <code class="inline">eval(第二层字符串)</code> 里。这时 hook cookie 只能看到最外层，<b>直接 hook <code class="inline">eval</code> 一步到位</b>——断住之后栈上就是"谁把这段字符串拼出来的"，往上翻一层就是二层入口，不用格式化、不用扒壳。</p>
+      <p><b>用油猴让 hook 可复用</b>：Console 里敲的 hook 一刷新就没了。油猴脚本只有一个字段要记——<code class="inline">@run-at document-start</code>，它是唯一能赶在页面 JS 之前注入的选项。默认的 <code class="inline">document-end</code> 一定失效（页面 JS 早跑完了）。</p>
 
       <h3>execjs：Python 指挥 Node 跑 JS</h3>
       <p><code class="inline">PyExecJS</code> 是最常用的桥梁：Python 侧装它，本机再装 Node.js（execjs 只负责"指挥"，真正干活的是 Node）。三步走：抠出 JS 存成 .js 文件 → execjs.compile 编译 → ctx.call 调用函数。下面是完整可跑的示例——为什么选 AES 做例子？因为 CryptoJS 的默认 AES 是 OpenSSL 带盐格式（还记得 U2FsdGVk 开头吗），纯 Python 复刻要自己实现 EVP_BytesToKey 密钥派生，非常费劲；扣代码则一行不用改：</p>
@@ -256,6 +339,48 @@ global.location = dom.window.location;</pre>
         <tr><td>结果与浏览器不一致</td><td>补了不该补的环境字段参与运算；或时间戳单位不一致</td><td>逐项回退刚补的字段定位元凶；对齐时间戳秒 / 毫秒（8.3 指纹表）</td></tr>
       </table></div>
 
+      <h3>报错对照表：抠代码 90% 的时间在查这张表</h3>
+      <p>补环境不是靠理解，是靠<b>查表</b>。报什么错、它是什么东西、从哪拿——按这四类查，比瞎搜快得多。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>报错</th><th>它其实是什么</th><th>怎么补</th></tr>
+        <tr><td><code class="inline">A is not defined</code><br><code class="inline">Y is not defined</code></td><td>OB 的大对象字面量（配置对象）</td><td>搜内部独特属性名定位；搜不到就找它第一次出现处，常是 <code class="inline">A = Y</code></td></tr>
+        <tr><td><code class="inline">C is not defined</code>（值是个数字）</td><td>时间戳</td><td><code class="inline">var C = Date.now();</code> 或从上下文抄 <code class="inline">new Date().getTime()</code></td></tr>
+        <tr><td><code class="inline">hashMD5 is not defined</code></td><td>第三方 md5 库（函数）</td><td>Ctrl+点击进去，整个函数体复制到文件最前面</td></tr>
+        <tr><td><code class="inline">MD5CMN</code> / <code class="inline">CFADDB</code> 等常量</td><td>md5 实现的内部常量表</td><td>都在同一个库里，<b>成组复制</b>，别一个个找</td></tr>
+        <tr><td><b>单个字母</b>未定义（<code class="inline">K</code>/<code class="inline">H</code>/<code class="inline">L</code>/<code class="inline">FF</code>…）</td><td>OB 的解密函数 / 数组</td><td>按<b>源码里定义的相对顺序</b>逐个补——插错位置会导致数组移位顺序乱，算出来是错的</td></tr>
+        <tr><td><code class="inline">history is not defined</code></td><td>浏览器对象</td><td><code class="inline">var history = { back(){}, forward(){}, pushState(){}, length: 1 };</code></td></tr>
+      </table></div>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>报错 / 现象</th><th>原因</th><th>处理</th></tr>
+        <tr><td><code class="inline">window.btoa is not a function</code></td><td>Node 没有 btoa（浏览器专有）</td><td>手写四行，比装包省事：</td></tr>
+      </table></div>
+      <div class="code-title">手写 btoa / atob，零依赖</div>
+<pre class="code">window.btoa = <span class="kw">function</span> (s) {
+    <span class="kw">return</span> Buffer.<span class="fn">from</span>(<span class="fn">String</span>(s), <span class="st">'binary'</span>).<span class="fn">toString</span>(<span class="st">'base64'</span>);
+};
+window.atob = <span class="kw">function</span> (s) {
+    <span class="kw">return</span> Buffer.<span class="fn">from</span>(<span class="fn">String</span>(s), <span class="st">'base64'</span>).<span class="fn">toString</span>(<span class="st">'binary'</span>);
+};</pre>
+      <p><b>最阴的一类是不报错</b>——直接卡死或内存爆炸：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>现象</th><th>真因</th><th>处理</th></tr>
+        <tr><td>跑起来 CPU 占满、Node OOM</td><td><b>格式化检测</b>：OB 用正则测某个函数的 <code class="inline">toString()</code>，发现你有换行缩进 → 判定被分析 → 灌数组死循环</td><td>把那段代码恢复成一行挤在一起，或把 <code class="inline">.test()</code> 改成 <code class="inline">false</code></td></tr>
+        <tr><td>断点单步能跑，一放开就卡死</td><td>卡死发生在断点<b>之后</b>那段循环里</td><td>F11 单步到卡死处，前后夹断点二分缩小</td></tr>
+        <tr><td><code class="inline">console.log(cookie)</code> 一执行就卡死，但 return 结果正常</td><td><b>console.log 被网站重写了</b></td><td>提前备份：<code class="inline">var _log = console.log.bind(console)</code>，后续都用 _log</td></tr>
+        <tr><td>报 <code class="inline">navigator is not defined</code>，或走了奇怪分支</td><td>代码里有 <code class="inline">if (typeof global !== 'undefined')</code> 判断，<b>检测到你在 Node 里</b>，走了反调试分支</td><td>补 <code class="inline">navigator</code>，或直接改判断条件让它走浏览器分支</td></tr>
+      </table></div>
+      <div class="callout ok"><b>卡死时先问自己一句话：「我最后一步补了什么？」</b>然后在那一行前后下断点。这比随机按 F11 快十倍——讲者每次卡死都是这么定位的。<br>
+      还有一条底层信念：<b>浏览器不会骗你</b>。浏览器里能跑到 <code class="inline">document.cookie = xxx</code> 那一行，说明上面所有代码都是对的；本地跑卡死只可能是环境差异（指纹或格式化），不会是逻辑错。</div>
+
+      <h3>一个判据，决定该"硬抠一次"还是"每次重来"</h3>
+      <p>拿到那段返回 JS 的请求后，先看一件事：<b>响应头里有没有 <code class="inline">set-cookie</code></b>。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>情况</th><th>含义</th><th>策略</th></tr>
+        <tr><td><b>没有 set-cookie</b></td><td>"假动态"——这批 JS 和你的会话没有绑定，是通用壳</td><td>✅ <b>硬抠一次，做成 SDK 长期复用</b></td></tr>
+        <tr><td>有 set-cookie</td><td>真动态——JS 和 session 一对一绑定，每次都不一样</td><td>先搞清动态点在哪：全新生成，还是几套模板轮换（识别特征后选对应模板）</td></tr>
+      </table></div>
+      <p>这一条判据能省掉大量无效工作。<b>把"没 set-cookie"的站每次都重新分析一遍，是最大的浪费。</b></p>
+
       <!-- ============ 8.5 ============ -->
       <h2>8.5 Webpack 打包站 <span class="chip tnew">webpack</span></h2>
       <p>你会在很多站上发现：全局搜索参数名，<b>一无所获</b>。别慌，多半是遇到了 webpack 打包站——前端工程把源码切成几十上百个<b>模块</b>，用一个<b>加载器</b>按需拼装，再整体压缩。模块号和真实业务名对不上，所以直接搜参数名搜不到。</p>
@@ -293,6 +418,46 @@ global.location = dom.window.location;</pre>
   <span class="kw">var</span> sign = <span class="fn">__webpack_require__</span>(<span class="fn">129</span>);
   console.<span class="fn">log</span>(<span class="fn">sign</span>(<span class="st">'page=1&amp;ts=1730000000'</span>));  <span class="cm">// 与浏览器请求里的值一致 ✓</span>
 &lt;/<span class="kw">script</span>&gt;</pre>
+
+      <h3>五步扣法：只留加载器，遇依赖往后粘模块</h3>
+      <p>webpack 的扣法其实只有一句话——<b>保留加载器，把目标模块和它依赖的模块一个个粘进去，其余全删</b>。具体五步：</p>
+      <div class="flow">
+        <span class="fnode">①格式化<br>看骨架</span><span class="farrow">→</span>
+        <span class="fnode">②只留<br>加载器</span><span class="farrow">→</span>
+        <span class="fnode">③断点<br>找入口</span><span class="farrow">→</span>
+        <span class="fnode">④遇 n(id)<br>就粘模块</span><span class="farrow">→</span>
+        <span class="fnode">⑤暴露<br>对拍</span>
+      </div>
+      <p><b>② 只留加载器</b>：把模块表清到只剩目标模块，辅助函数（<code class="inline">n.d</code> / <code class="inline">n.r</code> / <code class="inline">n.o</code> / <code class="inline">n.n</code>）和业务代码全删。<b>报错再一个个补回来</b>——缺什么补什么，别一上来就全留着。</p>
+      <p><b>③ 找入口</b>：XHR 断点断住，看调用栈里"参数生成前/生成后"的那一帧，它通常长这样 <code class="inline">n(454)(...)</code>。</p>
+      <p><b>④ 补依赖</b>：入口里出现 <code class="inline">n(56)</code> 这种调用，就去原文件搜 id <code class="inline">56</code>，把整个模块函数剪下来粘进模块表，反复直到不报错。<b>这一步最机械，也最耗时。</b></p>
+      <p><b>⑤ 暴露</b>：<code class="inline">window.enc = n(入口id)</code>，然后拿浏览器里的同参数对拍。</p>
+      <div class="callout info"><b>真 webpack 和假 webpack 的扣法完全一样</b>，只是工作量不同：练习题里模块表就几个，生产站点几百个模块、还分包（<code class="inline">webpackChunk*.push</code>），加载器可能藏在独立 chunk 里——那就从断点的调用栈点进去，找到它的来源文件。</div>
+
+      <h3>兜底方案：用 jsdom 把整个页面搬进 Node</h3>
+      <p>如果补环境补到崩溃，还有一招：<b>把浏览器里那份完整 HTML 存档，用 jsdom 在本地重放一遍</b>。页面自己的脚本会跑起来，签名自然就算出来了。</p>
+      <div class="code-title">四个开关必须全开，少一个就白搭</div>
+<pre class="code"><span class="kw">const</span> fs = <span class="fn">require</span>(<span class="st">'fs'</span>);
+<span class="kw">const</span> { JSDOM, CookieJar } = <span class="fn">require</span>(<span class="st">'jsdom'</span>);
+<span class="kw">const</span> html = fs.<span class="fn">readFileSync</span>(<span class="st">'./local.html'</span>, <span class="st">'utf8'</span>);
+
+<span class="kw">const</span> dom = <span class="kw">new</span> <span class="fn">JSDOM</span>(html, {
+    url: <span class="st">'https://目标站/接口路径'</span>,        <span class="cm">// 决定 location / origin</span>
+    referrer: <span class="st">'https://目标站/'</span>,
+    userAgent: <span class="st">'&lt;与抓包 header 完全一致的 UA&gt;'</span>,
+    runScripts: <span class="st">'dangerously'</span>,              <span class="cm">// ★ 不开：页面 script 根本不执行</span>
+    resources: <span class="st">'usable'</span>,                   <span class="cm">// ★ 不开：外链 js/css 不加载</span>
+    pretendToBeVisual: <span class="kw">true</span>,               <span class="cm">// 给 requestAnimationFrame</span>
+    cookieJar: <span class="kw">new</span> <span class="fn">CookieJar</span>(),
+});</pre>
+      <p><b>hook 必须在页面脚本之前</b>——用 <code class="inline">beforeParse(win)</code> 回调，把定时器改成立即执行一次，<b>并且记得同步改 <code class="inline">toString</code></b>：</p>
+      <div class="code-title">beforeParse 里让定时器立刻跑</div>
+<pre class="code">beforeParse(win) {
+    win.setInterval = (f) =&gt; { <span class="fn">f</span>(); <span class="kw">return</span> <span class="fn">1</span>; };
+    win.setInterval.toString = () =&gt; <span class="st">'function setInterval(){ [native code] }'</span>;
+}</pre>
+      <p>收尾别忘了 <code class="inline">dom.window.close()</code>——不关会一直挂着监听器，进程退不出去。</p>
+      <div class="pitfall"><b>jsdom 的三个坑：</b>① 报 <code class="inline">Not implemented: navigation</code> 是无害的（jsdom 不支持跳转），把页面里的 <code class="inline">location.reload()</code> 删掉就行；② 报一堆字符串处理错误，大概率是<b>复制 HTML 时被截断或粘错</b>，重新粘一遍；③ 性能差、并发上不去，<b>只在实在补不出来时用</b>，优先级上 jsRPC（见 8.11）更高。</div>
 
       <!-- ============ 8.6 ============ -->
       <h2>8.6 ob 混淆与 AST（拓展） <span class="chip">拓展</span></h2>
@@ -332,6 +497,75 @@ console.<span class="fn">log</span>(<span class="fn">generator</span>(ast).code)
         </table></div>
         <p>记住这个判断本身就是高手能力的一部分：<b>"放弃"也是一种策略</b>。工程目标永远是"稳定拿到数据"，逆向只是手段之一——把时间花在刀刃上，是一线逆向团队和新手最大的区别。延伸阅读见章末"多源精读"的 NightTeam 入口。</p>
       </div>
+
+      <h3>四个组件，各管一段</h3>
+      <p>AST 处理链一共四步，每步一个包，别记混：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>组件</th><th>职责</th><th>一句话</th></tr>
+        <tr><td><code class="inline">@babel/parser</code></td><td>源码 → 树</td><td>唯一要注意的是 <code class="inline">sourceType</code></td></tr>
+        <tr><td><code class="inline">@babel/traverse</code></td><td>遍历树、改节点</td><td>核心中的核心，深度优先</td></tr>
+        <tr><td><code class="inline">@babel/types</code></td><td>节点工厂 + 类型判断</td><td><code class="inline">t.stringLiteral()</code> 造，<code class="inline">t.isIdentifier()</code> 判</td></tr>
+        <tr><td><code class="inline">@babel/generator</code></td><td>树 → 源码</td><td>输出形态全靠几个开关控制</td></tr>
+      </table></div>
+      <div class="code-title">最小闭环：读 → 改 → 写</div>
+<pre class="code"><span class="kw">const</span> fs = <span class="fn">require</span>(<span class="st">'fs'</span>);
+<span class="kw">const</span> parser = <span class="fn">require</span>(<span class="st">'@babel/parser'</span>);
+<span class="kw">const</span> generate = <span class="fn">require</span>(<span class="st">'@babel/generator'</span>).default;
+<span class="kw">const</span> traverse = <span class="fn">require</span>(<span class="st">'@babel/traverse'</span>).default;
+<span class="kw">const</span> t = <span class="fn">require</span>(<span class="st">'@babel/types'</span>);
+
+<span class="kw">const</span> ast = parser.<span class="fn">parse</span>(fs.<span class="fn">readFileSync</span>(<span class="st">'./ob.js'</span>, <span class="st">'utf-8'</span>));
+
+<span class="fn">traverse</span>(ast, {
+    StringLiteral(path) { /* 这里改树 */ }
+});
+
+fs.<span class="fn">writeFileSync</span>(<span class="st">'./out.js'</span>, <span class="fn">generate</span>(ast, { compact: <span class="kw">true</span> }).code);</pre>
+
+      <h3>ob 还原流水线</h3>
+      <p>obfuscator.io 的产物结构是固定的四段：<b>大数组 → 数组移位 → 解密函数 → 真正的业务代码</b>。所以还原也是固定的五步：</p>
+      <div class="flow">
+        <span class="fnode">①解字符串<br>数组</span><span class="farrow">→</span>
+        <span class="fnode">②字符串<br>合并</span><span class="farrow">→</span>
+        <span class="fnode">③还原<br>十六进制</span><span class="farrow">→</span>
+        <span class="fnode">④还原对象<br>成员表</span><span class="farrow">→</span>
+        <span class="fnode">⑤控制流<br>删死码</span>
+      </div>
+      <p><b>第一步的关键在"让解密函数活起来"</b>：字符串是算出来的，只看静态解不出。做法是把前三段语句抽出来、<code class="inline">compact: true</code> 压成一行、<code class="inline">eval</code> 一遍，让 <code class="inline">$B()</code> 真实存在，然后用 <code class="inline">eval</code> 逐个算出结果替换成字面量。</p>
+      <div class="code-title">第一步的骨架</div>
+<pre class="code"><span class="cm">// ① 抽出前三段（数组 / 移位 / 解密函数），压成一行</span>
+<span class="kw">let</span> helper = <span class="st">''</span>;
+<span class="kw">for</span> (<span class="kw">let</span> i = <span class="fn">0</span>; i &lt; <span class="fn">3</span>; i++) {
+    helper += <span class="fn">generate</span>(ast.program.body[i], { compact: <span class="kw">true</span> }).code;
+}
+<span class="fn">eval</span>(helper);                      <span class="cm">// 让 $B 真的存在</span>
+
+<span class="cm">// ② 遍历调用表达式，逐个换成字面量</span>
+<span class="fn">traverse</span>(ast, {
+    CallExpression(path) {
+        <span class="kw">const</span> { callee, arguments: args } = path.node;
+        <span class="kw">if</span> (!t.<span class="fn">isIdentifier</span>(callee) || callee.name !== <span class="st">'$B'</span>) <span class="kw">return</span>;
+        <span class="kw">if</span> (args.length !== <span class="fn">2</span>) <span class="kw">return</span>;
+        <span class="kw">if</span> (!t.<span class="fn">isStringLiteral</span>(args[<span class="fn">0</span>]) || !t.<span class="fn">isStringLiteral</span>(args[<span class="fn">1</span>])) <span class="kw">return</span>;
+
+        <span class="kw">let</span> str;
+        <span class="kw">try</span> { str = <span class="fn">eval</span>(<span class="st">`</span>${callee.name}<span class="st">(</span>${JSON.stringify(args[0].value)}<span class="st">, </span>${JSON.stringify(args[1].value)}<span class="st">)`</span>); }
+        <span class="kw">catch</span> (e) { <span class="kw">return</span>; }         <span class="cm">// 算不出来就跳过，别让脚本挂</span>
+        <span class="kw">if</span> (<span class="kw">typeof</span> str !== <span class="st">'string'</span>) <span class="kw">return</span>;
+
+        path.<span class="fn">replaceWith</span>(t.<span class="fn">stringLiteral</span>(str));
+        path.<span class="fn">skip</span>();
+    },
+});
+
+<span class="cm">// ③ 前三段已经没用了，直接砍掉</span>
+ast.program.body.<span class="fn">splice</span>(<span class="fn">0</span>, <span class="fn">3</span>);</pre>
+      <div class="callout ok"><b>判断条件写多严都不算多。</b>上面每个 <code class="inline">return</code> 都是一道保险——判断越少，误伤越多。这是讲者反复强调的：宁可漏还原几个，也不要改错一个。</div>
+
+      <div class="pitfall"><b>三个最容易翻车的地方：</b><br>
+      ① <b>嵌套还原只成功一半</b>：<code class="inline">$B($B('0x2','x3'), 'x4')</code> 只有内层被还原。原因是 <code class="inline">traverse</code> 深度优先、<b>enter 先触发</b>——处理外层时实参还是未还原的节点，条件不通过就跳过了。<b>解法：把逻辑放进 <code class="inline">leave</code></b>，让内层先处理完、外层再处理。这是整组课最值得记的一个技巧。<br>
+      ② <b>还原十六进制时手拼 <code class="inline">raw</code></b>：单双引号混用会生成非法代码。正确做法是<b>直接删掉 <code class="inline">node.extra</code></b>，让 generator 自己重新生成。<br>
+      ③ <b>误删死代码</b>：判断"这个变量还有没有人用"要宁多不少，删错一个 <code class="inline">a3</code>，报错会指向 <code class="inline">a1.xxx is not a function</code>，跟真因隔了十万八千里。</div>
 
       <!-- ============ 8.7 ============ -->
       <h2>8.7 实战路线 <span class="chip tlab">实战</span></h2>
@@ -486,14 +720,196 @@ tkk = m.<span class="fn">group</span>(<span class="fn">1</span>)</pre>
 
       <div class="pitfall"><b>五个坑：</b>① 单步调试前不刷新页面——<code class="inline">TKK</code> 已经在全局里了，初始化分支被跳过，你会以为那段代码根本不执行；② 把网上的 tk 算法直接抄——版本一变常量就差，必须从当前 JS 里抄；③ Python 重写漏了 32 位截断——没有报错，只有 403，排查成本极高；④ TKK 硬编码——刷新就失效，必须实时提取；⑤ 把 <code class="inline">fromCharCode</code> 那段当成加密算法研究——它只是在拼字符串，真正干活的在后面。</div>
 
+      <!-- ============ 8.9 ============ -->
+      <h2>8.9 反调试对抗：三种干扰与它们的破法 <span class="chip tnew">新 · 实战</span></h2>
+      <p>前面八节讲的是"怎么找到加密入口"。但真到现场，按 F12 的那一刻可能就卡住了——页面不停停在 <code class="inline">debugger</code>、一开控制台就跳首页、一格式化代码浏览器就崩溃。<b>反调试是你和加密之间的一堵墙，不拆掉，后面所有技巧都用不上。</b></p>
+      <p>实战里只有三类，每种都有明确的现象和解法。</p>
+
+      <h3>一、无限 debugger</h3>
+      <p><b>现象</b>：打开 DevTools 就不断停在同一个 <code class="inline">debugger</code>；点继续立刻又停；有时连格式化都会卡死。</p>
+      <p><b>先认清一点：debugger 只有三种注入形态</b>，任何网站都逃不出这三类。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>形态</th><th>长什么样</th><th>怎么找</th></tr>
+        <tr><td>① 关键字</td><td><code class="inline">debugger;</code></td><td>明文，全局搜就到了</td></tr>
+        <tr><td>② eval</td><td><code class="inline">eval("debugger")</code> / <code class="inline">eval(atob("..."))</code></td><td>字符串被编码了，但 <code class="inline">eval</code> 的参数里一定有它</td></tr>
+        <tr><td>③ Function 构造</td><td><code class="inline">Function("debugger")()</code><br><code class="inline">[]["filter"]["constructor"]("debugger")()</code></td><td><b>匿名函数只在内存里</b>，调用栈看不到名字</td></tr>
+      </table></div>
+      <p><b>再认清第二点：「无限」不是死循环，是定时器。</b>真正的 <code class="inline">while(true){debugger}</code> 一放开就把主线程锁死、整页崩，反而没法用来干扰你。所以实战里都是高频重复：</p>
+      <div class="code-title">看起来无限，本质是每 0.5 秒来一次</div>
+<pre class="code"><span class="kw">function</span> <span class="fn">a</span>() { <span class="kw">debugger</span>; }
+<span class="fn">setInterval</span>(a, <span class="fn">500</span>);       <span class="cm">// 或 setTimeout 递归</span></pre>
+      <p>这意味着<b>它一定可以被绕过</b>——只要不注册这个定时器就行。六套方案，按推荐度排：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>方案</th><th>做法</th><th>适用 / 局限</th></tr>
+        <tr><td><b>1. AutoResponder 删代码</b></td><td>把含 debugger 的 JS 替换成空文件</td><td>最常用，一次配置长期有效；URL 动态带参时要写 <code class="inline">regex:</code></td></tr>
+        <tr><td><b>2. Never pause here</b></td><td>断点行右键 → 永不在此暂停</td><td>3 秒解决；但每次新建 VM 就失效</td></tr>
+        <tr><td>3. 条件断点填 false</td><td>右键 → Add conditional breakpoint → <code class="inline">false</code></td><td>同上，治标</td></tr>
+        <tr><td>4. hook 定时器</td><td>拦掉参数里含 debugger 的 setInterval</td><td>见 8.2 的代码</td></tr>
+        <tr><td><b>5. 重写 Function 构造器</b></td><td>掐断 <code class="inline">constructor === Function</code> 这条链</td><td><b>OB 型通用方案</b>，见下</td></tr>
+        <tr><td><b>6. 向上找堆栈置空</b></td><td>进断点、定位触发函数、调用前置空</td><td>兜底，覆盖 99.9%，但最麻烦</td></tr>
+      </table></div>
+      <p><b>方案 5 是 OB 混淆的通解</b>。它的无限 debugger 靠反复 <code class="inline">constructor('debugger').call()</code>，把构造器掐掉就造不出 debugger 了：</p>
+      <div class="code-title">温和版：只拦 debugger，其余放行</div>
+<pre class="code"><span class="kw">var</span> _Function = Function.prototype.constructor;
+Function.prototype.constructor = <span class="kw">function</span> () {
+    <span class="kw">if</span> (arguments[<span class="fn">0</span>] === <span class="st">'debugger'</span>) <span class="kw">return</span> <span class="kw">function</span> () {};
+    <span class="kw">return</span> _Function.<span class="fn">apply</span>(<span class="kw">this</span>, arguments);
+};</pre>
+      <div class="callout warn"><b>不要用核弹版</b> <code class="inline">Function.prototype.constructor = function(){}</code>——它会让页面上所有函数构造失效，正常业务也跟着崩。只在确认业务不用动态构造时才这么干。判定依据：代码里出现大量 <code class="inline">constructor</code> + <code class="inline">['constructor']</code> 这种下标取字符拼函数名，基本就是 OB 的无限 debugger。</div>
+      <p><b>方案 6 的两个细节</b>（讲者自己翻过车）：一是如果函数被赋过别名（<code class="inline">D = C</code>），<b>必须连别名一起重写</b>，否则改了 <code class="inline">C</code> 而 <code class="inline">D</code> 还指向旧引用；二是同一站点可能有<b>多个</b>无限 debugger，干掉一个要重新全局搜一遍。</p>
+      <p><b>还有一个判断能省时间</b>：debugger 在加密逻辑<b>之后</b>（先出 cookie 再挂 debugger），它纯粹是干扰，直接 script 断点 + 首行断点从头调，无视即可；在加密逻辑<b>之前或全局</b>，就必须先绕过。</p>
+
+      <h3>二、控制台检测</h3>
+      <p><b>现象</b>：右键没反应、F12 没反应；或者一打开 DevTools 页面立刻跳首页 / 弹窗 / 加遮罩。</p>
+      <p><b>第一层是障眼法</b>：JS 监听 <code class="inline">contextmenu</code> 和 <code class="inline">keydown</code>（keyCode 123 = F12），<code class="inline">preventDefault</code> 掉而已。<b>它禁不掉菜单入口</b>——走 <code class="inline">⋮ → 更多工具 → 开发者工具</code>，或者先开 DevTools 再把 URL 粘进地址栏回车。</p>
+      <p><b>第二层才是真检测</b>，利用的是 Chrome 的一个特性：<b><code class="inline">console.log(domNode)</code> 时，如果控制台是打开的，Chrome 会去读这个节点的 <code class="inline">id</code> 属性</b>。于是把 id 定义成 getter，就能反推出控制台是否打开：</p>
+      <div class="code-title">埋点：只有控制台开着才会走到 get 里</div>
+<pre class="code"><span class="kw">var</span> x = document.<span class="fn">createElement</span>(<span class="st">'div'</span>);
+Object.<span class="fn">defineProperty</span>(x, <span class="st">'id'</span>, {
+    get: <span class="kw">function</span> () {
+        window.location.href = <span class="st">'/'</span>;    <span class="cm">// 跳首页 / 死循环 / 弹窗</span>
+    }
+});
+console.<span class="fn">log</span>(x);                   <span class="cm">// 埋点</span></pre>
+      <div class="callout ok"><b>一个能省半小时的验证技巧：Firefox 没有这个特性。</b>遇到"一开控制台就跳"的站，先换 Firefox 打开——能正常跑就说明是 Chrome 独有的检测，直接在 Firefox 里调，不用拆它。</div>
+      <p>要拆的话：script 断点进去 → 跳过第三方包（m3u8、统计 SDK 基本不干这事）→ 全局搜 <code class="inline">window.open</code> / <code class="inline">location.href</code> / <code class="inline">location.replace</code> → 找到后置空或删掉那一行。注意<b>可能绑定了多处</b>，得都置空。</p>
+      <div class="pitfall"><b>整节最容易踩的坑：重写必须「先定义后重写」。</b>如果在网站自己 <code class="inline">function open(){}</code> 定义<b>之前</b>就重写，随后它的定义会把你的空函数覆盖掉——你以为在绕过它，实际是被它覆盖，行为完全反了。唯一有效的时机是<b>函数定义之后、调用之前</b>。</div>
+
+      <h3>三、内存爆破</h3>
+      <p><b>现象</b>：正常浏览一切正常；一打开 DevTools、一下断点、或者<b>把代码格式化</b>，内存曲线直线飙升，页面假死，最后浏览器崩溃。</p>
+      <p><b>原因</b>：OB 类混淆在检测"代码有没有被格式化"。两种写法——正则匹配格式化后的特征（<code class="inline">/function\s*\(\)\s*\{/.test(fn.toString())</code>），或直接比 <code class="inline">fn.toString()</code> 是否等于原始字符串。一旦判定被格式化，就把执行流推进一个数组无限膨胀的循环：</p>
+      <div class="code-title">数组涨得比计数器快，永远出不来</div>
+<pre class="code"><span class="kw">while</span> (i &lt; arr.length) {
+    arr.<span class="fn">push</span>(arr.<span class="fn">join</span>(<span class="st">''</span>) + something);
+    i++;                          <span class="cm">// 但 arr.length 涨得更快</span>
+}</pre>
+      <p><b>怎么绕过</b>：</p>
+      <p><b>① 不要格式化</b>——这是最重要的习惯。OB 代码拉到本地后别按格式化按钮，直接读。</p>
+      <p><b>② 已经格式化了</b>：把检测处的换行/空格还原，或者把 <code class="inline">if (isFormatted)</code> 改成 <code class="inline">if (false)</code>。</p>
+      <p><b>③ 定位爆破点</b>：直接搜正则字面量（一道题里可能有 5 处），逐个下断点，断在 <code class="inline">.test()</code> 附近看返回值，就能确认哪一处是检测。</p>
+      <div class="callout warn"><b>内存爆破没有通解</b>，这一点和无限 debugger 完全不同——你无法预知雷埋在哪，只能<b>对拍</b>：浏览器和本地 Node 在同一位置打点输出，比对中间值，逐步缩小范围。<br>
+      另外记住一个逻辑：<b>爆破在正常访问时一定是无效的</b>，否则正常用户也会崩。所以一旦你"什么都没改就炸了"，说明你暴露了某个特征——代码被格式化了、调试时间差太长、或者指纹不对。</div>
+
+      <div class="pitfall"><b>五个坑：</b>① 格式化 OB 代码 = 直接踩雷，本地阅读也别按格式化；② 重写函数时在定义<b>之前</b>动手，等于没写；③ 置空函数时忘了同步别名（<code class="inline">D = C</code>），改了一个另一个还活着；④ 只处理了一个 debugger 就以为完事，同一站可能有多个；⑤ 把 3MB 全混淆代码导致的卡死当成内存爆破——那是内存不足，调试层面无解，加内存或换机器。</div>
+
+      <!-- ============ 8.10 ============ -->
+      <h2>8.10 浏览器指纹与 Node 指纹 <span class="chip tnew">新 · 进阶</span></h2>
+      <p>前面九节都在讲"怎么算出参数"。但有一类站，<b>参数算得完全正确，服务端就是不认</b>——返回 200、格式没问题，就是不给数据。这不是算法错了，是<b>环境不对</b>。这一节讲服务端怎么认出"你不是浏览器"。</p>
+
+      <h3>一、方法论只有一条：拿两个字典求差集</h3>
+      <p>"浏览器指纹"这个词听着玄，实际做法很笨：<b>把 MDN 的 Web API 索引当字典逐条筛，把 Node.js 文档当另一个字典，凡是两边对不上的地方，就是检测点。</b></p>
+      <p>筛选规则：标了"实验性"的跳过、标了"已废弃"的跳过、只有 Chrome 才有的私有属性（<code class="inline">chrome.*</code>）一般不作检测对象——<b>剩下的全都可能被拿去当指纹。</b></p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>采集面</th><th>典型项</th><th>能不能补</th></tr>
+        <tr><td>全局</td><td><code class="inline">window</code>、<code class="inline">innerHeight/Width</code>、<code class="inline">outerHeight/Width</code></td><td>能，但宽高要和 UA/设备自洽</td></tr>
+        <tr><td>文档</td><td><code class="inline">document</code>、<code class="inline">referrer</code>、<code class="inline">document.all</code></td><td>能（<code class="inline">document.all</code> 是"浏览器有、Node 没有"的经典项）</td></tr>
+        <tr><td>环境</td><td><code class="inline">navigator.*</code>、<code class="inline">screen.*</code>、<code class="inline">location.*</code>、<code class="inline">history.length</code></td><td><b>检测最密集，但也最好补</b></td></tr>
+        <tr><td>存储</td><td><code class="inline">cookie</code>、<code class="inline">localStorage</code>、<code class="inline">sessionStorage</code></td><td>能</td></tr>
+        <tr><td>请求</td><td><code class="inline">XMLHttpRequest</code>、<code class="inline">fetch</code>、<code class="inline">Worker</code>、WASM</td><td><b>补不了</b>，见下</td></tr>
+      </table></div>
+      <div class="callout warn"><b>三类"补不了"的东西，别硬补：</b><br>
+      ① <b>XHR / fetch / Worker</b>——它们不是数据对象，是"行为"。补个假 XHR 只能骗过 <code class="inline">typeof</code>，骗不过"它真的发了请求并拿到响应"。正确做法是<b>往下跟：看它请求了什么、拿到什么、用响应干了什么</b>，然后把结果硬编码。<br>
+      ② <b>WASM</b>——上手成本太高，遇到就扒它导出的函数、把调用结果拿下来。<br>
+      ③ <b>DOM 节点</b>——一律"向下跟，取结果"，不要试图造节点。判断分支：不参与计算就整个删掉，参与计算就把那一段结果写成常量。</div>
+
+      <h3>二、Node 侧：哪些地方会露馅</h3>
+      <p>用 Node 跑抠出来的 JS 时，下面这些差异就是破绽。<b>不用全记，记住"哪些必须改"更重要</b>：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>维度</th><th>浏览器</th><th>Node 默认</th><th>怎么补</th></tr>
+        <tr><td><code class="inline">window</code></td><td>存在，<b>不可 delete</b></td><td>没有，只有 <code class="inline">global</code>，<b>可 delete</b></td><td><code class="inline">Object.defineProperty(global,'window',{value:global,configurable:false})</code></td></tr>
+        <tr><td><code class="inline">navigator</code></td><td>几十个属性</td><td>Node 18+ 有残缺版（只有 userAgent 之类）</td><td>整体覆盖成普通对象，<b>UA 必须和请求头一致</b></td></tr>
+        <tr><td><code class="inline">setTimeout</code> 返回值</td><td><b>数字 id</b></td><td><b>Timeout 对象</b></td><td>包一层，自己维护递增 id</td></tr>
+        <tr><td><code class="inline">require</code> / <code class="inline">module</code> / <code class="inline">Buffer</code></td><td>undefined</td><td><b>全都有</b></td><td>跑完 delete，或用 <code class="inline">vm</code> 隔离</td></tr>
+        <tr><td>时区</td><td>跟随系统</td><td>常为 UTC</td><td>启动时 <code class="inline">TZ=Asia/Shanghai</code></td></tr>
+        <tr><td><code class="inline">Error.stack</code></td><td>浏览器帧格式</td><td>含 <code class="inline">node:internal</code>、<code class="inline">file:///</code></td><td>截断或替换</td></tr>
+      </table></div>
+      <div class="callout warn"><b><code class="inline">fs</code> 和 <code class="inline">child_process</code> 不是指纹问题，是安全事故。</b><br>
+      讲者现场演示过：混淆代码里藏一句 <code class="inline">require('child_process').exec('shutdown -s -t 1000')</code>，在浏览器里跑只是抛 <code class="inline">require is not defined</code>，<b>在 Node 里跑就是 1000 秒后电脑关机</b>。混淆之后它混在正常逻辑里，肉眼完全看不出来——你"习惯性粘到本地跑一下排个错"就中招了。<br>
+      <b>纪律：跑任何来路不明的 JS 之前，先禁掉 <code class="inline">require('child_process')</code> 和 <code class="inline">require('fs')</code></b>——用 <code class="inline">vm</code> 沙箱、或干脆在虚拟机里跑。</div>
+
+      <h3>三、服务端到底怎么判断"你是爬虫"</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>信号</th><th>说明</th></tr>
+        <tr><td>参数重放失败</td><td>同参数第二次被拒 → 有一次性的因子（时间戳 / nonce）</td></tr>
+        <tr><td><b>参数能算但被判废</b></td><td><b>投毒</b>——算法没错、环境不对，服务端直接不认</td></tr>
+        <tr><td>指纹内部不自洽</td><td>UA 说 Chrome 120，<code class="inline">navigator.plugins</code> 却是空数组</td></tr>
+        <tr><td>时区 / IP 不一致</td><td>时间戳落在 UTC，请求却来自东八区 IP</td></tr>
+        <tr><td>行为特征</td><td>翻页间隔恒定、无鼠标轨迹、请求顺序机械</td></tr>
+      </table></div>
+      <p><b>"参数对但不认"时，排查顺序</b>：先查 hook 是否被识别（<code class="inline">toString</code> 伪装漏了）→ 再查环境缺项 → 最后才怀疑算法。顺序反了会白改一整天。</p>
+
+      <!-- ============ 8.11 ============ -->
+      <h2>8.11 新型反爬与 jsRPC <span class="chip tnew">新 · 前沿</span></h2>
+      <p>8.1 到 8.10 覆盖的是"加密参数"这条主线。但近几年的反爬早就不只在参数上做文章了——<b>有的不加密，改字体；有的不上 JS，上 WASM；有的不看你算什么，看你握手时像不像浏览器</b>。这一节把这几种手段和它们的边界讲清楚，最后补一条"不逆向也能拿结果"的路。</p>
+
+      <h3>一、CSS 反爬与动态字体</h3>
+      <p>思路是<b>数据在页面上看得见，但你复制下来是错的</b>：<code class="inline">&lt;span&gt;1&lt;/span&gt;</code> 在 CSS 里被映射成字形"8"，人看到 8、程序抓到 1。四类做法：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>类型</th><th>手法</th><th>识别</th></tr>
+        <tr><td>CSS 偏移</td><td>用负 margin / 伪元素把真实字符移出可视区，塞个假字符进去</td><td>对比 DOM 文本和肉眼所见</td></tr>
+        <tr><td>雪碧图</td><td>数字做成图片，靠 background-position 定位</td><td>元素没有文本，只有背景</td></tr>
+        <tr><td>SVG 映射</td><td>把字符画成 SVG path</td><td>DOM 里是 <code class="inline">&lt;svg&gt;&lt;path&gt;</code></td></tr>
+        <tr><td><b>动态字体</b></td><td>每次请求换一套 <code class="inline">@font-face</code>，字形和码点的对应关系随机</td><td><b>返回值里出现 <code class="inline">&amp;#x</code> 十六进制实体</b></td></tr>
+      </table></div>
+      <p>动态字体是目前最主流的一种。<b>应对只有一条路：字体文件比对</b>——拿基准字体和目标字体做字形轮廓相似度匹配，建一张"码点 → 真实字符"的映射表。数字准确率能到 99.9%，汉字 95% 左右，前提是标注一批样本训练好。</p>
+      <div class="callout info"><b>判断依据很好记</b>：接口返回里出现 <code class="inline">&amp;#x</code> 开头的十六进制实体，基本就是动态字体，不用再猜别的。</div>
+
+      <h3>二、WASM 与 Worker</h3>
+      <p><b>WASM</b> 相当于前端的 <code class="inline">.so</code>——C/C++ 编译成 <code class="inline">.wasm</code> 放前端，JS 直接调。分两档：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>档位</th><th>特征</th><th>应对</th></tr>
+        <tr><td>简单档</td><td>直接加载 wasm 调导出函数就能出结果</td><td>把导出函数包一层调用即可</td></tr>
+        <tr><td>困难档</td><td>内部揉了大量 JS 操作（视频站、wasm 做的游戏）</td><td><b>目前没有成熟方案</b>，只能按二进制逆向硬啃</td></tr>
+      </table></div>
+      <p>出现原因常常是"顺手"——视频站本来为了性能上 wasm，后来往里塞了加密逻辑。</p>
+      <p><b>Worker</b> 的唯一实际痛点是<b>断点打不上</b>。解法是用 AutoResponder 把远程 worker 脚本本地映射，在改过的副本里插 <code class="inline">debugger</code>，就能正常断住。</p>
+
+      <h3>三、TLS 指纹：不看你算什么，看你握手像不像</h3>
+      <p>这是讲者最看好的一项，因为它<b>推广成本极低</b>——HTTPS 本来就都走 TLS，指纹只是握手的副产品。</p>
+      <p><b>原理</b>：TLS 握手的 ClientHello 里，cipher suites 的顺序、TLS 版本、扩展、椭圆曲线这些组合起来，构成一个可哈希的指纹。<b>浏览器和 <code class="inline">requests</code> 的指纹完全不同</b>——这就是"浏览器能打开、脚本返回 405"的根因。Akamai 一类商业防火墙已经在用。</p>
+      <div class="code-title">典型拦截页长这样</div>
+      <pre class="code">405  +  "由于你访问的 URL 可能会对网站造成威胁，你的访问已被阻断"  +  一个请求 ID</pre>
+      <p><b>当前还是黑名单制</b>：特征命中黑名单哈希、或访问频率异常才拦。所以"只要不像已知爬虫"就能过。三级应对：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>级别</th><th>做法</th><th>说明</th></tr>
+        <tr><td><b>临时</b></td><td>改 <code class="inline">urllib3</code> 的 <code class="inline">ssl_.py</code> 里的 <code class="inline">DEFAULT_CIPHERS</code>，换成宽集合（如 <code class="inline">ALL</code>）</td><td>指纹哈希立刻变，黑名单失效。<b>前提是 requests 版本够新</b>——网上教程"改了没用"九成是版本太老</td></tr>
+        <tr><td>升级</td><td>每次请求随机选一组 cipher 组合，让指纹呈分布而非固定值</td><td><b>固定成一个新指纹照样会被收集拉黑</b>，必须随机化</td></tr>
+        <tr><td>源码级</td><td>追到 <code class="inline">ssl_wrap_socket</code>，往握手层补 UA、把 HTTP/1.0 改成 1.1、抹平 <code class="inline">Connection</code> 差异</td><td>讲者实测有效：同一站从"返回乱码/拦截页"变成正常出数据</td></tr>
+      </table></div>
+      <p><b>观察方法</b>：抓包工具要先打开 CONNECT 隧道显示，才能看到 TLS 握手层。握手层里 <code class="inline">random</code>、<code class="inline">session id</code> 每次都变不用管，<b>要看的是 cipher 列表和扩展</b>。</p>
+      <div class="callout warn"><b>讲者的趋势判断值得记住</b>：TLS 指纹一旦被安全团队集中投入，<b>黑名单会变成白名单</b>——届时"不在白名单内"就是原罪，大量请求库会直接失效。更狠的想象是叠加校验「握手期 UA == 正式请求 UA」「两次请求 IP 一致」，任一不满足即杀。这条一旦落地，对纯协议爬虫是致命打击。</div>
+
+      <h3>四、jsRPC：不想逆向时的另一条路</h3>
+      <p>上面这些越做越深，但业务上经常是"<b>两天工期就得出数据</b>"，根本没时间逆向。这时候的正确选择不是硬啃，是 <b>RPC</b>：把浏览器当成一个函数服务器，Python 远程调用它算出来的结果。</p>
+      <p>Sekiro 是目前最省事的一个实现。原理很朴素：浏览器插件在页面里注册一个 WebSocket 客户端，服务端收到 Python 的调用请求后，让浏览器执行目标函数、把返回值传回来。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>步骤</th><th>做法</th></tr>
+        <tr><td>服务端</td><td>JDK 1.8 环境，双击 <code class="inline">sekiro.jar</code> 启动</td></tr>
+        <tr><td>浏览器</td><td>装 Sekiro 插件，填服务端地址，<b>路径写 <code class="inline">/business-demo</code></b></td></tr>
+        <tr><td>Python</td><td>调 <code class="inline">invoke</code> 接口，传 group / action / 参数</td></tr>
+      </table></div>
+      <div class="pitfall"><b>四个坑，全是配置问题：</b>① demo 版路径必须写 <code class="inline">business-demo</code>，写 <code class="inline">business</code> 会一直连不上<b>且不报错</b>；② 本地没证书就<b>别用 <code class="inline">wss://</code></b>，多一个 s 直接握手失败；③ <b>group 和 action 在注册端和调用端必须完全一致</b>，大小写错一个字符都是空返回；④ <b>注入时机</b>——目标 JS 还没执行完就注入，注册会被覆盖，表现是"第一次一定失败、之后成功"，等页面跑完再注入。</div>
+      <div class="callout info"><b>什么时候该选 RPC 而不是逆向</b>：工期紧（一两天）、目标是一次性采集、或者加密逻辑深到性价比不划算。代价是<b>依赖浏览器在线、单线程、慢</b>——所以它适合"先拿到数据交差"，不适合长期跑量。</div>
+
+      <h3>五、这一行的走向</h3>
+      <p>讲者的判断，我觉得值得原样记下来：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>手段</th><th>判断</th></tr>
+        <tr><td>CSS 反爬</td><td>始终存在但不会扩大——严重影响体验（错误显示、无法复制），只会在个别页面用</td></tr>
+        <tr><td>WASM</td><td>潜力可比肩 <code class="inline">.so</code>，但开发难度大、需求少，短期不会普及</td></tr>
+        <tr><td><b>TLS 指纹</b></td><td><b>最可能成为主流</b>，因为推广成本几乎为零</td></tr>
+        <tr><td>验证码</td><td>已到瓶颈，现有的基本都能用"标注 + 训练 + 指纹 + 逆向"组合解决</td></tr>
+      </table></div>
+      <p>还有一条关于爬虫演进的观察：<b>Web → H5 / 小程序 / 安卓 / iOS，思路上是"自动化采集 → 协议破解 → 回归自动化采集"</b>。风控越严，越偏向取巧、RPC、虚拟化/容器化。所以——<b>别在 JS 一棵树上吊死</b>，达到中上水平之后，把精力投到别的方向收益更高。</p>
+
       <h2>✅ 本章打卡清单</h2>
       <div class="checklist-card check">
         <label><input type="checkbox" id="c08-1" data-persist><span>三板斧操作熟练：全局搜索、XHR/DOM 断点、调用栈回溯都能独立定位加密点（8.2）</span></label>
         <label><input type="checkbox" id="c08-2" data-persist><span>加密指纹表能背：32/40/64 位 hex、U2FsdGVk、MIIB、时间戳位数，训练场 6 题全对（8.3）</span></label>
-        <label><input type="checkbox" id="c08-3" data-persist><span>扣代码跑通：execjs + Node 执行抠出的 JS，结果与浏览器逐字符一致（8.4）</span></label>
-        <label><input type="checkbox" id="c08-4" data-persist><span>补环境三步会做：报什么补什么，伪造 window/document/navigator 最小骨架（8.4）</span></label>
-        <label><input type="checkbox" id="c08-5" data-persist><span>webpack 三种打法与 ob 混淆三大特征、AST 三件套说得清楚（8.5/8.6）</span></label>
-        <label><input type="checkbox" id="c08-6" data-persist><span>猿人学第 1 题独立解出，并写下五段式逆向笔记（8.7）</span></label>
+        <label><input type="checkbox" id="c08-3" data-persist><span>扣代码跑通：execjs + Node 执行抠出的 JS，结果与浏览器逐字符一致；hook 两个公式会用（函数 hook 三部曲含 toString 伪装 / 属性 hook 的 set 与 configurable）（8.4）</span></label>
+        <label><input type="checkbox" id="c08-4" data-persist><span>补环境三步会做：报错对照表能查（未定义 / 类型不对 / 卡死 / 走错分支），伪造 window/document/navigator 最小骨架（8.4）</span></label>
+        <label><input type="checkbox" id="c08-5" data-persist><span>webpack 五步扣法（只留加载器，遇 n(id) 就粘模块）、ob 四段结构与 AST 还原五步，知道嵌套还原必须用 leave（8.5 / 8.6）</span></label>
+        <label><input type="checkbox" id="c08-6" data-persist><span>三类反调试都能处理（无限 debugger 六套方案 / 控制台检测 / 内存爆破），知道"参数对但不认"的排查顺序，能说出 TLS 指纹的三级应对（8.9 / 8.10 / 8.11）</span></label>
       </div>
 
       <!-- ============ 练习 ============ -->
