@@ -81,10 +81,10 @@
       <div class="tbl-wrap"><table class="tbl">
         <tr><th>类型</th><th>强度</th><th>机器怎么破</th><th>本章策略</th></tr>
         <tr><td>图形数字/字母码</td><td>★</td><td>OCR 识别</td><td>ddddocr 直接识别（6.1）</td></tr>
-        <tr><td>滑动验证码</td><td>★★</td><td>缺口识别 + 轨迹模拟</td><td>识别 + 轨迹（6.2）</td></tr>
-        <tr><td>点触（按语序点文字）</td><td>★★★</td><td>需要语义理解</td><td>打码平台接入（6.3）</td></tr>
-        <tr><td>宫格 / 图标选择</td><td>★★★</td><td>需要语义理解</td><td>打码平台接入（6.3）</td></tr>
-        <tr><td>行为验证（无感）</td><td>★★★★</td><td>环境指纹 + 行为模型</td><td>Cookie 复用绕开（6.5）</td></tr>
+        <tr><td>滑动验证码</td><td>★★</td><td>缺口识别 + 轨迹模拟</td><td>识别 + 轨迹（6.4）</td></tr>
+        <tr><td>点触（按语序点文字）</td><td>★★★</td><td>需要语义理解</td><td>打码平台接入（6.5）</td></tr>
+        <tr><td>宫格 / 图标选择</td><td>★★★</td><td>需要语义理解</td><td>打码平台接入（6.5）</td></tr>
+        <tr><td>行为验证（无感）</td><td>★★★★</td><td>环境指纹 + 行为模型</td><td>Cookie 复用绕开（6.7）</td></tr>
       </table></div>
 
       <h3>ddddocr：一行装好，两招吃遍低强度验证码</h3>
@@ -126,7 +126,231 @@ det = ddddocr.<span class="fn">DdddOcr</span>(det=<span class="kw">True</span>, 
       <div class="callout warn"><b>成本账的另一半：</b>重试循环必须配三道保险——失败就<b>刷新换图</b>（同一张图反复 OCR 没有意义）、设<b>连续失败上限</b>（如 3 次就告警/换号）、重试之间加<b>随机间隔</b>。识别率低于五成的图形码，硬刚的期望成本已经超过打码平台按条计费的价格——这笔账要在动手前算。</div>
 
       <!-- ============ 6.2 ============ -->
-      <h2>6.2 滑动验证码 <span class="chip tbook">对齐教材 8.2</span></h2>
+      <h2>6.2 自己训练识别模型：从 ddddocr 不够用开始 <span class="chip tnew">新 · 深度实战</span></h2>
+      <p>6.1 的 ddddocr 能覆盖大部分低强度验证码。但有两类它搞不定：<b>干扰极强的</b>（字符粘连、扭曲、多图层干扰）、<b>不定长的</b>（4 位 6 位混着出）。这时候只有一条路——<b>自己训一个</b>。这一节从零讲到能跑通，不要求你有算法基础。</p>
+
+      <h3>一、先想清楚：深度学习到底在做什么</h3>
+      <p>剥掉术语，整个流程只有四步：</p>
+      <div class="flow">
+        <span class="fnode">准备数据<br>（图片 + 标签）</span><span class="farrow">→</span>
+        <span class="fnode">定义模型<br>（输入→输出）</span><span class="farrow">→</span>
+        <span class="fnode">训练<br>（调参数降 loss）</span><span class="farrow">→</span>
+        <span class="fnode">推理<br>（喂新图出结果）</span>
+      </div>
+      <p>对爬虫工程师来说，<b>真正需要理解的只有一件事</b>：神经网络做分类，输出的是<b>索引</b>，不是字符。</p>
+      <div class="callout warn"><b>这一条搞反，后面全错。</b>10 分类网络输出 <code class="inline">[0.01, 0.02, ..., 0.93]</code>，<code class="inline">argmax</code> 得到 <code class="inline">7</code>，意思是"第 7 个类别概率最大"，不是"数字 7"。MNIST 之所以没暴露这个问题，是因为标签 <code class="inline">0~9</code> 恰好和索引一一对应。<b>一旦字符集是 <code class="inline">ABCD</code>，就必须自己建映射表</b>：<code class="inline">['A','B','C','D'] → 0,1,2,3</code>，推理时再反查。</div>
+
+      <h3>二、环境：最容易卡住的是版本对应</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>组件</th><th>注意事项</th></tr>
+        <tr><td>Anaconda</td><td>建独立环境，别装在 base 里——torch 版本冲突时会很难回滚</td></tr>
+        <tr><td><b>CUDA</b></td><td><b>和显卡型号强相关</b>：30 系显卡必须 CUDA 11.x。装成 10.2 <b>不会报错</b>，但 <code class="inline">torch.cuda.is_available()</code> 返回 False——这是最难查的坑</td></tr>
+        <tr><td>PyTorch</td><td>官网按 CUDA 版本选安装命令，别用 <code class="inline">pip install torch</code> 了事（会装 CPU 版）</td></tr>
+        <tr><td>PyCharm</td><td>解释器要指到刚建的 conda 环境，不是系统 Python</td></tr>
+      </table></div>
+      <p><b>验证安装</b>：<code class="inline">import torch</code> 不报错、<code class="inline">torch.cuda.is_available()</code> 返回 True。报错的话按这三步查——环境没激活、包装错了版本、CUDA 与显卡不匹配。</p>
+
+      <h3>三、PyTorch：只学后面会用到的</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>概念</th><th>必须记住的</th></tr>
+        <tr><td>张量形状</td><td>图像永远是 <code class="inline">[B, C, H, W]</code>（批、通道、高、宽）。<code class="inline">ToTensor()</code> 会把 HWC 翻成 CHW，<b>忘了 <code class="inline">permute</code> 就转不回图片</b></td></tr>
+        <tr><td><code class="inline">.to(device)</code></td><td>模型和数据必须在同一设备上，一个有 GPU 一个没有就报错</td></tr>
+        <tr><td><code class="inline">nn.Module</code> 三件套</td><td>继承 → <code class="inline">__init__</code> 里定义层 → <code class="inline">forward</code> 里写数据流。<b>只写这两个方法，别的事框架管</b></td></tr>
+      </table></div>
+      <div class="code-title">自定义数据集：只需要四个方法</div>
+<pre class="code"><span class="kw">from</span> torch.utils.data <span class="kw">import</span> Dataset
+<span class="kw">from</span> PIL <span class="kw">import</span> Image
+<span class="kw">import</span> torch, os
+
+
+<span class="kw">class</span> <span class="fn">CaptchaDataset</span>(Dataset):
+    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="kw">self</span>, root, transform=<span class="kw">None</span>, mapping=<span class="kw">None</span>):
+        <span class="kw">self</span>.root = root
+        <span class="kw">self</span>.transform = transform
+        <span class="kw">self</span>.mapping = mapping <span class="kw">or</span> [<span class="st">'A'</span>,<span class="st">'B'</span>,<span class="st">'C'</span>,<span class="st">'D'</span>,<span class="st">'E'</span>,<span class="st">'F'</span>,<span class="st">'G'</span>,<span class="st">'H'</span>]
+        <span class="kw">self</span>.files = [f <span class="kw">for</span> f <span class="kw">in</span> os.<span class="fn">listdir</span>(root)
+                      <span class="kw">if</span> f.<span class="fn">lower</span>().<span class="fn">endswith</span>((<span class="st">'.png'</span>, <span class="st">'.jpg'</span>))]
+
+    <span class="kw">def</span> <span class="fn">__len__</span>(<span class="kw">self</span>):
+        <span class="kw">return</span> <span class="fn">len</span>(<span class="kw">self</span>.files)
+
+    <span class="kw">def</span> <span class="fn">__getitem__</span>(<span class="kw">self</span>, idx):
+        name = <span class="kw">self</span>.files[idx]
+        img = Image.<span class="fn">open</span>(os.path.<span class="fn">join</span>(<span class="kw">self</span>.root, name))
+        <span class="kw">if</span> <span class="kw">self</span>.transform:
+            img = <span class="kw">self</span>.transform(img)
+
+        <span class="cm"># 文件名即标注：0_FCAD.png → "FCAD"</span>
+        label_str = name.<span class="fn">split</span>(<span class="st">'_'</span>)[<span class="fn">1</span>].<span class="fn">split</span>(<span class="st">'.'</span>)[<span class="fn">0</span>]
+        label = [<span class="kw">self</span>.mapping.<span class="fn">index</span>(ch) <span class="kw">for</span> ch <span class="kw">in</span> label_str]
+
+        <span class="kw">return</span> img, torch.<span class="fn">tensor</span>(label)      <span class="cm"># ★ 必须是 tensor</span></pre>
+      <div class="callout info"><b>"文件名当标签"是爬虫工程师最顺手的做法</b>：爬下来的验证码人工打码后按 <code class="inline">答案_序号.png</code> 存盘，Dataset 直接解析文件名，不用额外的标注文件。生成数据时也一样——先来 30 张<b>冒烟测试</b>（能跑通再放量），跑通后生成 3000 训练 + 200 测试。</div>
+
+      <h3>四、训练循环：五个动作，顺序不能乱</h3>
+      <div class="code-title">标准训练循环</div>
+<pre class="code">model.<span class="fn">train</span>()
+<span class="kw">for</span> epoch <span class="kw">in</span> <span class="fn">range</span>(EPOCHS):
+    total_loss = <span class="fn">0</span>
+    <span class="kw">for</span> images, labels <span class="kw">in</span> train_loader:
+        images, labels = images.<span class="fn">to</span>(device), labels.<span class="fn">to</span>(device)
+
+        optimizer.<span class="fn">zero_grad</span>()              <span class="cm"># ① 清空上一步的梯度</span>
+        output = <span class="fn">model</span>(images)               <span class="cm"># ② 前向：算预测</span>
+        loss = <span class="fn">criterion</span>(output, labels)     <span class="cm"># ③ 算损失</span>
+        loss.<span class="fn">backward</span>()                    <span class="cm"># ④ 反向：算梯度</span>
+        optimizer.<span class="fn">step</span>()                  <span class="cm"># ⑤ 更新参数</span>
+
+        total_loss += loss.<span class="fn">item</span>()
+    <span class="fn">print</span>(<span class="st">f'epoch {epoch} loss {total_loss/len(train_loader):.4f}'</span>)</pre>
+      <div class="pitfall"><b>两个坑，都不报错，只是结果不对：</b><br>
+      ① <b>漏写 <code class="inline">zero_grad()</code></b>——PyTorch 的梯度是 <code class="inline">+=</code> 累加的，不清零等于把 <code class="inline">batch_size</code> 悄悄放大成整个 epoch。表现是 loss 降得很慢，极难排查。<br>
+      ② <b>loss 只取最后一个 batch</b>——要取整个 epoch 的<b>平均值</b>，否则会误判收敛趋势。</div>
+
+      <h3>五、CNN：三个概念的直觉（不讲数学）</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>操作</th><th>在干什么</th><th>类比</th></tr>
+        <tr><td><b>卷积</b></td><td>用小窗口在图上滑动，提取局部特征（边缘、笔画、转角）</td><td>拿放大镜一格一格看</td></tr>
+        <tr><td><b>池化</b></td><td>把相邻区域压成一个值，降低尺寸、保留主要特征</td><td>缩略图</td></tr>
+        <tr><td><b>全连接</b></td><td>把提取到的所有特征汇总，投票决定是哪个类</td><td>评委打分</td></tr>
+      </table></div>
+      <div class="callout warn"><b>一个真实教训</b>：讲者用最小 CNN 在 MNIST 上跑到 97%，换到 CIFAR-10 只有 <b>51%</b>。一开始以为是代码错了，其实是<b>网络容量不够</b>——MNIST 太简单给了错觉。<b>网络结构要和任务难度匹配</b>，验证码比 MNIST 难得多，直接换 <code class="inline">resnet18</code> 比调参有效。</div>
+
+      <h3>六、定长验证码：一个"不地道但最快"的取巧</h3>
+      <p>假设字符集 8 个（<code class="inline">A~H</code>），验证码固定 4 位。普通分类只能给出"最像哪 1 个字符"，怎么给出 4 个？</p>
+      <p><b>把输出层扩成 <code class="inline">4 × 8 = 32</code></b>，然后按位置切开：</p>
+      <div class="code-title">32 个输出 = 4 段 × 每段 8 类</div>
+<pre class="code">输出 32 维
+├─ [ 0: 8] → 第 1 位是哪个字符 → argmax
+├─ [ 8:16] → 第 2 位
+├─ [16:24] → 第 3 位
+└─ [24:32] → 第 4 位</pre>
+      <p><b>公式：<code class="inline">num_classes = 定长长度 × 字符集大小</code></b>。损失还是普通交叉熵，只要把 32 维"摊开"成 4 个独立的 8 分类：</p>
+      <div class="code-title">view 的语义：不是随便 reshape</div>
+<pre class="code">out    = <span class="fn">model</span>(images)      <span class="cm"># (N, 32)</span>
+out    = out.<span class="fn">view</span>(-<span class="fn">1</span>, <span class="fn">8</span>)    <span class="cm"># (N*4, 8) ← 32 按 8 一组切成 4 段</span>
+labels = labels.<span class="fn">view</span>(-<span class="fn">1</span>)    <span class="cm"># (N*4,)   ← (N,4) 拍平成一条线</span>
+loss   = <span class="fn">criterion</span>(out, labels)</pre>
+      <p>能成立是因为 PyTorch 按<b>行优先</b>展开：第 0~7 个元素正好落在第一行。<b>这个取巧只对"定长"有效</b>，定长是几就乘几——一旦长度不定，就得上下面的 CRNN。</p>
+      <div class="callout ok"><b>实战战绩</b>：8 字符集 × 4 位、3000 张自生成样本，5 个 epoch 到 <b>99.8%</b>。定长验证码用这个方法，比上 CRNN 省事一个量级。</div>
+
+      <!-- ============ 6.3 ============ -->
+      <h2>6.3 不定长验证码：CRNN + CTC <span class="chip tnew">新 · 进阶</span></h2>
+      <p>6.2 的取巧只在"长度固定"时成立。一旦验证码 4 位 6 位混着出，32 分类的方案就废了。这一节讲正规解法——<b>CRNN + CTC</b>，也是 OCR（PaddleOCR、Tesseract 深度版）和语音识别共用的经典组合。</p>
+
+      <h3>一、先说清难点：图片没有"时间"</h3>
+      <p>RNN 是用来处理<b>序列</b>的（一句话、一段语音）。可图片是二维的，哪来的序列？</p>
+      <p><b>做法：把图片的宽度当成时间步。</b></p>
+      <div class="code-title">横向切成一列一列</div>
+<pre class="code">列 0 → 时间步 0
+列 1 → 时间步 1
+...
+列 149 → 时间步 149</pre>
+      <p>这样第 t 步的隐藏状态就"看过"了前 t 列，最后一步包含了整张图的信息。<b>因为字符本来就是从左到右排列的，横向扫正好对应阅读顺序。</b></p>
+
+      <h3>二、三个必须解决的问题</h3>
+      <p><b>① 卷积压缩后，特征数不能少于字符数</b></p>
+      <p>标准 ResNet18 处理 112×112 的图，5 次下采样后特征图只剩 7×7。宽度只有 7 个时间步——<b>最多吐出 7 个字符，8 位验证码永远识别不出来</b>。</p>
+      <p>解法是<b>魔改 ResNet：砍掉后两层和池化</b>：</p>
+      <div class="code-title">只取到 layer3，特征图宽度从 7 变成 19</div>
+<pre class="code">resnet = models.<span class="fn">resnet18</span>(weights=<span class="kw">None</span>)
+<span class="kw">self</span>.cnn = nn.<span class="fn">Sequential</span>(
+    resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool,   <span class="cm"># /4</span>
+    resnet.layer1,                                            <span class="cm"># stride 1</span>
+    resnet.layer2,                                            <span class="cm"># /8</span>
+    resnet.layer3,                                            <span class="cm"># /16</span>
+)
+<span class="cm"># 丢掉 layer4(/32)、avgpool、fc</span></pre>
+      <p>输入 <code class="inline">50×150</code>，经过这一串得到 <code class="inline">(N, 256, 7, 19)</code>——<b>19 个时间步，够放下 9~10 个字符</b>。</p>
+      <p><b>② 形状对不上，靠 permute + view（全课最绕的一段）</b></p>
+      <p>CNN 输出 <code class="inline">(N,C,H,W)</code>，LSTM 要 <code class="inline">(T,N,F)</code>。这里<b>不能一步 view 到位</b>：</p>
+      <div class="code-title">必须先把宽度挪到最前，再只合并最后两维</div>
+<pre class="code">out = <span class="kw">self</span>.<span class="fn">cnn</span>(x)                 <span class="cm"># (N, C, H, W) = (2, 256, 7, 19)</span>
+out = out.<span class="fn">permute</span>(<span class="fn">3</span>, <span class="fn">0</span>, <span class="fn">1</span>, <span class="fn">2</span>)     <span class="cm"># (W, N, C, H) = (19, 2, 256, 7)  ← 宽变最外层</span>
+t, n, c, h = out.shape
+out = out.<span class="fn">reshape</span>(t, n, c*h)    <span class="cm"># (T, N, C*H)  = (19, 2, 1792)    ← 只合最后两维</span></pre>
+      <div class="callout warn"><b>为什么不能直接 <code class="inline">out.view(19, 2, 1792)</code>？</b>直接把整块拍平再拉伸，<b>所有元素的位置就乱了</b>——原来"第 5 个时间步的第 3 通道第 2 行"会跑到别处，序列的时序语义彻底没了。表现是<b>训练能跑、loss 也降，但精度永远上不去</b>，最难查。<br>
+      <b>口诀：<code class="inline">permute</code> 只改轴序，<code class="inline">view/reshape</code> 只改分组。</b>凡是要"把非相邻维度合到一起"，必须先 permute。</div>
+      <p><b>③ 输出长度 ≠ 标签长度 → CTC</b></p>
+      <p>LSTM 输出 19 个时间步 × 17 个分类，预测序列长这样（19 个位置），而标签只有 <code class="inline">ABC</code> 三个字符。交叉熵的铁律是"输出几个就必须有几个标签"，19 ≠ 3，<b>根本算不了</b>。这就是 CTC 出场的唯一理由。</p>
+
+      <h3>三、CTC：不用你告诉我"第几列是哪个字"</h3>
+      <p>传统做法要<b>逐字符对齐标注</b>——人工在图上框出每个字符的 x 坐标。标注成本极高，而且验证码字符常常粘连扭曲，人根本框不准。</p>
+      <p>CTC 说：<b>别对齐了，我只告诉你"这张图的答案是 ABC"，剩下的我自己算。</b>它给了模型两个自由度：</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>自由度</th><th>作用</th></tr>
+        <tr><td><b>可以输出 blank（空）</b></td><td>19 个时间步里大部分位置什么都没扫到，输出 blank 不影响结果。字符集 16 + 1 个 blank = <b>17 类</b></td></tr>
+        <tr><td><b>可以重复输出同一字符</b></td><td>一个 <code class="inline">S</code> 横跨 3 个时间步，就连着输出 3 次，算 1 个 <code class="inline">S</code></td></tr>
+      </table></div>
+      <p>然后定义一个<b>折叠规则</b>：<b>① 合并相邻重复 → ② 删除所有 blank</b>。</p>
+      <div class="code-title">原始输出（19 步） → 折叠后</div>
+<pre class="code">__A_A_A_B_B_C_C__   →  ABC      正常
+______A_B_C_______   →  ABC      blank 多不影响
+__A_A_B_B_C_C_____   →  ABC      重复被合并
+__A_A_A_B_C_C_____   →  ABC      同一个字符跨多步</pre>
+      <p><b>一条 19 步的路径，折叠后能变成 ABC，这条路径就算"正确路径"。</b>CTC 的 loss 就是"所有能折叠成 ABC 的路径的概率之和"取了负对数。路径数量是天文数字，但用动态规划能在 O(T×|label|) 内算出来——实际代码里你只管调 <code class="inline">nn.CTCLoss()</code>。</p>
+      <div class="callout info"><b>blank 还有个隐藏作用：区分相邻的重复字符。</b>标签是 <code class="inline">112</code>，模型连续输出两个 <code class="inline">1</code> 会被合并成一个。有了 blank 就能写成 <code class="inline">1 _ 1 2</code>，折叠后正确得到 <code class="inline">112</code>。<b>这也是 blank 必须是独立类别、不能用空格或某个真实字符顶替的原因。</b></div>
+
+      <h3>四、不定长的数据准备：两处必须改</h3>
+      <p><b>① mapping 里必须留一个 blank，而且放在索引 0</b>：</p>
+      <div class="code-title">索引 0 是 blank</div>
+<pre class="code">mapping = [<span class="st">'_'</span>] + [c <span class="kw">for</span> c <span class="kw">in</span> <span class="st">'0123456789+-*/=x'</span>]   <span class="cm"># 共 17 类</span></pre>
+      <p>放 0 号位有两个好处：padding 时补 0 就是补 blank；<code class="inline">CTCLoss</code> 的 <code class="inline">blank</code> 参数默认值也是 0。</p>
+      <p><b>② 标签必须补到统一长度</b>——CTC 本身允许变长，但 <b>PyTorch 的 tensor 必须是矩形</b>，一个 batch 里形状得一致：</p>
+      <div class="code-title">在前面补 blank 的索引 0</div>
+<pre class="code">MAX_LEN = <span class="fn">9</span>       <span class="cm"># 数据集里最长的可能长度（如 1000+1000=）</span>
+
+label = [<span class="kw">self</span>.mapping.<span class="fn">index</span>(ch) <span class="kw">for</span> ch <span class="kw">in</span> label_str]
+<span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(MAX_LEN - <span class="fn">len</span>(label)):
+    label.<span class="fn">insert</span>(<span class="fn">0</span>, <span class="fn">0</span>)          <span class="cm"># 在 0 号位插 blank</span>
+
+<span class="kw">return</span> img, torch.<span class="fn">tensor</span>(label)</pre>
+      <p><b>补前补后都行，关键是和 <code class="inline">target_lengths</code> 配套。</b>讲者选前面补，所以 <code class="inline">target_lengths</code> 填的是真实长度。</p>
+      <div class="pitfall"><b>两个"低级但致命"的 bug</b>（讲者真实踩过）：<br>
+      ① <b><code class="inline">target_lengths</code> 填了补齐后的长度</b>而不是真实长度——CTC 会把 blank 当成真实字符来算，<b>loss 永远降不下去</b>。<br>
+      ② <b><code class="inline">state_dict</code> 相关的代码写在函数外</b>，导致每个 epoch 的准确率完全不变，看着像"训练没效果"，其实是根本没保存。</div>
+
+      <h3>五、目标检测：位置本身才是答案</h3>
+      <p>有些验证码不是"认字"，是"找位置"——<b>点选验证码</b>（"点击图中的自行车"）、<b>滑块缺口</b>。这类问题 OCR 完全无效，得上目标检测。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>场景</th><th>要的输出</th><th>做法</th></tr>
+        <tr><td>点选验证码</td><td>目标元素的<b>中心坐标</b></td><td>单类别检测，框出所有目标，取中心点</td></tr>
+        <tr><td>滑块缺口</td><td>缺口的 <b>x 坐标</b></td><td>单类别检测，直接取框的左边</td></tr>
+      </table></div>
+      <p>数据标注流程（可以照做）：用 labelImg 框出目标 → 存成 <b>VOC 格式</b>（<code class="inline">Annotations/</code> 放 xml、<code class="inline">JPEGImages/</code> 放图、<code class="inline">ImageSets/</code> 放划分）→ 转成 YOLO 格式训练。</p>
+      <div class="code-title">VOC 与 YOLO 的坐标换算（lesson10 专门补的坑）</div>
+<pre class="code"><span class="cm"># VOC：绝对像素坐标 xmin, ymin, xmax, ymax</span>
+<span class="cm"># YOLO：归一化的 中心x, 中心y, 宽, 高</span>
+x_center = (xmin + xmax) / <span class="fn">2</span> / img_w
+y_center = (ymin + ymax) / <span class="fn">2</span> / img_h
+w = (xmax - xmin) / img_w
+h = (ymax - ymin) / img_h</pre>
+
+      <h3>六、部署成 API：三个必须注意的工程问题</h3>
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>问题</th><th>做法</th><th>搞错的后果</th></tr>
+        <tr><td><b>模型只加载一次</b></td><td>放进 <code class="inline">__init__</code> 或模块级变量</td><td>放进路由里 → 每次请求都重新加载，单次响应<b>从 50ms 变成 5s</b></td></tr>
+        <tr><td>接口设计</td><td>收 base64 图片，返回识别结果 / 坐标</td><td>直接传文件路径在分布式场景下跑不通</td></tr>
+        <tr><td>并发</td><td><b>单进程 + 批处理</b>，别开多 worker</td><td>多 worker 会让<b>显存 ×N</b>，一张卡很快 OOM</td></tr>
+      </table></div>
+      <div class="code-title">最小可用 API</div>
+<pre class="code"><span class="kw">from</span> flask <span class="kw">import</span> Flask, request, jsonify
+app = Flask(__name__)
+
+model = <span class="fn">load_model</span>()          <span class="cm"># ★ 模块级：全进程只加载一次</span>
+model.<span class="fn">eval</span>()
+
+<span class="fn">@app.route</span>(<span class="st">'/ocr'</span>, methods=[<span class="st">'POST'</span>])
+<span class="kw">def</span> <span class="fn">ocr</span>():
+    img = <span class="fn">decode_base64</span>(request.json[<span class="st">'image'</span>])
+    <span class="kw">with</span> torch.<span class="fn">no_grad</span>():
+        result = <span class="fn">predict</span>(model, img)
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">'code'</span>: result})</pre>
+
+      <div class="pitfall"><b>五个坑：</b>① 魔改 ResNet 时忘了砍 <code class="inline">avgpool</code>，时间步被压到 7，长验证码永远识别不全；② 形状转换直接 <code class="inline">view</code> 不 <code class="inline">permute</code>——训练能跑、精度上不去；③ <code class="inline">target_lengths</code> 填了补齐长度，loss 不降；④ YOLO 的 <code class="inline">nc</code> 要在三处一致（yaml、names、模型头），不一致会冒出置信度极低的异常小框；⑤ 把模型加载写在路由函数里，响应慢到不可用。</div>
+
+      <!-- ============ 6.2 ============ -->
+      <h2>6.4 滑动验证码 <span class="chip tbook">对齐教材 8.2</span></h2>
       <p>滑动验证码把"拖动滑块到缺口"包装成小游戏，实际上是一道<b>两步合成题</b>：第一步知道<b>缺口在哪</b>（视觉问题），第二步让滑块<b>像人一样滑过去</b>（行为问题）。两步都要对，缺一不可。</p>
 
       <h3>第一步：缺口位置识别</h3>
@@ -221,7 +445,7 @@ ActionChains(driver).<span class="fn">release</span>().<span class="fn">perform<
       <div class="callout warn"><b>标注：</b>缺口匹配是纯视觉技术，<b>轨迹模拟属于行为对抗</b>——它专门用于绕过"判断你是不是人"的检测。这类代码请务必<b>只在授权平台（Scrape Center / 猿人学）或自己搭的练习站上运行</b>，对真实站点使用可能违反其服务条款与相关法律。</div>
 
       <!-- ============ 6.3 ============ -->
-      <h2>6.3 点触 / 宫格验证码 <span class="chip tbook">对齐教材 8.3 / 8.4</span></h2>
+      <h2>6.5 点触 / 宫格验证码 <span class="chip tbook">对齐教材 8.3 / 8.4</span></h2>
       <p>点触（按语序点击图中的文字）和宫格（点击符合描述的图标）把难度从"看得清"升级到了"看得懂"——需要语义理解，OCR 搞不定，自研模型性价比极低。<b>现实的标准答案只有一个：打码平台</b>——你把截图传上去，平台的真人/AI 混合队列把坐标传回来，按条计费。</p>
       <h3>打码平台接入思路</h3>
       <div class="tbl-wrap"><table class="tbl">
@@ -250,11 +474,11 @@ ActionChains(driver).<span class="fn">release</span>().<span class="fn">perform<
     result = resp.<span class="fn">json</span>()        <span class="cm"># {'id': ..., 'result': '[[46,78],[192,64],[305,90]]'}</span>
     <span class="kw">return</span> <span class="fn">eval</span>(result[<span class="st">"result"</span>])   <span class="cm"># 生产环境请用 json.loads 并做好异常兜底</span></pre>
 
-      <div class="callout ok"><b>本站立场：优先绕开，打码是最后手段。</b>点触/宫格的破解成本（按条计费 + 秒级延迟 + 质量不稳）远高于"绕开它"的成本——<b>人肉过一次验证码，Cookie 复用跑一整周</b>（6.5）。打码平台留给"登录频次高、账号多、必须全自动化"的场景。此外提醒：打码服务同样要用于合规目标，只碰你有权采集的数据。</div>
+      <div class="callout ok"><b>本站立场：优先绕开，打码是最后手段。</b>点触/宫格的破解成本（按条计费 + 秒级延迟 + 质量不稳）远高于"绕开它"的成本——<b>人肉过一次验证码，Cookie 复用跑一整周</b>（6.7）。打码平台留给"登录频次高、账号多、必须全自动化"的场景。此外提醒：打码服务同样要用于合规目标，只碰你有权采集的数据。</div>
 
       <div class="connect-box" style="border-left-color:#b45309">
         <div class="bx-title" style="color:#b45309">🌐 多源视角 · 《Python3反爬虫原理与绕过实战》：验证码攻防的成本金字塔</div>
-        <p>把 6.1~6.3 的类型表竖起来看，它其实是一座<b>成本金字塔</b>：塔基的图形码，OCR 一行代码就破，攻防双方都不在乎；越往上，盾的强度和矛的成本同步陡增——到塔尖的"行为验证"，破解成本已经高到"硬刚不如绕行"。韦世东在书里给出的结论，正是 6.5 Cookie 复用最好的注脚：<b>策略上"绕"永远优先于"破"</b>——Cookie 复用、换接口、换数据源，都是绕。</p>
+        <p>把 6.1~6.5 的类型表竖起来看，它其实是一座<b>成本金字塔</b>：塔基的图形码，OCR 一行代码就破，攻防双方都不在乎；越往上，盾的强度和矛的成本同步陡增——到塔尖的"行为验证"，破解成本已经高到"硬刚不如绕行"。韦世东在书里给出的结论，正是 6.5 Cookie 复用最好的注脚：<b>策略上"绕"永远优先于"破"</b>——Cookie 复用、换接口、换数据源，都是绕。</p>
         <div class="tbl-wrap"><table class="tbl">
           <tr><th>类型（塔基 → 塔尖）</th><th>盾强度</th><th>破解成本</th><th>推荐策略</th></tr>
           <tr><td>图形码（数字/字母）</td><td>★</td><td>极低：ddddocr 一行搞定</td><td>直接识别 + 失败刷新重试</td></tr>
@@ -266,7 +490,7 @@ ActionChains(driver).<span class="fn">release</span>().<span class="fn">perform<
       </div>
 
       <!-- ============ 6.4 ============ -->
-      <h2>6.4 模拟登录 GitHub：方法论 <span class="chip tbook">对齐教材 10.1</span></h2>
+      <h2>6.6 模拟登录 GitHub：方法论 <span class="chip tbook">对齐教材 10.1</span></h2>
       <p>模拟登录的通用方法论是五步，<b>核心动作是"字段溯源"——载荷里的每个字段，都要能在登录页里找到出处</b>。拿 GitHub 演示（方法论对任何站点通用）：</p>
 
       <h3>第 ① 步：抓登录请求</h3>
@@ -320,20 +544,20 @@ me = s.<span class="fn">get</span>(<span class="st">"https://github.com/settings
         <tr><td>1</td><td>隐藏 token 字段（CSRF）</td><td>从登录页 HTML 提取（本节做法）</td></tr>
         <tr><td>2</td><td>密码字段前端 RSA/AES 加密</td><td>引页面 JS 执行，或逆向算法（第 08 章）</td></tr>
         <tr><td>3</td><td>JSON 接口登录 + sign 签名</td><td>逆向（第 08 章）或浏览器自动化（5.4）</td></tr>
-        <tr><td>4</td><td>短信验证 / 扫码 / OAuth</td><td>浏览器人工登录一次 + Cookie 复用（6.5）</td></tr>
+        <tr><td>4</td><td>短信验证 / 扫码 / OAuth</td><td>浏览器人工登录一次 + Cookie 复用（6.7）</td></tr>
       </table></div>
       <div class="callout info"><b>方法论不变，难度在变：</b>从最老套的表单提交到最现代的加密接口，"抓包 → 字段溯源 → 复刻请求"这五步永远成立——变的只是"溯源"的深度。字段全在 HTML 里（本节）→ 复刻请求即可；字段藏在 JS 加密里 → 第 08 章；字段靠扫码/短信 → 人工登录 + 6.5。另外 GitHub 对自动登录风控较强，本节代码用于理解方法论，练手请用授权练习站（如 Scrape Center login 系列）或自己的小号。</div>
 
       <!-- ============ 6.5 ============ -->
-      <h2>6.5 Cookie 复用：本章最实用技 <span class="chip tnew">必会</span></h2>
-      <p>回头看 6.1~6.4 的成本表，你会发现一个事实：<b>绝大多数验证码困境，最优解是"根本不再遇到它"</b>。登录一次（无论人肉还是自动化）拿到的登录态就是一枚 Cookie，只要不主动退出、Cookie 不过期，之后的采集根本不需要再登录——这就是第 01 章 1.4 那句"保命技"的完整展开：</p>
+      <h2>6.7 Cookie 复用：本章最实用技 <span class="chip tnew">必会</span></h2>
+      <p>回头看 6.1~6.6 的成本表，你会发现一个事实：<b>绝大多数验证码困境，最优解是"根本不再遇到它"</b>。登录一次（无论人肉还是自动化）拿到的登录态就是一枚 Cookie，只要不主动退出、Cookie 不过期，之后的采集根本不需要再登录——这就是第 01 章 1.4 那句"保命技"的完整展开：</p>
       <div class="tbl-wrap"><table class="tbl">
         <tr><th>步骤</th><th>操作</th><th>在哪里</th></tr>
         <tr><td>① 登录</td><td>浏览器手动登录目标站（验证码人肉过）</td><td>一次人工，几十秒</td></tr>
         <tr><td>② 抄 Cookie</td><td>F12 → <b>Application</b> → Cookies → 目标域名 → 复制全部键值</td><td>开发者工具</td></tr>
         <tr><td>③ 注入</td><td>整包塞进 <code class="inline">requests.Session</code> 的 cookies</td><td>代码</td></tr>
         <tr><td>④ 探活</td><td>任务开始前请求"个人中心"类页面，确认登录态还在</td><td>代码</td></tr>
-        <tr><td>⑤ 补货</td><td>失效后重抄一次，或触发自动重登（6.6 的登录器）</td><td>人工/定时</td></tr>
+        <tr><td>⑤ 补货</td><td>失效后重抄一次，或触发自动重登（6.8 的登录器）</td><td>人工/定时</td></tr>
       </table></div>
       <div class="code-title">cookie_reuse.py</div>
 <pre class="code"><span class="kw">import</span> requests
@@ -356,11 +580,11 @@ resp = s.<span class="fn">get</span>(<span class="st">"https://target.site/user/
 <span class="fn">print</span>(<span class="st">"登录态有效"</span> <span class="kw">if</span> <span class="st">"退出登录"</span> <span class="kw">in</span> resp.text <span class="kw">else</span> <span class="st">"Cookie 过期了，重新抄一次"</span>)</pre>
 
       <h3>有效期管理：让"抄"变成一套机制</h3>
-      <p>Cookie 是有寿命的（<code class="inline">Expires/Max-Age</code>，第 01 章的属性表），工程上要把它当资源管理：<b>探活前置</b>——每次任务开始先访问特征页判断登录态；<b>失效告警</b>——探测失败立即通知补货，别让爬虫带着死 Cookie 空跑两小时；<b>记录失效时间</b>——多观察几次就能总结出"这个站 Cookie 大约活 7 天"的规律，到期前主动更换；<b>多账号轮换</b>——单账号 Cookie 撑不起采集量时，就该上 6.6 的 Cookies 池了。</p>
+      <p>Cookie 是有寿命的（<code class="inline">Expires/Max-Age</code>，第 01 章的属性表），工程上要把它当资源管理：<b>探活前置</b>——每次任务开始先访问特征页判断登录态；<b>失效告警</b>——探测失败立即通知补货，别让爬虫带着死 Cookie 空跑两小时；<b>记录失效时间</b>——多观察几次就能总结出"这个站 Cookie 大约活 7 天"的规律，到期前主动更换；<b>多账号轮换</b>——单账号 Cookie 撑不起采集量时，就该上 6.8 的 Cookies 池了。</p>
 
       <!-- ============ 6.6 ============ -->
-      <h2>6.6 Cookies 池搭建 <span class="chip tbook">对齐教材 10.2</span></h2>
-      <p>当采集量需要多个账号分摊、单个 Cookie 又会过期时，把 6.1~6.5 的全部零件组装起来，就是 <b>Cookies 池</b>——一个"自动登录、自动验活、按需分发登录态"的小型生产系统。数据流一句话：<b>账号队列喂给登录器，登录器产出 Cookie 存进 Redis，检测器定期验活，调度接口对外吐活 Cookie</b>：</p>
+      <h2>6.8 Cookies 池搭建 <span class="chip tbook">对齐教材 10.2</span></h2>
+      <p>当采集量需要多个账号分摊、单个 Cookie 又会过期时，把 6.1~6.7 的全部零件组装起来，就是 <b>Cookies 池</b>——一个"自动登录、自动验活、按需分发登录态"的小型生产系统。数据流一句话：<b>账号队列喂给登录器，登录器产出 Cookie 存进 Redis，检测器定期验活，调度接口对外吐活 Cookie</b>：</p>
       <div class="flow">
         <span class="fnode"><b>账号队列</b>待用账号密码</span><span class="farrow">→</span>
         <span class="fnode"><b>登录器</b>自动登录（含打码）</span><span class="farrow">→</span>
@@ -371,7 +595,7 @@ resp = s.<span class="fn">get</span>(<span class="st">"https://target.site/user/
       <div class="tbl-wrap"><table class="tbl">
         <tr><th>模块</th><th>职责</th><th>实现要点</th></tr>
         <tr><td>账号队列</td><td>存待用账号，按需取号</td><td>Redis list/set；登录前先取号，防止重复登录同一账号</td></tr>
-        <tr><td>登录器</td><td>自动登录产出 Cookie</td><td>6.4 的五步 + 6.1~6.3 的验证码手段；登录太难的站允许"人工登录 + 自动收集"混合</td></tr>
+        <tr><td>登录器</td><td>自动登录产出 Cookie</td><td>6.6 的五步 + 6.1~6.5 的验证码手段；登录太难的站允许"人工登录 + 自动收集"混合</td></tr>
         <tr><td>存储（Redis）</td><td>保存登录态</td><td>hash：<code class="inline">HSET cookies:site 账号 Cookie串</code>；key 唯一，天然去重</td></tr>
         <tr><td>检测器</td><td>定时探活</td><td>周期请求特征页；失效则剔除/触发重登；记录更新时间</td></tr>
         <tr><td>调度接口</td><td>对外服务</td><td>Flask 暴露 <code class="inline">/random</code>：随机吐一个"探活通过"的 Cookie</td></tr>
@@ -396,7 +620,7 @@ r = redis.<span class="fn">Redis</span>(decode_responses=<span class="kw">True</
       <div class="code-title">预期输出（GET http://127.0.0.1:5000/random）</div>
 <pre class="code">{"cookie": "sessionid=8f3ka9; uid=10086; csrftoken=…"}
 <span class="cm"># 池空时返回 503：{"error": "池子空了，等登录器补货"}</span></pre>
-      <div class="callout ok"><b>闭环达成：</b>这个池子把本章所有零件串成生产线——登录器用 6.4 复刻登录、用 6.1~6.3 过验证码；检测器复用 6.5 的探活逻辑；业务爬虫只管调 <code class="inline">/random</code> 拿 Cookie 干活，完全不知道验证码的存在。第 07 章的代理池是同一套架构思想换了个被池化的资源。</div>
+      <div class="callout ok"><b>闭环达成：</b>这个池子把本章所有零件串成生产线——登录器用 6.4 复刻登录、用 6.1~6.3 过验证码；检测器复用 6.7 的探活逻辑；业务爬虫只管调 <code class="inline">/random</code> 拿 Cookie 干活，完全不知道验证码的存在。第 07 章的代理池是同一套架构思想换了个被池化的资源。</div>
 
       <h3>池子最小实现：一个文件跑通闭环</h3>
       <p>上面只给了调度接口这一块积木。下面把五个模块捏进一个文件：<b>账号队列 → 登录器（失败重试 + 验证码钩子）→ Redis 存储（账号: Cookie JSON）→ 检测器（访问轻量接口验活）→ 取用接口</b>。骨架可直接运行，把 login 与验活里的 demo.site 换成你的目标站实现即可：</p>
@@ -463,18 +687,18 @@ app = <span class="fn">Flask</span>(__name__)
 <span class="kw">if</span> __name__ == <span class="st">"__main__"</span>:
     <span class="fn">stock_up</span>()                <span class="cm"># 启动先补一轮货（生产中由独立进程定时补/验）</span>
     app.<span class="fn">run</span>(port=<span class="fn">5001</span>)</pre>
-      <p>业务侧的取用只要两行，与 6.5 的注入方式完全一致：<code class="inline">s.cookies.update(requests.get("http://127.0.0.1:5001/cookie").json()["cookie"])</code>。两个衔接点：存储用 <code class="inline">hash（field=账号）</code> 天然去重，与下方 Q3 的并发设计兼容；验活接口要选<b>轻量、稳定、需要登录</b>的——验活本身也是请求量，别拿重接口浪费。</p>
+      <p>业务侧的取用只要两行，与 6.7 的注入方式完全一致：<code class="inline">s.cookies.update(requests.get("http://127.0.0.1:5001/cookie").json()["cookie"])</code>。两个衔接点：存储用 <code class="inline">hash（field=账号）</code> 天然去重，与下方 Q3 的并发设计兼容；验活接口要选<b>轻量、稳定、需要登录</b>的——验活本身也是请求量，别拿重接口浪费。</p>
 
       <div class="pitfall"><b>本章五大坑：</b>① 验证码连败风控——失败重试不设上限等于自爆，失败 3~5 次就应告警/换号/换 IP，重试间隔要拉开；② 密码字段前端加密——抓包看到的是 RSA/AES 密文，明文加密发生在 JS 里，复刻登录前先确认字段有没有加密，有就先去第 08 章报到；③ HttpOnly 不影响抓包——HttpOnly 只禁 JS 读取，F12 Application 面板和抓包工具照样看得到、抄得走，别被它唬住；④ Cookie 跨域失联——Cookie 绑定 Domain，a.com 的 Cookie 发给 b.com 的接口不会生效，整包注入时确认域名一致（含二级域名范围）；⑤ 拿生产账号练打码——多次失败触发账号风控，轻则锁号重则拉黑，练手请用小号或授权练习站。</div>
 
       <!-- ============ 打卡 ============ -->
       <h2>✅ 本章打卡清单</h2>
       <div class="checklist-card check">
-        <label><input type="checkbox" id="c06-1" data-persist><span>掌握 ddddocr 两种用法：classification 识别文字、detection（det=True）出坐标（6.1）</span></label>
-        <label><input type="checkbox" id="c06-2" data-persist><span>能讲滑动验证码三步：缺口识别 → 先快后慢 + 回拉轨迹 → 提交；知道匀速必被识别（6.2）</span></label>
-        <label><input type="checkbox" id="c06-3" data-persist><span>掌握 GitHub 登录字段溯源法：载荷里每个字段都能在登录页找到出处（6.4）</span></label>
-        <label><input type="checkbox" id="c06-4" data-persist><span>独立完成 Cookie 复用全流程：浏览器登录 → F12 抄 → Session 注入 → 探活（6.5）</span></label>
-        <label><input type="checkbox" id="c06-5" data-persist><span>能画出 Cookies 池五模块架构：账号队列 → 登录器 → Redis → 检测器 → 调度接口（6.6）</span></label>
+        <label><input type="checkbox" id="c06-1" data-persist><span>掌握 ddddocr 两种用法：classification 识别文字、detection（det=True）出坐标（6.1）；能判断何时该自己训模型——定长用 32 分类取巧、不定长上 CRNN + CTC（6.2 / 6.3）</span></label>
+        <label><input type="checkbox" id="c06-2" data-persist><span>能讲滑动验证码三步：缺口识别 → 先快后慢 + 回拉轨迹 → 提交；知道匀速必被识别（6.4）</span></label>
+        <label><input type="checkbox" id="c06-3" data-persist><span>掌握 GitHub 登录字段溯源法：载荷里每个字段都能在登录页找到出处（6.6）</span></label>
+        <label><input type="checkbox" id="c06-4" data-persist><span>独立完成 Cookie 复用全流程：浏览器登录 → F12 抄 → Session 注入 → 探活（6.7）</span></label>
+        <label><input type="checkbox" id="c06-5" data-persist><span>能画出 Cookies 池五模块架构：账号队列 → 登录器 → Redis → 检测器 → 调度接口（6.8）</span></label>
         <label><input type="checkbox" id="c06-6" data-persist><span>建立"何时打码何时绕"的判断：先 Cookie 复用绕开，打码是最后手段（全章）</span></label>
       </div>
 
