@@ -64,6 +64,12 @@
         <span class="tag">逆向篇 · 对齐教材 11.1 ~ 11.6 · 含 Frida 拓展</span>
         <h1>09 · App 爬取：抓包与自动化</h1>
         <p class="sub">数据不只在网页上——App 的接口往往比网页更干净，但风控更"硬件化"。这一章打通四层能力：装证书抓 HTTPS、mitmproxy 脚本化自动采集、Appium 让 App 自己跑、Frida 在运行时拿到加密前的明文。</p>
+        <div class="basis-note">
+          <span class="bt">内容基准</span>
+          <span class="bl">主体素材：教材 + 安卓逆向实战课（录制于 2020–2022）+ 2026 时效补丁　·　2026-11 复核</span>
+          <span class="bl">需留意：<b>9.6</b> 文中 frida-server 12.8.10 已过时，务必按当前 frida 版本重配　·　<b>9.11</b> ratel 仅支持 Android 5~10，现代设备装不上</span>
+        </div>
+
         <div class="pwrap">
           <div class="progress"><div class="fill" data-progress-bar="c09"></div></div>
           <span class="plabel" data-progress-label="c09"></span>
@@ -433,7 +439,7 @@ driver.<span class="fn">find_element</span>(AppiumBy.ID, <span class="st">"com.e
       <div class="callout info"><b>判断该不该切 context：</b>用 Appium Inspector 看页面源码——满屏 android.webkit.WebView 包着一个巨大节点、内部元素全看不到 → 该切了。也可以在 Capabilities 里设 <code class="inline">"appium:autoWebview": True</code>，会话启动后自动切进检测到的 WebView，但页面中途跳转仍要手动切。</div>
 
       <!-- ============ 9.6 ============ -->
-      <h2>9.6 Frida 入门 <span class="chip tnew">拓展</span></h2>
+      <h2>9.6 Frida 入门 <span class="chip tnew">拓展</span><span class="chip ts-check">版本已过时</span></h2>
       <p>Frida 是<b>动态插桩框架</b>：把一段 JS 注入目标进程，在运行时改写任意函数的行为。对爬虫的意义有两点：<b>hook 加密函数</b>——明文输入和密文输出直接打印出来，还原算法变成"抄答案"；<b>绕证书锁定</b>——hook 住校验点让它永远通过（9.3 的应对①）。它站在比 Appium 更深的一层：不看 UI，直接看函数调用。</p>
       <h3>attach 与 spawn</h3>
       <div class="tbl-wrap"><table class="tbl">
@@ -1019,7 +1025,7 @@ new_data = bbpb.<span class="fn">encode_message</span>(msg, typedef)</pre>
       <div class="pitfall"><b>五个坑：</b>① 看到二进制就认定"加密了"——很可能只是 protobuf，先 base64 解一次再判断；② 解密后忘了 <code class="inline">unpad</code>，末尾一堆 <code class="inline">\x00</code> 让 protobuf 解析器直接崩；③ 手工还原 .proto 时内层 message 沿用了外层编号——<b>内层编号从 1 重新开始</b>；④ <code class="inline">blackboxprotobuf</code> 编码回去时丢了 <code class="inline">typedef</code>，类型信息没了；⑤ hook native 时从 <code class="inline">args[0]</code> 开始读参数，其实前两个是 <code class="inline">JNIEnv*</code> 和 <code class="inline">jobject</code>。</div>
 
       <!-- ============ 9.11 ============ -->
-      <h2>9.11 ratel（平头哥）：免 root 的 hook 框架 <span class="chip tnew">新 · 框架</span></h2>
+      <h2>9.11 ratel（平头哥）：免 root 的 hook 框架 <span class="chip tnew">新 · 框架</span><span class="chip ts-check">机型受限</span></h2>
 
       <p>前面 9.6~9.10 的所有操作，都有一个没明说的前提：<b>手机得能 root</b>。frida-server 要 root 跑，magisk 修补要解 BL 锁。可现实是做批量采集时，你要面对的是几十台普通手机，root 过的机器本身就是风控特征。ratel（平头哥）解决的就是这个问题——<b>不 root，也能 hook</b>。</p>
 
@@ -1404,7 +1410,7 @@ r = requests.<span class="fn">post</span>(<span class="st">"http://127.0.0.1:562
       </div>
 
       <!-- ============ 9.14 ============ -->
-      <h2>9.14 2026 年的反爬环境：这套课没讲的三件事 <span class="chip tnew">新 · 时效补丁</span></h2>
+      <h2>9.14 2026 年的反爬环境：这套课没讲的三件事 <span class="chip tnew">新 · 2026 时效补丁</span></h2>
 
       <p>前面 13 节的方法论来自 2020–2022 年录的课。<b>那部分没过时</b>——断点回溯、hook 定位、AST 还原，这三年没人改写过它们。</p>
       <p>但这三年长出了三道新墙，课里一个字没提。它们不是替换旧知识，是<b>补上旧知识够不到的地方</b>：</p>

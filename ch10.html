@@ -64,6 +64,12 @@
         <span class="tag">框架篇 · 对齐教材 13.1~13.13 + 第 14~15 章</span>
         <h1>10 · Scrapy 框架与分布式部署</h1>
         <p class="sub">单文件脚本的天花板很快就到：Scrapy 把"取、下、析、存"拆成流水线上的标准岗位，再教你把这条流水线搬上多台机器。本章是工程化毕业章——架构、入门、中间件、管道、分布式、部署一条龙。</p>
+        <div class="basis-note">
+          <span class="bt">内容基准</span>
+          <span class="bl">主体素材：教材 + 框架实现课　·　2026-11 复核</span>
+          <span class="bl">需留意：<b>10.10</b> Scrapyd 与 Gerapy 的维护活跃度已下降，选型前先看仓库最近提交</span>
+        </div>
+
         <div class="pwrap">
           <div class="progress"><div class="fill" data-progress-bar="c10"></div></div>
           <span class="plabel" data-progress-label="c10"></span>
@@ -801,7 +807,7 @@ pool.<span class="fn">set_hubs</span>([<span class="st">"http://news.sina.com.cn
       </div>
 
       <!-- ============ 10.10 ============ -->
-      <h2>10.10 部署与管理 <span class="chip tbook">对齐教材 第 15 章</span></h2>
+      <h2>10.10 部署与管理 <span class="chip tbook">对齐教材 第 15 章</span><span class="chip ts-check">维护活跃度下降</span></h2>
       <h3>Scrapyd：把爬虫当服务跑</h3>
       <p>Scrapyd 是官方的爬虫守护进程：爬虫代码打包成<b>版本</b>上传，之后通过 <b>HTTP API</b> 远程调度——启动、暂停、查状态，全是一行 curl 的事。机器上 <code class="inline">pip install scrapyd</code> 后执行 <code class="inline">scrapyd</code> 启动，默认监听 6800 端口：</p>
       <div class="code-title">终端 · 上传与调度</div>

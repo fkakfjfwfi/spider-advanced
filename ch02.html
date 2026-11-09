@@ -63,6 +63,12 @@
         <span class="tag">基础篇 · 对齐教材 3.1 ~ 3.4</span>
         <h1>02 · 请求的艺术：urllib / requests / 正则</h1>
         <p class="sub">第 01 章你学会了"看懂请求"，这一章学会"发出请求"：从标准库 urllib 走到事实标准 requests，把 GET/POST、响应处理、Session、超时重试、SSL、上传下载、代理九大件全部打通；再用正则把响应文本里的数据抠出来，最后用一套完整的猫眼 TOP100 实战收尾——抓下来、解析好、存成 CSV。</p>
+        <div class="basis-note">
+          <span class="bt">内容基准</span>
+          <span class="bl">主体素材：教材 + TLS 指纹补充　·　2026-11 复核</span>
+          <span class="bl">需留意：<b>2.4</b> 目标站（猫眼）反爬已升级，示例代码大概率跑不通　·　<b>2.5</b> curl_cffi 版本迭代较快，<code class="inline">impersonate</code> 可选值以官方 README 为准</span>
+        </div>
+
         <div class="pwrap">
           <div class="progress"><div class="fill" data-progress-bar="c02"></div></div>
           <span class="plabel" data-progress-label="c02"></span>
@@ -549,7 +555,7 @@ PATTERN = re.compile(
       <div class="pitfall"><b>本章避坑清单：</b>① <code class="inline">verify=False</code> 只许在测试环境用，且关闭告警（<code class="inline">disable_warnings</code>）之后连"你正在裸奔"的提示都没了——合入前全局搜一遍；② <code class="inline">resp.text</code> 乱码先查 <code class="inline">resp.encoding</code>（头里没写 charset 就回退 ISO-8859-1），改编码要赶在<b>第一次访问 text 之前</b>，或干脆 <code class="inline">resp.content.decode("utf-8")</code>；③ <code class="inline">resp.json()</code> 只对 application/json 响应有效，text 是 str、content 是 bytes，别混用（bytes 没有切片后 decode 再 json 的连环坑）；④ params 与手拼 URL 混用会<b>双重编码</b>——已编码的 <code class="inline">%E4</code> 会被再编码成 <code class="inline">%25E4</code>，编码只做一次，params 和手拼二选一；⑤ 忘了 timeout 或只给一个数：连接卡死和读取卡死是两种病，用元组 <code class="inline">(3, 10)</code> 分别设限。</div>
 
       <!-- ============ 2.5 ============ -->
-      <h2>2.5 更进一步：TLS 指纹与 curl_cffi <span class="chip tnew">进阶</span></h2>
+      <h2>2.5 更进一步：TLS 指纹与 curl_cffi <span class="chip ts-now">进阶 · 2026 复核</span></h2>
       <p>进阶玩家都遇到过这个灵异现象：<b>headers 全对、Cookie 全带、频率正常，请求依然被拒</b>——甚至在 TCP 连上之后就被服务器掐断。原因不在 HTTP 层，而在更底下的 <b>TLS 握手</b>：客户端打招呼（ClientHello）时会报出自己的 TLS 版本、加密套件列表、扩展、椭圆曲线等一串参数，服务器把它们拼起来算个 MD5，就是业界通用的 <b>JA3 指纹</b>。requests 走的 OpenSSL 栈有稳定的默认参数组合，JA3 一眼就能认出"这不是浏览器"——报文伪装得再像，握手阶段就先暴露了。这正是韦世东《Python3反爬虫原理与绕过实战》里"指纹对抗"思想的现代延续：反爬早已从"看请求头"进化到"看握手特征"。</p>
       <div class="code-title">curl_cffi_demo.py</div>
 <pre class="code"><span class="cm"># pip install curl_cffi —— 基于 curl 的 TLS 实现，可 impersonate 主流浏览器</span>

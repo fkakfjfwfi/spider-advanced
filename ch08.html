@@ -64,6 +64,12 @@
         <span class="tag">逆向篇 · 教材外拓展</span>
         <h1>08 · JS 逆向专题</h1>
         <p class="sub">接口带着每次都变的 token/sign，删掉就 403——这一章教你把"看不懂的加密参数"变成"我自己生成的参数"。三板斧定位、指纹识别算法、扣代码补环境、webpack 与混淆还原：所有逆向都逃不出这套固定动作。</p>
+        <div class="basis-note">
+          <span class="bt">内容基准</span>
+          <span class="bl">主体素材：教材 + JS 逆向实战课（录制于 2020–2022）　·　2026-11 复核</span>
+          <span class="bl">需留意：<b>8.8</b> Google 翻译 <code class="inline">tk</code> 算法早已迭代，只能当调试方法论读　·　<b>8.10</b> 指纹维度仍在增加　·　<b>8.11</b> Sekiro 版本变化较快</span>
+        </div>
+
         <div class="pwrap">
           <div class="progress"><div class="fill" data-progress-bar="c08"></div></div>
           <span class="plabel" data-progress-label="c08"></span>
@@ -622,7 +628,7 @@ token = MD5("page={page}&amp;ts={ts}" + "ydsecret#2024")    （秒级时间戳�
 
       <!-- ============ 打卡 ============ -->
       <!-- ============ 8.8 ============ -->
-      <h2>8.8 完整推演：Google 翻译 tk 的破与立 <span class="chip tnew">新 · 案例复盘</span></h2>
+      <h2>8.8 完整推演：Google 翻译 tk 的破与立 <span class="chip tnew">新 · 案例复盘</span><span class="chip ts-old">算法已迭代</span></h2>
       <p>8.2 给了三板斧，8.3 给了指纹识别，8.4 给了扣代码补环境。但真坐在浏览器前，面对几万行混淆代码时，脑子里还是空的——<b>知道该干什么，和知道下一步该点哪里，是两件事</b>。这一节用一个完整案例把三者串起来：从"改一个参数就 403"开始，到"Python 自己算出合法参数"结束。每一步都写清楚屏幕上看到了什么。</p>
 
       <h3>一、先把问题问清楚：两个对照实验</h3>
@@ -839,7 +845,7 @@ console.<span class="fn">log</span>(x);                   <span class="cm">// �
       <p><b>"参数对但不认"时，排查顺序</b>：先查 hook 是否被识别（<code class="inline">toString</code> 伪装漏了）→ 再查环境缺项 → 最后才怀疑算法。顺序反了会白改一整天。</p>
 
       <!-- ============ 8.11 ============ -->
-      <h2>8.11 新型反爬与 jsRPC <span class="chip tnew">新 · 前沿</span></h2>
+      <h2>8.11 新型反爬与 jsRPC <span class="chip tnew">新 · 前沿</span><span class="chip ts-check">工具版本</span></h2>
       <p>8.1 到 8.10 覆盖的是"加密参数"这条主线。但近几年的反爬早就不只在参数上做文章了——<b>有的不加密，改字体；有的不上 JS，上 WASM；有的不看你算什么，看你握手时像不像浏览器</b>。这一节把这几种手段和它们的边界讲清楚，最后补一条"不逆向也能拿结果"的路。</p>
 
       <h3>一、CSS 反爬与动态字体</h3>

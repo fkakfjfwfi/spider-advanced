@@ -63,6 +63,12 @@
         <span class="tag">进阶篇 · 对齐教材 8.1 ~ 8.4 + 10.1 ~ 10.2</span>
         <h1>06 · 验证码识别与模拟登录</h1>
         <p class="sub">验证码的本质是"证明你是人"，而我们的目标不是硬刚：能绕则绕（Cookie 复用），该打则打（OCR / 打码平台）。这一章还顺带解决爬虫的另一大命门——登录态的获取与批量维持，这是工程化采集绕不开的一关。</p>
+        <div class="basis-note">
+          <span class="bt">内容基准</span>
+          <span class="bl">主体素材：教材 + 深度学习验证码课　·　2026-11 复核</span>
+          <span class="bl">需留意：<b>6.2 / 6.3</b> CUDA 与 PyTorch 的版本对应关系已变，装错了 <code class="inline">is_available()</code> 为 False　·　<b>6.6</b> GitHub 登录流程改过，步骤需重新对照</span>
+        </div>
+
         <div class="pwrap">
           <div class="progress"><div class="fill" data-progress-bar="c06"></div></div>
           <span class="plabel" data-progress-label="c06"></span>
@@ -126,7 +132,7 @@ det = ddddocr.<span class="fn">DdddOcr</span>(det=<span class="kw">True</span>, 
       <div class="callout warn"><b>成本账的另一半：</b>重试循环必须配三道保险——失败就<b>刷新换图</b>（同一张图反复 OCR 没有意义）、设<b>连续失败上限</b>（如 3 次就告警/换号）、重试之间加<b>随机间隔</b>。识别率低于五成的图形码，硬刚的期望成本已经超过打码平台按条计费的价格——这笔账要在动手前算。</div>
 
       <!-- ============ 6.2 ============ -->
-      <h2>6.2 自己训练识别模型：从 ddddocr 不够用开始 <span class="chip tnew">新 · 深度实战</span></h2>
+      <h2>6.2 自己训练识别模型：从 ddddocr 不够用开始 <span class="chip tnew">新 · 深度实战</span><span class="chip ts-check">版本需核对</span></h2>
       <p>6.1 的 ddddocr 能覆盖大部分低强度验证码。但有两类它搞不定：<b>干扰极强的</b>（字符粘连、扭曲、多图层干扰）、<b>不定长的</b>（4 位 6 位混着出）。这时候只有一条路——<b>自己训一个</b>。这一节从零讲到能跑通，不要求你有算法基础。</p>
 
       <h3>一、先想清楚：深度学习到底在做什么</h3>

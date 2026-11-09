@@ -29,6 +29,12 @@ TAG_SETS = ["div", "h2", "h3", "p", "pre", "table", "span", "code",
 
 ALLOWED_ENTITIES = re.compile(r"&(amp|lt|gt|quot|nbsp|mdash|hellip|#\d+|#x[0-9a-fA-F]+);")
 
+# chip 的合法修饰类（style.css 里都有定义；拼错就等于没有样式）
+CHIP_CLASSES = {
+    "tbook", "tconnect", "tlab", "tanim", "tnew",   # 来源/类型
+    "ts-now", "ts-check", "ts-old",                 # 内容时效
+}
+
 
 def load_totals():
     """从 app.js 里解析 TOTALS = { c01: 6, ... }"""
@@ -132,6 +138,21 @@ def check_file(path, totals, chapter_key):
     for m in re.finditer(r"<kbd>", txt):
         problems.append("[样式] 用了 <kbd>，站点 CSS 未定义该样式，改用 <code class=\"inline\">")
         break
+
+    # ---------- 7. chip 类名白名单（防手滑拼错，错了就是没样式） ----------
+    unknown = set()
+    for m in re.finditer(r'class="chip((?:\s+[a-z0-9-]+)*)"', body):
+        for c in m.group(1).split():
+            if c not in CHIP_CLASSES:
+                unknown.add(c)
+    if unknown:
+        problems.append("[样式] 未知 chip 修饰类：%s（白名单见 check.py 顶部 CHIP_CLASSES）"
+                        % ", ".join(sorted(unknown)))
+
+    # ---------- 8. 每章必须有「内容基准」块 ----------
+    if chapter_key and 'class="basis-note"' not in html:
+        problems.append('[时效] 缺少「内容基准」块（<div class="basis-note">），'
+                        '读者无法判断本章素材的年代')
 
     return problems
 
